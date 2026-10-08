@@ -33,6 +33,7 @@ model Workspace {
   agents      Agent[]
   taskBoard   TaskBoard?
   sentinels   Sentinel[]
+  agentProfiles AgentProfile[]
 
   @@map("workspaces")
 }
@@ -132,6 +133,14 @@ model WorkspaceGitAccount {
   @@map("workspace_git_accounts")
 }
 
+/// What an agent delivers: code changes (commit + PR/MR) or a result reported through the Studio tools.
+enum AgentOutput {
+  PULL_REQUEST
+  RESULT
+
+  @@map("agent_output")
+}
+
 enum AgentStatus {
   PREPARING
   RUNNING
@@ -156,7 +165,19 @@ enum AgentInboxKind {
 model Agent {
   id              String      @id @default(uuid(7)) @db.Uuid
   workspaceId     String      @map("workspace_id") @db.Uuid
-  projectId       String      @map("project_id") @db.Uuid
+  /// Null for agents that do not work on a repository (they get an empty work folder).
+  projectId       String?     @map("project_id") @db.Uuid
+  /// Workspace agent (profile) this execution belongs to, if any.
+  profileId       String?     @map("profile_id") @db.Uuid
+  /// Role instructions of the profile, copied at launch and added to the system prompt.
+  instructions    String      @default("")
+  output          AgentOutput @default(PULL_REQUEST)
+  /// Studio tools the agent may call (e.g. "board").
+  tools           String[]    @default([])
+  /// Concludes by itself when it finishes (PR/MR or result) instead of waiting for the user.
+  autoConclude    Boolean     @default(false) @map("auto_conclude")
+  /// Outcome reported by the agent (studio_report_result) or collected by the Studio (created tasks).
+  result          Json?
   title           String
   /// Model alias passed to Claude Code (sonnet, opus, haiku).
   model           String
@@ -194,7 +215,8 @@ model Agent {
   updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  profile   AgentProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   sentinel  Sentinel?    @relation(fields: [sentinelId], references: [id], onDelete: SetNull)
   events    AgentEvent[]
   inbox     AgentInbox[]
@@ -202,6 +224,7 @@ model Agent {
 
   @@index([workspaceId])
   @@index([projectId])
+  @@index([profileId])
   @@index([status])
   @@index([taskItemId])
   @@index([sentinelId])
@@ -325,4 +348,30 @@ model Sentinel {
 
   @@index([workspaceId])
   @@map("sentinels")
+}
+
+/// A fixed agent of the workspace (e.g. "Documentador", "Testador"); each run of it is an Agent.
+model AgentProfile {
+  id           String      @id @default(uuid(7)) @db.Uuid
+  workspaceId  String      @map("workspace_id") @db.Uuid
+  name         String
+  description  String      @default("")
+  /// Role instructions added to the system prompt of every execution.
+  instructions String      @default("")
+  model        String      @default("sonnet")
+  /// Projects it may work on; empty means it works without a repository.
+  projectIds   String[]    @default([]) @map("project_ids")
+  output       AgentOutput @default(PULL_REQUEST)
+  /// Studio tools enabled (e.g. "board").
+  tools        String[]    @default([])
+  /// Concludes by itself when it finishes, without waiting for the user.
+  autoConclude Boolean     @default(false) @map("auto_conclude")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agents    Agent[]
+
+  @@unique([workspaceId, name])
+  @@map("agent_profiles")
 }

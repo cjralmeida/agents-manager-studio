@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { prisma } from '../../db.js';
-import { type Agent, type AgentStatus, Prisma } from '../../generated/prisma/client.js';
+import { type Agent, type AgentProfile, type AgentStatus, Prisma } from '../../generated/prisma/client.js';
 import { imageExists, inspectContainer, removeContainer, removeVolume } from '../../lib/docker.js';
 import { config } from '../../config.js';
 import { HttpError, notFound } from '../../lib/errors.js';
@@ -13,17 +13,35 @@ import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { openPullRequest } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
-import { commitAndPush, currentBranch, prepareWorkdir, removeWorkdir, workdirDiff, workdirHostPath } from './workdir.js';
+import {
+  NO_CHANGES_MESSAGE,
+  commitAndPush,
+  currentBranch,
+  prepareEmptyWorkdir,
+  prepareWorkdir,
+  removeWorkdir,
+  workdirDiff,
+  workdirHostPath,
+  workdirPath,
+} from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
 
 export interface LaunchAgentInput {
-  projectId: string;
+  /** Repository the agent works on; omitted for agents without a repository (or the profile's only project). */
+  projectId?: string | null;
+  /** Workspace agent (profile) to run: brings its instructions, model, tools and output. */
+  profileId?: string;
   prompt: string;
   title?: string;
-  model: AgentModel;
+  /** Defaults to the profile model, then Sonnet. */
+  model?: AgentModel;
   baseBranch?: string;
+  /** Continues another agent's work: clones its copy on its branch (workflow handoffs). */
+  sourceAgentId?: string;
+  /** Overrides the profile: conclude without waiting for the user. */
+  autoConclude?: boolean;
   /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
   taskItemId?: string;
   /** The user already confirmed launching while Docker usage is high. */
@@ -31,6 +49,9 @@ export interface LaunchAgentInput {
   /** Sentinel launching the agent (not accepted from the public API). */
   sentinelId?: string;
 }
+
+/** Marks agents without a repository (their work folder is ready but has no base commit). */
+const NO_REPOSITORY = 'none';
 
 /** Separates the task from the board guidelines in the first message (the PR body keeps only the task). */
 const BOARD_RULES_SEPARATOR = '\n\n---\nRegras do quadro de tarefas (README):\n';
@@ -43,6 +64,7 @@ const agentInclude = {
   project: { select: { name: true } },
   workspace: { select: { name: true } },
   sentinel: { select: { name: true } },
+  profile: { select: { name: true } },
 } satisfies Prisma.AgentInclude;
 
 type AgentWithNames = Prisma.AgentGetPayload<{ include: typeof agentInclude }>;
@@ -97,6 +119,7 @@ export async function listAgentEvents(id: string, afterId: number) {
 
 export async function getAgentDiff(id: string) {
   const agent = await findOrThrow(id);
+  if (agent.baseCommit === NO_REPOSITORY) throw new HttpError(409, 'Este agente não trabalha em um repositório.');
   if (!agent.baseCommit) throw new HttpError(409, 'A cópia do projeto ainda está sendo preparada.');
   return workdirDiff(agent.workdir, agent.baseCommit);
 }
@@ -114,18 +137,44 @@ function slugify(text: string) {
     .replace(/-+$/, '');
 }
 
-export async function launchAgent(input: LaunchAgentInput) {
-  const project = await prisma.project.findUnique({ where: { id: input.projectId }, include: { workspace: true } });
+/** Resolves the project of a launch from the input and the profile's allowed projects (null = no repository). */
+async function resolveProject(input: LaunchAgentInput, profile: AgentProfile | null) {
+  let projectId = input.projectId ?? null;
+  if (!projectId && profile?.projectIds.length === 1) projectId = profile.projectIds[0]!;
+  if (!projectId) {
+    if (profile && profile.projectIds.length > 1) throw new HttpError(422, `Escolha um dos projetos do agente "${profile.name}".`);
+    if (!profile) throw new HttpError(422, 'Escolha o projeto do agente.');
+    return null;
+  }
+  if (profile && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) {
+    throw new HttpError(422, `O agente "${profile.name}" não trabalha neste projeto.`);
+  }
+
+  const project = await prisma.project.findUnique({ where: { id: projectId }, include: { workspace: true } });
   if (!project || project.missingAt) throw notFound('Projeto não encontrado.');
   if (!project.isGitRepo) throw new HttpError(422, 'Agentes só podem ser lançados em projetos com git.');
+  if (profile && project.workspaceId !== profile.workspaceId) throw new HttpError(422, 'O projeto é de outro workspace.');
+  return project;
+}
 
-  const settings = await prisma.workspaceSettings.findUnique({ where: { workspaceId: project.workspaceId } });
+export async function launchAgent(input: LaunchAgentInput) {
+  const profile = input.profileId ? await prisma.agentProfile.findUnique({ where: { id: input.profileId } }) : null;
+  if (input.profileId && !profile) throw notFound('Agente do workspace não encontrado.');
+  const project = await resolveProject(input, profile);
+  const workspaceId = project?.workspaceId ?? profile!.workspaceId;
+  const workspace = project?.workspace ?? (await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }));
+  // Without a repository there is no code to deliver, so the agent reports a result.
+  const output = project ? (profile?.output ?? 'PULL_REQUEST') : 'RESULT';
+
+  const settings = await prisma.workspaceSettings.findUnique({ where: { workspaceId } });
   if (!settings?.agentAccountId) {
     throw new HttpError(422, 'Configure a conta de agente (Claude) do workspace antes de lançar agentes.');
   }
-  const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
-  if (!remote) throw new HttpError(422, 'O projeto não tem um remote "origin" válido para enviar o PR/MR.');
-  await findGitAccount(project.workspaceId, remote);
+  if (project && output === 'PULL_REQUEST') {
+    const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+    if (!remote) throw new HttpError(422, 'O projeto não tem um remote "origin" válido para enviar o PR/MR.');
+    await findGitAccount(workspaceId, remote);
+  }
   if (!(await imageExists(config.agentRunnerImage))) {
     throw new HttpError(503, 'Imagem do agent-runner não encontrada. Rode: docker compose --profile tools build agent-runner');
   }
@@ -136,13 +185,20 @@ export async function launchAgent(input: LaunchAgentInput) {
     }
   }
 
-  const projectDir = toContainerPath(project.workspace.name, project.name);
-  const baseBranch = input.baseBranch?.trim() || (await currentBranch(projectDir));
+  // Where the copy comes from: the user's project, or another agent's copy to continue its work.
+  const source = input.sourceAgentId ? await prisma.agent.findUnique({ where: { id: input.sourceAgentId } }) : null;
+  if (input.sourceAgentId && (!source || source.projectId !== project?.id)) {
+    throw new HttpError(422, 'Só é possível continuar o trabalho de um agente do mesmo projeto.');
+  }
+  const cloneFrom = project ? (source ? workdirPath(source.workdir) : toContainerPath(workspace.name, project.name)) : null;
+  const baseBranch = !project
+    ? '-'
+    : (source?.branch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
   if (!baseBranch) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
 
-  const task = input.taskItemId ? await taskForAgent(project.workspaceId, input.taskItemId) : null;
+  const task = input.taskItemId ? await taskForAgent(workspaceId, input.taskItemId) : null;
   const prompt = input.prompt.trim();
   const message = task?.readme ? `${prompt}${BOARD_RULES_SEPARATOR}${task.readme.slice(0, MAX_BOARD_RULES)}` : prompt;
   const title = input.title?.trim() || (prompt.split('\n')[0] ?? prompt).slice(0, 80);
@@ -151,13 +207,18 @@ export async function launchAgent(input: LaunchAgentInput) {
 
   const agent = await prisma.agent.create({
     data: {
-      workspaceId: project.workspaceId,
-      projectId: project.id,
+      workspaceId,
+      projectId: project?.id ?? null,
+      profileId: profile?.id ?? null,
       title,
-      model: input.model,
+      model: input.model ?? (profile?.model as AgentModel | undefined) ?? 'sonnet',
+      instructions: profile?.instructions ?? '',
+      output,
+      tools: profile?.tools ?? [],
+      autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       baseBranch,
-      branch: `agent/${slug ? `${slug}-` : ''}${shortId}`,
-      workdir: `${project.workspace.name}/${project.name}-${shortId}`,
+      branch: project ? `agent/${slug ? `${slug}-` : ''}${shortId}` : '-',
+      workdir: `${workspace.name}/${project?.name ?? 'sem-repositorio'}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.sentinelId && { sentinelId: input.sentinelId }),
     },
@@ -166,7 +227,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   await addEvent(agent.id, 'user_message', { text: message });
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
-  void prepareAndStart(agent.id, projectDir, project.gitRemoteUrl);
+  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null);
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -176,9 +237,16 @@ async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review', assig
   if (message) await addEvent(agent.id, 'status', { message });
 }
 
-async function prepareAndStart(agentId: string, projectDir: string, remoteUrl: string | null) {
+async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null) {
   try {
     const agent = await findOrThrow(agentId);
+    if (!projectDir) {
+      await prepareEmptyWorkdir(agent.workdir);
+      await prisma.agent.update({ where: { id: agentId }, data: { baseCommit: NO_REPOSITORY } });
+      await addEvent(agentId, 'status', { message: 'Pasta de trabalho criada (agente sem repositório).' });
+      await ensureContainer(agentId);
+      return;
+    }
     const { baseCommit } = await prepareWorkdir({
       projectDir,
       workdir: agent.workdir,
@@ -314,6 +382,10 @@ export async function finalizeAgent(id: string) {
   if (agent.status !== 'READY_FOR_REVIEW') {
     throw new HttpError(409, 'Só é possível concluir um agente pronto para revisão.');
   }
+  if (agent.output === 'RESULT' || !agent.projectId) {
+    await completeWithResult(id);
+    return getAgent(id);
+  }
 
   await prisma.agent.update({ where: { id }, data: { status: 'FINALIZING', errorMessage: null } });
   await addEvent(id, 'status', { message: 'Enviando alterações...' });
@@ -329,7 +401,7 @@ async function finalizeInBackground(id: string) {
       await prisma.agent.update({ where: { id }, data: { containerId: null, secretHash: null } });
     }
 
-    const remote = agent.project.gitRemoteUrl ? parseRemote(agent.project.gitRemoteUrl) : null;
+    const remote = agent.project?.gitRemoteUrl ? parseRemote(agent.project.gitRemoteUrl) : null;
     if (!remote || !agent.baseCommit) throw new HttpError(422, 'O projeto não tem remote para enviar.');
     const account = await findGitAccount(agent.workspaceId, remote);
     const token = secrets.decrypt(account.tokenEncrypted);
@@ -377,14 +449,65 @@ async function finalizeInBackground(id: string) {
     await addEvent(id, 'completed', { prUrl });
     await reportTaskMove(agent, 'review');
   } catch (error) {
-    // Back to review so the user can fix the cause (e.g. a token) and try again.
     const message = errorMessage(error);
+    // An automatic agent that changed nothing is done; there is just no PR to open.
+    const agent = await prisma.agent.findUnique({ where: { id } });
+    if (agent?.autoConclude && message === NO_CHANGES_MESSAGE) {
+      await prisma.agent.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          result: { status: 'success', summary: 'Concluído sem alterações de código.' },
+          finishedAt: new Date(),
+          lastActivityAt: new Date(),
+        },
+      });
+      await addEvent(id, 'status', { message: 'Concluído sem alterações de código.' });
+      return;
+    }
+    // Back to review so the user can fix the cause (e.g. a token) and try again.
     await prisma.agent.update({
       where: { id },
       data: { status: 'READY_FOR_REVIEW', errorMessage: message, lastActivityAt: new Date() },
     });
     await addEvent(id, 'error', { message });
   }
+}
+
+/**
+ * Agents that deliver a result (no code) finish here: the result they reported through
+ * studio_report_result, or the last answer when they did not report one.
+ */
+async function completeWithResult(id: string) {
+  const agent = await findOrThrow(id);
+  if (agent.containerId) {
+    await stopAgentContainer(agent.containerId);
+  }
+  let result = agent.result as Prisma.JsonObject | null;
+  if (!result || !('status' in result)) {
+    const lastTurn = await prisma.agentEvent.findFirst({ where: { agentId: id, type: 'turn_end' }, orderBy: { id: 'desc' } });
+    const summary = (lastTurn?.data as { text?: string } | null)?.text ?? '';
+    result = { ...(result ?? {}), status: 'success', summary };
+  }
+  await prisma.agent.update({
+    where: { id },
+    data: {
+      status: 'COMPLETED',
+      result,
+      containerId: null,
+      secretHash: null,
+      finishedAt: new Date(),
+      lastActivityAt: new Date(),
+    },
+  });
+  await addEvent(id, 'status', { message: `Concluído: ${String(result.summary ?? '').slice(0, 300)}` });
+}
+
+/** Called when an agent finishes a turn with nothing queued: automatic agents conclude by themselves. */
+export async function onAgentIdle(id: string) {
+  const agent = await prisma.agent.findUnique({ where: { id } });
+  if (!agent || agent.status !== 'READY_FOR_REVIEW' || !agent.autoConclude) return;
+  await finalizeAgent(id).catch((error: unknown) => addEvent(id, 'error', { message: errorMessage(error) }));
 }
 
 function defaultAuthorEmail(provider: 'GITHUB' | 'GITLAB', username: string, host: string) {
@@ -417,7 +540,7 @@ function usageOf(agent: Agent) {
   };
 }
 
-function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace' | 'sentinel'>>) {
+function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace' | 'sentinel' | 'profile'>>) {
   return {
     id: agent.id,
     workspaceId: agent.workspaceId,
@@ -438,6 +561,12 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     taskUrl: agent.taskUrl,
     sentinelId: agent.sentinelId,
     sentinelName: agent.sentinel?.name ?? null,
+    profileId: agent.profileId,
+    profileName: agent.profile?.name ?? null,
+    output: agent.output,
+    autoConclude: agent.autoConclude,
+    hasRepository: agent.projectId !== null,
+    result: agent.result,
     usage: usageOf(agent),
     errorMessage: agent.errorMessage,
     lastActivityAt: agent.lastActivityAt,

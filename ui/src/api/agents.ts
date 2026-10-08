@@ -14,6 +14,14 @@ export type AgentStatus =
 
 export type AgentModel = 'sonnet' | 'opus' | 'haiku';
 
+/** Outcome reported by a result agent, plus the tasks it created on the board. */
+export interface AgentResult {
+  status?: 'success' | 'failure';
+  summary?: string;
+  details?: string;
+  createdTasks?: { id: string; title: string; ref: string | null; url: string | null }[];
+}
+
 export interface QuestionOption {
   label: string;
   description: string;
@@ -48,6 +56,13 @@ export interface Agent {
   /** Sentinel that launched the agent. */
   sentinelId: string | null;
   sentinelName: string | null;
+  /** Workspace agent (profile) this execution runs. */
+  profileId: string | null;
+  profileName: string | null;
+  output: 'PULL_REQUEST' | 'RESULT';
+  autoConclude: boolean;
+  hasRepository: boolean;
+  result: AgentResult | null;
   /** Tokens and estimated cost (API list prices) used by the agent. */
   usage: UsageTotals;
   errorMessage: string | null;
@@ -81,10 +96,12 @@ export interface AgentDiff {
 }
 
 export interface LaunchAgentInput {
-  projectId: string;
+  /** Null for agents without a repository. */
+  projectId?: string | null;
+  profileId?: string;
   prompt: string;
   title?: string;
-  model: AgentModel;
+  model?: AgentModel;
   baseBranch?: string;
   taskItemId?: string;
   /** Launch even though Docker usage is above the configured limits. */

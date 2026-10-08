@@ -29,7 +29,7 @@ export function Dashboard({ workspace }: { workspace?: WorkspaceDetail }) {
   return (
     <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
       <div className="min-w-0 flex-1 space-y-4">
-        {workspace && creating && <NewAgentForm projects={workspace.projects} onCancel={() => setCreating(false)} />}
+        {workspace && creating && <NewAgentForm workspaceId={workspace.id} projects={workspace.projects} onCancel={() => setCreating(false)} />}
         <ErrorText error={agents.error} />
         {agents.data && (
           <AgentsView

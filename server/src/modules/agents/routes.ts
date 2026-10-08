@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { HttpError } from '../../lib/errors.js';
 import { parseInput } from '../../lib/validation.js';
+import { AGENT_TOOL_NAMES, runAgentTool } from '../agent-tools/service.js';
 import { applyRunnerEvents, authenticateRunner, type RunnerEvent, takeInbox } from './runner-api.js';
 import {
   AGENT_MODELS,
@@ -22,10 +24,11 @@ const listQuery = z.object({ workspaceId: z.uuid().optional() }).strict();
 
 const launchBody = z
   .object({
-    projectId: z.uuid(),
+    projectId: z.uuid().nullable().optional(),
+    profileId: z.uuid().optional(),
     prompt: z.string().trim().min(1).max(20_000),
     title: z.string().trim().max(120).optional(),
-    model: z.enum(AGENT_MODELS).default('sonnet'),
+    model: z.enum(AGENT_MODELS).optional(),
     baseBranch: z
       .string()
       .trim()
@@ -142,4 +145,18 @@ export async function agentRunnerRoutes(app: FastifyInstance) {
     await applyRunnerEvents(id, parseInput(runnerEvents, request.body).events as RunnerEvent[]);
     return reply.code(204).send();
   });
+
+  /** Studio tools (board, result) called by the agent; errors go back as text the agent can act on. */
+  app.post('/internal/agents/:id/tools/:tool', async (request) => {
+    const { id, tool } = parseInput(toolParams, request.params);
+    try {
+      return { ok: true, data: await runAgentTool(id, tool, parseInput(toolArgs, request.body ?? {})) };
+    } catch (error) {
+      if (error instanceof HttpError || error instanceof Error) return { ok: false, error: error.message };
+      throw error;
+    }
+  });
 }
+
+const toolParams = z.object({ id: z.uuid(), tool: z.enum(AGENT_TOOL_NAMES) });
+const toolArgs = z.record(z.string(), z.unknown());

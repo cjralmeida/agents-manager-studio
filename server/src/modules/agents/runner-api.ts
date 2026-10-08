@@ -6,7 +6,7 @@ import { HttpError } from '../../lib/errors.js';
 import type { RateLimitInfo, UsageTotals } from '../usage/calc.js';
 import { recordAgentUsage, recordPlanUsageForAgent } from '../usage/service.js';
 import { hashSecret } from './runtime.js';
-import { addEvent } from './service.js';
+import { addEvent, onAgentIdle } from './service.js';
 
 /** Statuses the runner must not change: the user or the server owns them. */
 const LOCKED_STATUSES: AgentStatus[] = ['CANCELLED', 'FINALIZING'];
@@ -108,4 +108,7 @@ export async function applyRunnerEvents(agentId: string, events: RunnerEvent[]) 
 
     await prisma.agent.update({ where: { id: agentId }, data });
   }
+
+  // Automatic agents conclude as soon as a turn ends with nothing left to do; not awaited so the runner is not held.
+  if (events.some((event) => event.type === 'turn_end')) void onAgentIdle(agentId);
 }

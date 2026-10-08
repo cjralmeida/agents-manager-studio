@@ -3,6 +3,7 @@
 // - Streams progress (text, tool calls, questions, turn ends) back as events.
 // - Exits with code 0 after IDLE_TIMEOUT_MS without work; the server resumes the session later.
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { createStudioTools } from './studio-tools.mjs';
 
 const env = (name, fallback) => {
   const value = process.env[name] ?? fallback;
@@ -17,6 +18,8 @@ const MODEL = env('MODEL', 'sonnet');
 const IDLE_TIMEOUT_MS = Number(env('IDLE_TIMEOUT_MS', '600000'));
 const RESUME_SESSION_ID = process.env.RESUME_SESSION_ID || undefined;
 const SYSTEM_PROMPT_APPEND = process.env.SYSTEM_PROMPT_APPEND || '';
+/** Studio tool groups enabled for this agent (e.g. "board,result"). */
+const STUDIO_TOOLS = (process.env.STUDIO_TOOLS || '').split(',').filter(Boolean);
 const WORKDIR = '/workspace';
 
 const log = (msg, extra = {}) => console.log(JSON.stringify({ time: new Date().toISOString(), msg, ...extra }));
@@ -142,7 +145,18 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 // ------------------------------------------------------------------ Claude Code
 
+/** Studio tools as the user reads them in the timeline. */
+const STUDIO_TOOL_LABELS = {
+  report_result: (input) => `Resultado: ${input.status} — ${input.summary ?? ''}`,
+  board_list_tasks: (input) => `Quadro: listar tarefas${input.column ? ` em "${input.column}"` : ''}`,
+  board_get_task: () => 'Quadro: ler tarefa',
+  board_create_task: (input) => `Quadro: criar tarefa "${input.title ?? ''}"`,
+  board_update_task: (input) => `Quadro: atualizar tarefa${input.column ? ` → "${input.column}"` : ''}`,
+};
+
 function summarizeTool(name, input = {}) {
+  const studioLabel = STUDIO_TOOL_LABELS[name.replace(/^mcp__studio__/, '')];
+  if (name.startsWith('mcp__studio__') && studioLabel) return studioLabel(input).slice(0, 300);
   const value =
     input.command ?? input.file_path ?? input.path ?? input.pattern ?? input.url ?? input.description ?? input.query ?? '';
   return String(value).slice(0, 300);
@@ -176,6 +190,11 @@ async function main() {
   log('Runner started', { model: MODEL, resume: Boolean(RESUME_SESSION_ID) });
   void pollInbox();
 
+  const studio = createStudioTools(
+    (name, args) => api(`/tools/${name}`, { method: 'POST', body: JSON.stringify(args ?? {}) }),
+    STUDIO_TOOLS,
+  );
+
   const session = query({
     prompt,
     options: {
@@ -186,6 +205,7 @@ async function main() {
       allowDangerouslySkipPermissions: true,
       canUseTool,
       systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM_PROMPT_APPEND },
+      ...(studio && { mcpServers: { studio } }),
     },
   });
 

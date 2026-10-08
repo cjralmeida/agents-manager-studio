@@ -72,6 +72,13 @@ export async function prepareWorkdir(input: {
   return { baseCommit };
 }
 
+/** Work folder for an agent without a repository (e.g. one that only plans tasks). */
+export async function prepareEmptyWorkdir(workdir: string) {
+  const dest = workdirPath(workdir);
+  await mkdir(dest, { recursive: true });
+  await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dest], () => resolve()));
+}
+
 export interface DiffFile {
   path: string;
   status: string;
@@ -116,6 +123,8 @@ export async function workdirDiff(workdir: string, baseCommit: string) {
   return { files, patch: truncated ? patch.slice(0, MAX_PATCH_BYTES) : patch, truncated };
 }
 
+export const NO_CHANGES_MESSAGE = 'O agente não fez nenhuma alteração para enviar.';
+
 /** Commits pending changes (if any) and pushes the agent branch. The token never reaches git config or logs. */
 export async function commitAndPush(input: {
   workdir: string;
@@ -148,9 +157,7 @@ export async function commitAndPush(input: {
     }
 
     const head = (await git(dir, ['rev-parse', 'HEAD'])).trim();
-    if (head === input.baseCommit) {
-      throw new HttpError(422, 'O agente não fez nenhuma alteração para enviar.');
-    }
+    if (head === input.baseCommit) throw new HttpError(422, NO_CHANGES_MESSAGE);
 
     await git(dir, ['push', '--quiet', input.pushUrl, `HEAD:refs/heads/${input.branch}`], { timeoutMs: 300_000 });
   } catch (error) {

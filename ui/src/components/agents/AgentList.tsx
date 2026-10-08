@@ -42,7 +42,7 @@ export function AgentList({ agents, showWorkspace = false, live }: AgentListProp
                 <div className="font-mono text-xs text-muted">{agent.branch}</div>
               </td>
               {showWorkspace && <td className="px-4 py-2">{agent.workspaceName}</td>}
-              <td className="px-4 py-2">{agent.projectName}</td>
+              <td className="px-4 py-2">{agent.projectName ?? <span className="text-muted">sem repositório</span>}</td>
               <td className="px-4 py-2">
                 <AgentStatusBadge status={agent.status} />
               </td>

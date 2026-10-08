@@ -14,16 +14,55 @@ export function hashSecret(secret: string) {
   return createHash('sha256').update(secret).digest('hex');
 }
 
-function systemPromptAppend(branch: string, baseBranch: string) {
-  return [
-    'Você é um agente de programação gerenciado pelo Agents Manager Studio.',
-    `- Você trabalha em /workspace, uma cópia isolada do projeto na branch "${branch}", criada a partir de "${baseBranch}".`,
-    '- NÃO faça commit, push, nem crie ou troque de branch: o usuário revisa o diff no Studio e conclui por lá.',
+export interface RuntimeAgent {
+  id: string;
+  model: string;
+  workdir: string;
+  branch: string;
+  baseBranch: string;
+  sessionId: string | null;
+  projectId: string | null;
+  output: 'PULL_REQUEST' | 'RESULT';
+  autoConclude: boolean;
+  instructions: string;
+  tools: string[];
+}
+
+/** Studio tools the runner exposes: the enabled groups, plus result reporting for agents that deliver a result. */
+export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output'>) {
+  return [...new Set([...agent.tools, ...(agent.output === 'RESULT' ? ['result'] : [])])];
+}
+
+function systemPromptAppend(agent: RuntimeAgent) {
+  const tools = runnerTools(agent);
+  const lines = ['Você é um agente gerenciado pelo Agents Manager Studio.'];
+
+  if (agent.projectId) {
+    lines.push(`- Você trabalha em /workspace, uma cópia isolada do projeto na branch "${agent.branch}", criada a partir de "${agent.baseBranch}".`);
+    lines.push('- NÃO faça commit, push, nem crie ou troque de branch.');
+  } else {
+    lines.push('- Você não trabalha em um repositório: /workspace é uma pasta de trabalho temporária.');
+  }
+
+  if (agent.output === 'RESULT') {
+    lines.push('- Sua entrega não é código. Ao terminar, chame a ferramenta studio_report_result com o status (success ou failure) e um resumo claro do resultado.');
+  } else if (agent.autoConclude) {
+    lines.push('- Quando você terminar, o Studio faz o commit e abre o PR/MR automaticamente com as suas alterações.');
+  } else {
+    lines.push('- O usuário revisa o diff no Studio e conclui por lá.');
+  }
+
+  if (tools.includes('board')) {
+    lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
+  }
+  lines.push(
     '- O ambiente tem Node.js 24, Python 3 (pip e venv) e git, sem sudo. Instale dependências no projeto (npm install, ou python -m venv .venv) e rode os testes antes de terminar. Não versione a pasta .venv.',
     '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
-    '- Ao terminar, resuma o que foi feito e o que o usuário deve revisar.',
+    '- Ao terminar, resuma o que foi feito.',
     '- Responda em português.',
-  ].join('\n');
+  );
+  if (agent.instructions.trim()) lines.push('', 'Seu papel neste workspace:', agent.instructions.trim());
+  return lines.join('\n');
 }
 
 /** Each enabled skill is mounted read-only under ~/.claude/skills; names are made unique. */
@@ -38,7 +77,7 @@ function skillBinds(skillIds: string[]) {
 }
 
 export interface StartAgentInput {
-  agent: { id: string; model: string; workdir: string; branch: string; baseBranch: string; sessionId: string | null };
+  agent: RuntimeAgent;
   claudeToken: string;
   skillIds: string[];
 }
@@ -65,7 +104,8 @@ export async function startAgentContainer({ agent, claudeToken, skillIds }: Star
       SERVER_URL: config.serverInternalUrl,
       MODEL: agent.model,
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
-      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent.branch, agent.baseBranch),
+      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent),
+      STUDIO_TOOLS: runnerTools(agent).join(','),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
     },

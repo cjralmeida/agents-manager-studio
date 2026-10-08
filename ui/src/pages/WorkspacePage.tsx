@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router';
 import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
+import { AgentProfilesTab } from '../components/agent-profiles/AgentProfilesTab';
 import { BoardTab } from '../components/board/BoardTab';
 import { Dashboard } from '../components/dashboard/Dashboard';
 import { SentinelsTab } from '../components/sentinels/SentinelsTab';
@@ -11,6 +12,7 @@ import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsT
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'board', label: 'Quadro' },
+  { id: 'agents', label: 'Agentes' },
   { id: 'sentinels', label: 'Sentinelas' },
   { id: 'projects', label: 'Projetos' },
   { id: 'settings', label: 'Configuração' },
@@ -64,6 +66,7 @@ export function WorkspacePage() {
 
       <div className="mt-6">
         {activeTab === 'board' && <BoardTab workspace={data} />}
+        {activeTab === 'agents' && <AgentProfilesTab workspace={data} />}
         {activeTab === 'sentinels' && <SentinelsTab workspace={data} />}
         {activeTab === 'dashboard' && <Dashboard workspace={data} />}
         {activeTab === 'projects' && (

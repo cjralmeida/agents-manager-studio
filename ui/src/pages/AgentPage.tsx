@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useAgent, useAgentAction, useDeleteAgent } from '../api/agents';
 import { formatTokens, formatUsd, totalTokens } from '../api/usage';
 import { AgentStatusBadge } from '../components/agents/AgentStatusBadge';
+import { AgentResultPanel } from '../components/agents/AgentResultPanel';
 import { Conversation } from '../components/agents/Conversation';
 import { DiffView } from '../components/agents/DiffView';
 import { Button } from '../components/Button';
@@ -28,7 +29,9 @@ export function AgentPage() {
   if (agent.error) return <ErrorText error={agent.error} />;
   const { data } = agent;
 
+  const deliversCode = data.output === 'PULL_REQUEST' && data.hasRepository;
   const handleFinalize = () => {
+    if (!deliversCode) return finalize.mutate();
     if (window.confirm('Fazer commit, push da branch e abrir o PR/MR com as alterações atuais?')) finalize.mutate();
   };
   const handleCancel = () => {
@@ -55,8 +58,16 @@ export function AgentPage() {
             <AgentStatusBadge status={data.status} />
           </div>
           <p className="mt-1 text-sm text-muted">
-            {data.projectName} · {modelLabels[data.model] ?? data.model} · <span className="font-mono">{data.branch}</span>{' '}
-            (de {data.baseBranch})
+            {data.profileName && <span className="text-gray-200">{data.profileName} · </span>}
+            {data.hasRepository ? (
+              <>
+                {data.projectName} · {modelLabels[data.model] ?? data.model} · <span className="font-mono">{data.branch}</span>{' '}
+                (de {data.baseBranch})
+              </>
+            ) : (
+              <>sem repositório · {modelLabels[data.model] ?? data.model}</>
+            )}
+            {data.autoConclude && ' · conclui sozinho'}
           </p>
           <p className="mt-0.5 font-mono text-xs text-muted">{data.workdirHostPath}</p>
           {totalTokens(data.usage) > 0 && (
@@ -73,7 +84,7 @@ export function AgentPage() {
         <div className="flex gap-2">
           {data.status === 'READY_FOR_REVIEW' && (
             <Button variant="primary" onClick={handleFinalize} disabled={finalize.isPending}>
-              {data.prUrl ? 'Enviar alterações' : 'Concluir (commit + PR)'}
+              {!deliversCode ? 'Concluir' : data.prUrl ? 'Enviar alterações' : 'Concluir (commit + PR)'}
             </Button>
           )}
           {canCancel && (
@@ -94,11 +105,13 @@ export function AgentPage() {
         {data.errorMessage && <p className="text-sm text-red-300">{data.errorMessage}</p>}
       </div>
 
+      <AgentResultPanel agent={data} />
+
       <div className="mt-6">
-        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+        <Tabs tabs={data.hasRepository ? tabs : tabs.slice(0, 1)} active={activeTab} onChange={setActiveTab} />
       </div>
       <div className="mt-4">
-        {activeTab === 'conversation' ? <Conversation agent={data} /> : <DiffView agentId={data.id} />}
+        {activeTab === 'changes' && data.hasRepository ? <DiffView agentId={data.id} /> : <Conversation agent={data} />}
       </div>
     </section>
   );

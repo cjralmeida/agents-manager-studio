@@ -134,6 +134,7 @@ export function TaskDrawer({ workspace, board, item, agent, onClose }: TaskDrawe
           ) : launching ? (
             <div className="mt-3">
               <NewAgentForm
+                workspaceId={workspace.id}
                 projects={workspace.projects}
                 onCancel={() => setLaunching(false)}
                 initial={{ projectId: item.projectId, title: item.title, prompt: agentPromptFor(item) }}
