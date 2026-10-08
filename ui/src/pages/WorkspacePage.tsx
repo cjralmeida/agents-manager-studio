@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router';
-import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
+import { useState } from 'react';
+import { type GitProvider, type Project, type WorkspaceDetail, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { AgentProfilesTab } from '../components/agent-profiles/AgentProfilesTab';
@@ -7,6 +8,7 @@ import { BoardTab } from '../components/board/BoardTab';
 import { Dashboard } from '../components/dashboard/Dashboard';
 import { WorkflowsTab } from '../components/workflows/WorkflowsTab';
 import { Tabs, useTabParam } from '../components/Tabs';
+import { CloneRepositoryForm } from '../components/workspace/CloneRepositoryForm';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
@@ -69,15 +71,28 @@ export function WorkspacePage() {
         {activeTab === 'agents' && <AgentProfilesTab workspace={data} />}
         {activeTab === 'workflows' && <WorkflowsTab workspace={data} />}
         {activeTab === 'dashboard' && <Dashboard workspace={data} />}
-        {activeTab === 'projects' && (
-          <>
-            <p className="text-xs text-muted">Agentes só podem ser lançados em projetos com git.</p>
-            <ProjectsTable projects={data.projects} />
-          </>
-        )}
+        {activeTab === 'projects' && <ProjectsTab workspace={data} />}
         {activeTab === 'settings' && <WorkspaceSettingsTab workspace={data} />}
       </div>
     </section>
+  );
+}
+
+function ProjectsTab({ workspace }: { workspace: WorkspaceDetail }) {
+  const [cloning, setCloning] = useState(false);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted">Cada pasta do workspace é um projeto. Agentes só podem ser lançados em projetos com git.</p>
+        {!cloning && (
+          <Button variant="primary" onClick={() => setCloning(true)} disabled={workspace.isMissing}>
+            Clonar repositório
+          </Button>
+        )}
+      </div>
+      {cloning && <CloneRepositoryForm workspaceId={workspace.id} onClose={() => setCloning(false)} />}
+      <ProjectsTable projects={workspace.projects} />
+    </div>
   );
 }
 

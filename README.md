@@ -46,6 +46,10 @@ ui/         frontend: src/api, src/components, src/pages
 Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
 
 - **Criar um workspace:** use **Novo workspace** na página Workspaces. O Studio cria a pasta e a registra. Depois coloque ou clone os projetos dentro dela e clique em "Reler diretório".
+- **Clonar um repositório:** use **Clonar repositório** na aba Projetos do workspace.
+  - Escolha o repositório na lista das contas git do workspace (no GitLab, a busca é pelo nome do projeto) ou cole a URL, https ou ssh.
+  - Os privados usam o token da conta apenas durante o clone; o `origin` fica com a URL sem credenciais.
+  - O clone roda em segundo plano, e o projeto aparece sozinho quando termina.
 - **Permissões:** o Studio só escreve na pasta central, porque ela é montada com escrita no server, e não no disco inteiro.
 - **Trocar a pasta central:** mude `PROJECTS_HOST_DIR` no `.env`, rode `docker compose up -d` e releia o diretório. **Configurações → Geral** mostra a pasta atual.
 

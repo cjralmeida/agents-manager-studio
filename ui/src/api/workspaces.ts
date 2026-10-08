@@ -97,3 +97,63 @@ export function useCreateWorkspace() {
     onSuccess: invalidate,
   });
 }
+
+export interface AccountRepository {
+  provider: 'GITHUB' | 'GITLAB';
+  host: string;
+  account: string;
+  fullName: string;
+  name: string;
+  cloneUrl: string;
+  defaultBranch: string | null;
+  isPrivate: boolean;
+  description: string | null;
+  updatedAt: string | null;
+}
+
+export interface CloneJob {
+  id: string;
+  url: string;
+  folder: string;
+  branch: string | null;
+  status: 'cloning' | 'done' | 'failed';
+  error: string | null;
+  projectId: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/** Repositories the workspace git accounts can reach (GitLab searches by project name). */
+export function useAccountRepositories(workspaceId: string, search: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, workspaceId, 'repositories', search] as const,
+    queryFn: () =>
+      api.get<{ repositories: AccountRepository[]; warnings: string[] }>(
+        `/workspaces/${workspaceId}/repositories?search=${encodeURIComponent(search)}`,
+      ),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** Clones of the workspace; polled while one is running, and the workspace is refreshed when one ends. */
+export function useCloneJobs(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: [...workspaceKeys.all, workspaceId, 'clones'] as const,
+    queryFn: async () => {
+      const jobs = await api.get<CloneJob[]>(`/workspaces/${workspaceId}/clones`);
+      if (jobs.some((job) => job.status === 'done')) void queryClient.invalidateQueries({ queryKey: workspaceKeys.detail(workspaceId) });
+      return jobs;
+    },
+    refetchInterval: (query) => (query.state.data?.some((job) => job.status === 'cloning') ? 2_000 : false),
+  });
+}
+
+export function useStartClone(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { url: string; folder?: string; branch?: string }) => api.post<CloneJob>(`/workspaces/${workspaceId}/clones`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...workspaceKeys.all, workspaceId, 'clones'] }),
+  });
+}
