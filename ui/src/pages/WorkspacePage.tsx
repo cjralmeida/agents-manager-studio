@@ -1,7 +1,13 @@
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
+import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
+
+const tabs = [
+  { id: 'projects', label: 'Projetos' },
+  { id: 'settings', label: 'Configuração' },
+] as const;
 
 const providerLabels: Record<GitProvider, string> = {
   GITHUB: 'GitHub',
@@ -13,6 +19,8 @@ export function WorkspacePage() {
   const { workspaceId = '' } = useParams();
   const workspace = useWorkspace(workspaceId);
   const setIgnored = useSetWorkspaceIgnored();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'projects';
 
   if (workspace.isPending) return <p className="text-sm text-muted">Carregando...</p>;
   if (workspace.error) return <p className="text-sm text-red-300">{workspace.error.message}</p>;
@@ -44,9 +52,29 @@ export function WorkspacePage() {
         )}
       </header>
 
-      <h2 className="mt-8 text-sm font-medium">Projetos</h2>
-      <p className="mt-1 text-xs text-muted">Agentes só podem ser lançados em projetos com git.</p>
-      <ProjectsTable projects={data.projects} />
+      <nav className="mt-6 flex gap-1 border-b border-border">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSearchParams(tab.id === 'projects' ? {} : { tab: tab.id })}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${activeTab === tab.id ? 'border-accent text-white' : 'border-transparent text-muted hover:text-white'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="mt-6">
+        {activeTab === 'projects' ? (
+          <>
+            <p className="text-xs text-muted">Agentes só podem ser lançados em projetos com git.</p>
+            <ProjectsTable projects={data.projects} />
+          </>
+        ) : (
+          <WorkspaceSettingsTab workspace={data} />
+        )}
+      </div>
     </section>
   );
 }

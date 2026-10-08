@@ -27,7 +27,9 @@ model Workspace {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  projects Project[]
+  projects    Project[]
+  settings    WorkspaceSettings?
+  gitAccounts WorkspaceGitAccount[]
 
   @@map("workspaces")
 }
@@ -49,4 +51,73 @@ model Project {
 
   @@unique([workspaceId, name])
   @@map("projects")
+}
+
+enum AgentProvider {
+  CLAUDE
+
+  @@map("agent_provider")
+}
+
+/// GitHub/GitLab credentials used by agents to push and open PRs/MRs.
+model GitAccount {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  /// GITHUB or GITLAB (OTHER is not accepted for accounts).
+  provider       GitProvider
+  label          String
+  /// API host, e.g. github.com or gitlab.company.com; matched against project remotes.
+  host           String
+  /// Username reported by the provider when the token was verified.
+  username       String
+  tokenEncrypted String      @map("token_encrypted")
+  /// Last characters of the token, safe to display.
+  tokenHint      String      @map("token_hint")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspaces WorkspaceGitAccount[]
+
+  @@map("git_accounts")
+}
+
+/// Agent provider credentials (Claude subscription token from `claude setup-token`).
+model AgentAccount {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  provider       AgentProvider @default(CLAUDE)
+  label          String
+  tokenEncrypted String        @map("token_encrypted")
+  tokenHint      String        @map("token_hint")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspaceSettings WorkspaceSettings[]
+
+  @@map("agent_accounts")
+}
+
+model WorkspaceSettings {
+  workspaceId     String   @id @map("workspace_id") @db.Uuid
+  agentAccountId  String?  @map("agent_account_id") @db.Uuid
+  /// Skill ids (path relative to the skills folder) enabled for agents of this workspace.
+  enabledSkillIds String[] @default([]) @map("enabled_skill_ids")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentAccount AgentAccount? @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
+
+  @@index([agentAccountId])
+  @@map("workspace_settings")
+}
+
+model WorkspaceGitAccount {
+  workspaceId  String @map("workspace_id") @db.Uuid
+  gitAccountId String @map("git_account_id") @db.Uuid
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  gitAccount GitAccount @relation(fields: [gitAccountId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, gitAccountId])
+  @@index([gitAccountId])
+  @@map("workspace_git_accounts")
 }

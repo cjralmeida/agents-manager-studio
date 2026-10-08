@@ -20,6 +20,10 @@ const envSchema = z.object({
   PROJECTS_HOST_DIR: z.string().min(1),
   // Top-level folders that must not become workspaces (case-insensitive).
   SCAN_EXCLUDE: commaSeparated,
+  // Key for tokens stored in the database (32 bytes in hex). Changing it makes saved tokens unreadable.
+  ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i),
+  // Claude skills folder (~/.claude/skills), mounted read-only.
+  SKILLS_DIR: z.string().min(1).default('/data/claude-skills'),
 });
 
 function loadConfig() {
@@ -39,6 +43,8 @@ function loadConfig() {
     projectsDir: env.PROJECTS_DIR,
     projectsHostDir: env.PROJECTS_HOST_DIR,
     scanExclude: env.SCAN_EXCLUDE.map((name) => name.toLowerCase()),
+    encryptionKey: env.ENCRYPTION_KEY,
+    skillsDir: env.SKILLS_DIR,
   };
 }
 

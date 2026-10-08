@@ -2,7 +2,11 @@ import Fastify, { type FastifyError, type FastifyServerOptions } from 'fastify';
 import { config } from './config.js';
 import { prisma } from './db.js';
 import { HttpError } from './lib/errors.js';
+import { agentAccountRoutes } from './modules/agent-accounts/routes.js';
+import { gitAccountRoutes } from './modules/git-accounts/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
+import { skillRoutes } from './modules/skills/routes.js';
+import { workspaceSettingsRoutes } from './modules/workspace-settings/routes.js';
 import { workspaceRoutes } from './modules/workspaces/routes.js';
 
 function loggerOptions(): FastifyServerOptions['logger'] {
@@ -39,6 +43,10 @@ export async function buildApp() {
     async (api) => {
       await api.register(healthRoutes);
       await api.register(workspaceRoutes);
+      await api.register(workspaceSettingsRoutes);
+      await api.register(gitAccountRoutes);
+      await api.register(agentAccountRoutes);
+      await api.register(skillRoutes);
     },
     { prefix: '/api' },
   );
