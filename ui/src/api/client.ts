@@ -1,9 +1,12 @@
 export class ApiError extends Error {
   readonly status: number;
+  /** Extra data sent by the server (e.g. field errors, or the reason a launch needs confirmation). */
+  readonly details: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, details?: unknown) {
     super(message);
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -20,7 +23,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
         ? data.message
         : `Erro ${response.status}`;
-    throw new ApiError(response.status, message);
+    const details = data && typeof data === 'object' && 'details' in data ? data.details : undefined;
+    throw new ApiError(response.status, message, details);
   }
   return data as T;
 }

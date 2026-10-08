@@ -1,9 +1,15 @@
-# Base image for agent containers: Claude Code CLI, Agent SDK runner and git tooling.
+# Base image for agent containers: Claude Code CLI, Agent SDK runner, git and the Python toolchain.
 FROM node:24-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates openssh-client \
+    python3 python3-pip python3-venv python-is-python3 \
   && rm -rf /var/lib/apt/lists/*
+
+# Agents run as "node" without sudo: pip installs go to ~/.local (or a project venv).
+ENV PIP_BREAK_SYSTEM_PACKAGES=1 \
+  PIP_DISABLE_PIP_VERSION_CHECK=1 \
+  PATH=/home/node/.local/bin:$PATH
 
 ARG CLAUDE_CODE_VERSION=2.1.285
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \

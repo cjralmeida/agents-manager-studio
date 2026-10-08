@@ -6,6 +6,7 @@ import { timeAgo } from '../../lib/time';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, TextInput } from '../form';
+import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { BoardSetup } from './BoardSetup';
 import { agentsByItem, matchesSearch } from './boardUtils';
 import { KanbanView } from './KanbanView';
@@ -26,19 +27,8 @@ export function BoardTab({ workspace }: { workspace: WorkspaceDetail }) {
   return <BoardView workspace={workspace} board={board.data} fetchedAt={board.dataUpdatedAt} />;
 }
 
-type View = 'board' | 'table';
-const VIEW_KEY = 'ams.board.view';
-
-function readView(): View {
-  try {
-    return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'board';
-  } catch {
-    return 'board';
-  }
-}
-
 function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail; board: Board; fetchedAt: number }) {
-  const [view, setView] = useState<View>(readView);
+  const [view, setView] = usePersistedView('board');
   const [search, setSearch] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -50,15 +40,6 @@ function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail
   const items = board.items.filter((item) => matchesSearch(item, search));
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
-
-  const changeView = (next: View) => {
-    setView(next);
-    try {
-      localStorage.setItem(VIEW_KEY, next);
-    } catch {
-      // Preference only.
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -77,18 +58,7 @@ function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail
             placeholder="Buscar tarefa, #número, @pessoa"
             className="w-60"
           />
-          <div className="flex rounded-md border border-border p-0.5">
-            {(['board', 'table'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => changeView(option)}
-                className={`rounded px-2.5 py-1 text-xs font-medium ${view === option ? 'bg-border text-white' : 'text-muted hover:text-white'}`}
-              >
-                {option === 'board' ? 'Quadro' : 'Tabela'}
-              </button>
-            ))}
-          </div>
+          <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
           <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} title={`Atualizado ${timeAgo(new Date(fetchedAt).toISOString())}`}>
             {refresh.isPending ? 'Atualizando...' : 'Atualizar'}
           </Button>
@@ -99,7 +69,7 @@ function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail
       </header>
       <ErrorText error={refresh.error ?? move.error} />
 
-      {view === 'board' ? (
+      {view === 'cards' ? (
         <KanbanView
           board={board}
           items={items}

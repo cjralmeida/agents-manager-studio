@@ -36,6 +36,9 @@ const envSchema = z.object({
   SERVER_INTERNAL_URL: z.url().default('http://server:3000'),
   // An agent container waiting for the user stops after this long without activity.
   AGENT_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  // Launching an agent asks for confirmation when Docker usage is at or above these percentages.
+  AGENT_LAUNCH_MEMORY_PERCENT: z.coerce.number().min(1).max(100).default(80),
+  AGENT_LAUNCH_CPU_PERCENT: z.coerce.number().min(1).max(100).default(85),
 });
 
 function loadConfig() {
@@ -65,6 +68,8 @@ function loadConfig() {
     agentNetwork: env.AGENT_NETWORK,
     serverInternalUrl: env.SERVER_INTERNAL_URL,
     agentIdleTimeoutMs: env.AGENT_IDLE_TIMEOUT_MS,
+    launchMemoryPercent: env.AGENT_LAUNCH_MEMORY_PERCENT,
+    launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
   };
 }
 

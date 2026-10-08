@@ -63,6 +63,8 @@ services:
       CLAUDE_SKILLS_HOST_DIR: ${CLAUDE_SKILLS_HOST_DIR}
       AGENT_NETWORK: agents-manager-studio_default
       SERVER_INTERNAL_URL: http://server:3000
+      AGENT_LAUNCH_MEMORY_PERCENT: ${AGENT_LAUNCH_MEMORY_PERCENT:-80}
+      AGENT_LAUNCH_CPU_PERCENT: ${AGENT_LAUNCH_CPU_PERCENT:-85}
       TZ: ${TZ:-America/Sao_Paulo}
     # The Docker socket is root-only; access to it is root-equivalent anyway.
     user: root

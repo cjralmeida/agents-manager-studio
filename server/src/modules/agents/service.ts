@@ -7,6 +7,7 @@ import { HttpError, notFound } from '../../lib/errors.js';
 import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { moveAgentTask, taskForAgent } from '../boards/service.js';
+import { getResourceUsage } from '../system/service.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { openPullRequest } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
@@ -24,6 +25,8 @@ export interface LaunchAgentInput {
   baseBranch?: string;
   /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
   taskItemId?: string;
+  /** The user already confirmed launching while Docker usage is high. */
+  confirmHighUsage?: boolean;
 }
 
 /** Separates the task from the board guidelines in the first message (the PR body keeps only the task). */
@@ -121,6 +124,12 @@ export async function launchAgent(input: LaunchAgentInput) {
   await findGitAccount(project.workspaceId, remote);
   if (!(await imageExists(config.agentRunnerImage))) {
     throw new HttpError(503, 'Imagem do agent-runner não encontrada. Rode: docker compose --profile tools build agent-runner');
+  }
+  if (!input.confirmHighUsage) {
+    const usage = await getResourceUsage().catch(() => null);
+    if (usage && usage.launchWarnings.length > 0) {
+      throw new HttpError(409, 'O Docker está com consumo alto.', { code: 'HIGH_USAGE', warnings: usage.launchWarnings });
+    }
   }
 
   const projectDir = toContainerPath(project.workspace.name, project.name);

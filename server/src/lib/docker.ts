@@ -188,3 +188,52 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     await removeContainer(id).catch(() => undefined);
   }
 }
+
+// ---------------------------------------------------------------- resource usage
+
+export interface DockerInfo {
+  ServerVersion: string;
+  OperatingSystem: string;
+  NCPU: number;
+  /** Memory of the Docker VM (Docker Desktop) or host, in bytes. */
+  MemTotal: number;
+}
+
+export function dockerInfo() {
+  return call<DockerInfo>('GET', '/info');
+}
+
+export interface ContainerSummary {
+  Id: string;
+  Names: string[];
+  Image: string;
+  State: string;
+  Labels: Record<string, string>;
+}
+
+export function listRunningContainers() {
+  return call<ContainerSummary[]>('GET', '/containers/json');
+}
+
+export interface ContainerStats {
+  cpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number; online_cpus?: number };
+  precpu_stats: { cpu_usage: { total_usage: number }; system_cpu_usage?: number };
+  memory_stats: { usage?: number; limit?: number; stats?: { inactive_file?: number; cache?: number } };
+}
+
+/** One sample; Docker waits ~1s to fill the previous CPU reading, so the CPU percentage can be computed. */
+export function containerStats(id: string) {
+  return call<ContainerStats>('GET', `/containers/${id}/stats?stream=false`, undefined, 15_000);
+}
+
+export interface DiskUsage {
+  LayersSize?: number;
+  Containers?: { SizeRw?: number }[];
+  Volumes?: { UsageData?: { Size?: number } }[];
+  BuildCache?: { Size?: number }[];
+}
+
+/** Can take a few seconds on large installations. */
+export function diskUsage() {
+  return call<DiskUsage>('GET', '/system/df', undefined, 60_000);
+}

@@ -81,6 +81,8 @@ export interface LaunchAgentInput {
   model: AgentModel;
   baseBranch?: string;
   taskItemId?: string;
+  /** Launch even though Docker usage is above the configured limits. */
+  confirmHighUsage?: boolean;
 }
 
 /** Statuses where the agent may still change on its own, so the UI keeps polling. */

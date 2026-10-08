@@ -57,3 +57,9 @@ Ao lançar um agente a partir de um card:
 3. a tarefa vai para validação.
 
 Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "bloqueada" ("Aguardando aprovação") não aceitam agentes.
+
+## Agentes: ambiente, avisos e consumo
+
+- **Imagem do agente** (`agent-runner/`): traz Node.js 24, Python 3 (com pip e venv), git e o Claude Code. Depois de alterá-la, reconstrua com `docker compose --profile tools build agent-runner`.
+- **Notificações do navegador:** para ativar, use o botão no rodapé do menu lateral. O aviso chega quando um agente faz uma pergunta, fica pronto para revisão, abre o PR/MR ou falha, desde que o Studio esteja aberto em alguma aba e sem foco. O título da aba mostra quantos agentes aguardam você.
+- **Consumo do Docker:** o Dashboard mostra memória, CPU, containers e disco. Lançar um agente pede confirmação quando a memória ou a CPU passam de `AGENT_LAUNCH_MEMORY_PERCENT` ou `AGENT_LAUNCH_CPU_PERCENT`, que por padrão são 80% e 85%.

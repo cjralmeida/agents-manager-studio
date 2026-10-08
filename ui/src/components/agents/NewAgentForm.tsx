@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { type AgentModel, useLaunchAgent } from '../../api/agents';
+import { type AgentModel, type LaunchAgentInput, useLaunchAgent } from '../../api/agents';
+import { ApiError } from '../../api/client';
+import { highUsageWarnings } from '../../api/system';
 import type { Project } from '../../api/workspaces';
 import { Button } from '../Button';
 import { ErrorText, Field, Select, TextInput } from '../form';
@@ -31,19 +33,28 @@ export function NewAgentForm({ projects, onCancel, initial, taskItemId }: NewAge
   const launch = useLaunchAgent();
   const navigate = useNavigate();
 
+  const submit = (input: LaunchAgentInput) =>
+    launch.mutate(input, {
+      onSuccess: (agent) => navigate(`/agents/${agent.id}`),
+      onError: (error) => {
+        // High Docker usage: the server asks for confirmation before starting another container.
+        const warnings = error instanceof ApiError ? highUsageWarnings(error.details) : null;
+        if (warnings && window.confirm(`${warnings.join('\n')}\n\nLançar o agente mesmo assim?`)) {
+          submit({ ...input, confirmHighUsage: true });
+        }
+      },
+    });
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    launch.mutate(
-      {
-        projectId,
-        prompt,
-        model,
-        ...(title.trim() && { title }),
-        ...(baseBranch.trim() && { baseBranch }),
-        ...(taskItemId && { taskItemId }),
-      },
-      { onSuccess: (agent) => navigate(`/agents/${agent.id}`) },
-    );
+    submit({
+      projectId,
+      prompt,
+      model,
+      ...(title.trim() && { title }),
+      ...(baseBranch.trim() && { baseBranch }),
+      ...(taskItemId && { taskItemId }),
+    });
   };
 
   if (available.length === 0) {

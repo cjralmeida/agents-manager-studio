@@ -33,6 +33,7 @@ const launchBody = z
       .regex(/^[\w./-]*$/, 'Nome de branch inválido.')
       .optional(),
     taskItemId: z.string().min(1).max(200).optional(),
+    confirmHighUsage: z.boolean().optional(),
   })
   .strict();
 
