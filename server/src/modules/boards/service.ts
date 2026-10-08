@@ -252,7 +252,7 @@ export async function syncBoard(board: TaskBoard) {
   }
 }
 
-/** Board, its cached contents and how to find the workspace project of an item (used by the sentinels). */
+/** Board, its cached contents and how to find the workspace project of an item (used by the workflows). */
 export async function boardContext(workspaceId: string) {
   const board = await findBoard(workspaceId);
   const [snapshot, repos] = await Promise.all([loadSnapshot(board, false), workspaceRepos(workspaceId)]);

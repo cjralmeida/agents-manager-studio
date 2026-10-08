@@ -32,7 +32,7 @@ model Workspace {
   gitAccounts WorkspaceGitAccount[]
   agents      Agent[]
   taskBoard   TaskBoard?
-  sentinels   Sentinel[]
+  workflows   Workflow[]
   agentProfiles AgentProfile[]
   render        RenderConnection?
   renderServices RenderService[]
@@ -206,8 +206,8 @@ model Agent {
   /// Issue reference, e.g. GlobalFarm-Hub/automacoes#12 (null for draft items).
   taskRef         String?     @map("task_ref")
   taskUrl         String?     @map("task_url")
-  /// Sentinel that launched the agent, if any.
-  sentinelId      String?     @map("sentinel_id") @db.Uuid
+  /// Workflow run this execution belongs to, if any.
+  workflowRunId   String?     @map("workflow_run_id") @db.Uuid
   /// Cumulative usage per model as last reported by the session; new reports are turned into AgentUsage deltas.
   usageTotals     Json        @default("{}") @map("usage_totals")
   /// Estimated cost (API list prices) of everything the agent used.
@@ -221,7 +221,7 @@ model Agent {
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   profile   AgentProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  sentinel  Sentinel?    @relation(fields: [sentinelId], references: [id], onDelete: SetNull)
+  workflowRun WorkflowRun? @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
   events    AgentEvent[]
   inbox     AgentInbox[]
   usage     AgentUsage[]
@@ -231,7 +231,7 @@ model Agent {
   @@index([profileId])
   @@index([status])
   @@index([taskItemId])
-  @@index([sentinelId])
+  @@index([workflowRunId])
   @@map("agents")
 }
 
@@ -322,37 +322,6 @@ model AgentUsage {
   @@map("agent_usage")
 }
 
-/// Watches the workspace task board and launches an agent for each task matching its filters.
-model Sentinel {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  workspaceId     String    @map("workspace_id") @db.Uuid
-  name            String
-  isEnabled       Boolean   @default(true) @map("is_enabled")
-  /// Board field id -> accepted option ids; a task matches when every listed field has one of them.
-  fieldFilters    Json      @default("{}") @map("field_filters")
-  /// Repository paths accepted; empty accepts every repository of the workspace.
-  repositories    String[]  @default([])
-  /// Column watched; null uses the board's "todo" column.
-  columnId        String?   @map("column_id")
-  /// Takes only tasks nobody is assigned to.
-  onlyUnassigned  Boolean   @default(true) @map("only_unassigned")
-  /// Extra instructions sent to every agent it launches.
-  instructions    String    @default("")
-  model           String    @default("sonnet")
-  maxConcurrent   Int       @default(1) @map("max_concurrent")
-  /// Last evaluation and what happened (e.g. "Pausada: plano em 85%").
-  lastCheckedAt   DateTime? @map("last_checked_at") @db.Timestamptz(3)
-  lastLaunchAt    DateTime? @map("last_launch_at") @db.Timestamptz(3)
-  statusMessage   String?   @map("status_message")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agents    Agent[]
-
-  @@index([workspaceId])
-  @@map("sentinels")
-}
 
 /// A fixed agent of the workspace (e.g. "Documentador", "Testador"); each run of it is an Agent.
 model AgentProfile {
@@ -446,4 +415,97 @@ model Deployment {
   @@index([workspaceId, startedAt])
   @@index([finishedAt])
   @@map("deployments")
+}
+
+enum WorkflowRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@map("workflow_run_status")
+}
+
+enum WorkflowStepStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  /// Replaced by a new attempt after a later step sent the work back.
+  RETRIED
+  CANCELLED
+
+  @@map("workflow_step_status")
+}
+
+/// A chain of steps (workspace agents or actions such as deploy) started by a trigger.
+model Workflow {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  name              String
+  description       String    @default("")
+  isEnabled         Boolean   @default(true) @map("is_enabled")
+  /// { type: "manual" } (a conversation started in the Studio) or { type: "board_task", ...filters }.
+  trigger           Json
+  /// Ordered steps; see modules/workflows/definition.ts.
+  steps             Json
+  /// Board trigger: runs of this workflow at the same time.
+  maxConcurrentRuns Int       @default(1) @map("max_concurrent_runs")
+  lastCheckedAt     DateTime? @map("last_checked_at") @db.Timestamptz(3)
+  statusMessage     String?   @map("status_message")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs      WorkflowRun[]
+
+  @@unique([workspaceId, name])
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  workflowId  String            @map("workflow_id") @db.Uuid
+  workspaceId String            @map("workspace_id") @db.Uuid
+  title       String
+  status      WorkflowRunStatus @default(RUNNING)
+  /// { message } for a conversation, { taskItemId } for a board task.
+  trigger     Json
+  /// Board task that started the run (board trigger), to never start it twice.
+  taskItemId  String?           @map("task_item_id")
+  error       String?
+  startedAt   DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt  DateTime?         @map("finished_at") @db.Timestamptz(3)
+
+  workflow Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  steps    WorkflowStepRun[]
+  agents   Agent[]
+
+  @@index([workflowId, status])
+  @@index([workspaceId, startedAt])
+  @@index([taskItemId])
+  @@map("workflow_runs")
+}
+
+/// One step of a run, in a lane: "main", or a board task id after a step that runs once per created task.
+model WorkflowStepRun {
+  id           String             @id @default(uuid(7)) @db.Uuid
+  runId        String             @map("run_id") @db.Uuid
+  stepId       String             @map("step_id")
+  stepIndex    Int                @map("step_index")
+  lane         String             @default("main")
+  attempt      Int                @default(1)
+  status       WorkflowStepStatus @default(RUNNING)
+  agentId      String?            @map("agent_id") @db.Uuid
+  deploymentId String?            @map("deployment_id") @db.Uuid
+  /// Handoff for the next step: result, PR, created tasks, deploy status.
+  output       Json?
+  error        String?
+  startedAt    DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt   DateTime?          @map("finished_at") @db.Timestamptz(3)
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([agentId])
+  @@map("workflow_step_runs")
 }

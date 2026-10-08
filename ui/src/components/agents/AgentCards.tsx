@@ -46,7 +46,7 @@ function AgentCard({ agent, showWorkspace, live }: { agent: Agent; showWorkspace
         {agent.profileName ? `${agent.profileName} · ` : ''}
         {agent.projectName ?? 'sem repositório'}
         {agent.taskRef ? ` · ${agent.taskRef.split('/').at(-1)}` : ''}
-        {agent.sentinelName ? ` · sentinela ${agent.sentinelName}` : ''}
+        {agent.workflowName ? ` · workflow ${agent.workflowName}` : ''}
       </p>
 
       {question && (

@@ -20,6 +20,7 @@ import {
   prepareEmptyWorkdir,
   prepareWorkdir,
   removeWorkdir,
+  updateToRemoteBase,
   workdirDiff,
   workdirHostPath,
   workdirPath,
@@ -46,8 +47,8 @@ export interface LaunchAgentInput {
   taskItemId?: string;
   /** The user already confirmed launching while Docker usage is high. */
   confirmHighUsage?: boolean;
-  /** Sentinel launching the agent (not accepted from the public API). */
-  sentinelId?: string;
+  /** Workflow run launching the agent (not accepted from the public API). */
+  workflowRunId?: string;
 }
 
 /** Marks agents without a repository (their work folder is ready but has no base commit). */
@@ -63,7 +64,7 @@ const STATUS_PRIORITY: Partial<Record<AgentStatus, number>> = { WAITING_INPUT: 0
 const agentInclude = {
   project: { select: { name: true } },
   workspace: { select: { name: true } },
-  sentinel: { select: { name: true } },
+  workflowRun: { select: { workflow: { select: { name: true } } } },
   profile: { select: { name: true } },
 } satisfies Prisma.AgentInclude;
 
@@ -220,14 +221,15 @@ export async function launchAgent(input: LaunchAgentInput) {
       branch: project ? `agent/${slug ? `${slug}-` : ''}${shortId}` : '-',
       workdir: `${workspace.name}/${project?.name ?? 'sem-repositorio'}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
-      ...(input.sentinelId && { sentinelId: input.sentinelId }),
+      ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
     },
     include: agentInclude,
   });
   await addEvent(agent.id, 'user_message', { text: message });
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
-  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null);
+  // A copy continuing another agent keeps that agent's branch; fresh copies follow the remote base.
+  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source);
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -237,7 +239,7 @@ async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review', assig
   if (message) await addEvent(agent.id, 'status', { message });
 }
 
-async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null) {
+async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null, followRemoteBase: boolean) {
   try {
     const agent = await findOrThrow(agentId);
     if (!projectDir) {
@@ -247,13 +249,25 @@ async function prepareAndStart(agentId: string, projectDir: string | null, remot
       await ensureContainer(agentId);
       return;
     }
-    const { baseCommit } = await prepareWorkdir({
+    let { baseCommit } = await prepareWorkdir({
       projectDir,
       workdir: agent.workdir,
       baseBranch: agent.baseBranch,
       branch: agent.branch,
       remoteUrl,
     });
+    if (followRemoteBase && remoteUrl) {
+      const updated = await updateFromRemote(agent, remoteUrl).catch(async (error: unknown) => {
+        await addEvent(agentId, 'status', { message: `Não foi possível buscar a versão mais recente do remoto: ${errorMessage(error)}` });
+        return null;
+      });
+      if (updated) {
+        baseCommit = updated;
+        await addEvent(agentId, 'status', {
+          message: `Base atualizada para a versão mais recente de ${agent.baseBranch} no remoto (${updated.slice(0, 7)}).`,
+        });
+      }
+    }
     await prisma.agent.update({ where: { id: agentId }, data: { baseCommit } });
     await addEvent(agentId, 'status', {
       message: `Cópia isolada criada em ${workdirHostPath(agent.workdir)} na branch ${agent.branch}.`,
@@ -262,6 +276,21 @@ async function prepareAndStart(agentId: string, projectDir: string | null, remot
   } catch (error) {
     await markFailed(agentId, error);
   }
+}
+
+/** Fetches the base branch from the remote with the workspace credentials (never stored in the copy). */
+async function updateFromRemote(agent: Agent, remoteUrl: string) {
+  const remote = parseRemote(remoteUrl);
+  if (!remote) return null;
+  const account = await findGitAccount(agent.workspaceId, remote).catch(() => null);
+  if (!account) return null;
+  const token = secrets.decrypt(account.tokenEncrypted);
+  return updateToRemoteBase({
+    workdir: agent.workdir,
+    baseBranch: agent.baseBranch,
+    fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token),
+    token,
+  });
 }
 
 // ---------------------------------------------------------------- container
@@ -540,7 +569,7 @@ function usageOf(agent: Agent) {
   };
 }
 
-function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace' | 'sentinel' | 'profile'>>) {
+function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace' | 'workflowRun' | 'profile'>>) {
   return {
     id: agent.id,
     workspaceId: agent.workspaceId,
@@ -559,8 +588,8 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     taskItemId: agent.taskItemId,
     taskRef: agent.taskRef,
     taskUrl: agent.taskUrl,
-    sentinelId: agent.sentinelId,
-    sentinelName: agent.sentinel?.name ?? null,
+    workflowRunId: agent.workflowRunId,
+    workflowName: agent.workflowRun?.workflow.name ?? null,
     profileId: agent.profileId,
     profileName: agent.profile?.name ?? null,
     output: agent.output,

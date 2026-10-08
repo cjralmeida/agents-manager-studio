@@ -72,6 +72,33 @@ export async function prepareWorkdir(input: {
   return { baseCommit };
 }
 
+/**
+ * Moves a fresh copy to the latest base branch on the remote, so agents build on work already merged
+ * there (e.g. by earlier workflow steps). The local project is kept when it has commits the remote lacks.
+ * Returns the new base commit, or null when the copy stays as it was.
+ */
+export async function updateToRemoteBase(input: { workdir: string; baseBranch: string; fetchUrl: string; token: string }) {
+  const dir = workdirPath(input.workdir);
+  const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
+  try {
+    await git(dir, ['fetch', '--quiet', '--depth', CLONE_DEPTH, input.fetchUrl, input.baseBranch], { timeoutMs: 300_000 });
+    const local = (await git(dir, ['rev-parse', 'HEAD'])).trim();
+    const remote = (await git(dir, ['rev-parse', 'FETCH_HEAD'])).trim();
+    if (local === remote) return null;
+    const behind = await git(dir, ['merge-base', '--is-ancestor', local, remote]).then(
+      () => true,
+      () => false,
+    );
+    if (!behind) return null;
+    await git(dir, ['reset', '--quiet', '--hard', remote]);
+    await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
+    return remote;
+  } catch (error) {
+    if (error instanceof GitError) throw new HttpError(502, redact(error.message));
+    throw error;
+  }
+}
+
 /** Work folder for an agent without a repository (e.g. one that only plans tasks). */
 export async function prepareEmptyWorkdir(workdir: string) {
   const dest = workdirPath(workdir);

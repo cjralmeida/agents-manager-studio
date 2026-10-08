@@ -70,15 +70,37 @@ Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "
   - Os serviços do Studio são compartilhados e aparecem só no geral.
   - As janelas do plano são da conta Claude inteira.
 
-## Sentinelas
+## Agentes do workspace
 
-As sentinelas ficam na aba **Sentinelas** de cada workspace. Elas vigiam o quadro de tarefas e lançam um agente para cada tarefa do tipo delas.
+Os agentes fixos ficam na aba **Agentes** do workspace. Cada um tem:
 
-- **O que a sentinela procura:** tarefas da coluna vigiada (por padrão, "A fazer") que batem com os filtros pelos campos do quadro (Tipo, Área, Prioridade, repositório). A opção "só tarefas sem responsável" fica ligada por padrão.
-- **Ordem:** a tarefa de maior prioridade primeiro e, entre iguais, a mais antiga. Uma tarefa que já teve agente não é pega de novo.
-- **O que vai para o agente:** a tarefa e as instruções extras da sentinela. O agente segue o fluxo normal: o card vai para andamento e, no fim, você revisa e conclui.
-- **Quando ela para:** respeita o limite de agentes simultâneos e pausa quando a janela de 5 horas do Claude passa de `SENTINEL_PLAN_LIMIT_PERCENT` (padrão 80%) ou quando o Docker está no limite.
-- **Atualização dos quadros:** o server lê cada quadro a cada 2 minutos (configurável de 1 a 15 minutos na Configuração do workspace) e roda as sentinelas logo depois. Tudo fica no banco, então volta a funcionar sozinho quando o Studio reinicia.
+- um papel com instruções, que vão para o prompt de sistema;
+- um modelo;
+- os projetos em que trabalha. Sem projeto, ele trabalha sem repositório;
+- o tipo de entrega: código (commit + PR/MR) ou resultado;
+- acesso opcional ao quadro de tarefas;
+- a opção de concluir sozinho.
+
+Pelo quadro, os agentes usam ferramentas do Studio via MCP: `board_list_tasks`, `board_get_task`, `board_create_task`, `board_update_task` e `report_result`. Quem executa essas ferramentas é o server, então os tokens nunca entram nos containers.
+
+## Workflows
+
+Os workflows ficam na aba **Workflows** do workspace. Um workflow tem um **gatilho** e uma sequência de **passos**, e cada passo recebe o resultado do anterior.
+
+- **Gatilhos:**
+  - uma mensagem sua, como uma conversa no Studio;
+  - uma tarefa que aparece no quadro e bate com os filtros (coluna, campos, repositório, sem responsável).
+- **Passos:**
+  - **Agente**, com estas opções:
+    - "para cada tarefa criada pelo passo anterior": uma linha por tarefa, por padrão uma de cada vez;
+    - "continuar do trabalho do passo anterior": começa da cópia e da branch do agente anterior;
+    - "se falhar, devolver para o passo X", até N tentativas.
+  - **Deploy (Render):** faz o merge do PR/MR e publica o serviço do projeto, por padrão em homologação.
+- **Autonomia:** tudo segue sozinho. As perguntas dos agentes continuam esperando a sua resposta.
+- **Pausas:** os workflows pausam quando a janela de 5 horas do Claude passa de `WORKFLOW_PLAN_LIMIT_PERCENT` (padrão 80%) ou quando o Docker está no limite.
+- **Atualização dos quadros:** o server lê os quadros a cada 2 minutos. Isso é configurável de 1 a 15 minutos.
+- **Retomada:** tudo fica no banco, então os workflows continuam de onde pararam quando o Studio reinicia.
+- **Base das cópias:** as cópias novas partem da versão mais recente da branch base no remoto, para que cada tarefa enxergue o que as anteriores já publicaram.
 
 ## Deploy (Render)
 

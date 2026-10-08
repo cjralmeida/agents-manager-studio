@@ -45,12 +45,12 @@ export function BoardLinkSection({ workspaceId }: { workspaceId: string }) {
 
 const INTERVALS = [1, 2, 5, 10, 15];
 
-/** How often the server reads the board (and runs the sentinels); 2 minutes keeps provider calls low. */
+/** How often the server reads the board (and starts board-triggered workflows); 2 minutes keeps provider calls low. */
 function RefreshInterval({ workspaceId, link }: { workspaceId: string; link: BoardLink }) {
   const update = useUpdateBoardSettings(workspaceId);
   return (
     <div className="mt-4 max-w-sm">
-      <Field label="Atualização automática" hint="O server lê o quadro nesse intervalo e, em seguida, roda as sentinelas.">
+      <Field label="Atualização automática" hint="O server lê o quadro nesse intervalo e, em seguida, inicia os workflows que vigiam o quadro.">
         <Select
           value={Math.round(link.refreshIntervalSec / 60)}
           onChange={(event) => update.mutate({ refreshIntervalSec: Number(event.target.value) * 60 })}

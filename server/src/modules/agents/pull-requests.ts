@@ -103,7 +103,13 @@ export async function mergePullRequest(input: MergeInput): Promise<string | null
     if (!result.retry) break;
     await new Promise((resolve) => setTimeout(resolve, attempt * 3_000));
   }
-  throw new HttpError(502, `Não foi possível fazer o merge: ${lastReason}`);
+  const conflict = /405|406|conflict|cannot be merged|not mergeable/i.test(lastReason);
+  throw new HttpError(
+    502,
+    conflict
+      ? `O PR/MR não pôde ser mesclado: provavelmente tem conflitos com a branch de destino (${lastReason}).`
+      : `Não foi possível fazer o merge: ${lastReason}`,
+  );
 }
 
 async function mergeGitHub(input: MergeInput) {

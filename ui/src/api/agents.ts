@@ -53,9 +53,9 @@ export interface Agent {
   taskItemId: string | null;
   taskRef: string | null;
   taskUrl: string | null;
-  /** Sentinel that launched the agent. */
-  sentinelId: string | null;
-  sentinelName: string | null;
+  /** Workflow run that launched the agent. */
+  workflowRunId: string | null;
+  workflowName: string | null;
   /** Workspace agent (profile) this execution runs. */
   profileId: string | null;
   profileName: string | null;

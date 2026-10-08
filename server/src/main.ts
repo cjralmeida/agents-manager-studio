@@ -2,15 +2,15 @@ import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
-import { startBoardScheduler } from './modules/sentinels/scheduler.js';
+import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
 import { scanWorkspaces } from './modules/workspaces/service.js';
 
 const app = await buildApp();
 const stopAgentMonitor = startAgentMonitor(app.log);
 app.addHook('onClose', async () => stopAgentMonitor());
-// Refreshes the task boards and runs the sentinels; they resume by themselves after a restart.
-const stopBoardScheduler = startBoardScheduler(app.log);
-app.addHook('onClose', async () => stopBoardScheduler());
+// Refreshes the task boards, starts workflows from board tasks and advances running workflows.
+const stopWorkflowScheduler = startWorkflowScheduler(app.log);
+app.addHook('onClose', async () => stopWorkflowScheduler());
 // Follows Render deploys until they finish, also those started before a restart.
 const stopDeploymentMonitor = startDeploymentMonitor(app.log);
 app.addHook('onClose', async () => stopDeploymentMonitor());

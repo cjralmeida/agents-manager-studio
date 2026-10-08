@@ -1,7 +1,7 @@
 import type { BoardField, BoardItem } from '../boards/types.js';
 
-/** What a sentinel looks for on the board. */
-export interface SentinelRule {
+/** What a board-triggered workflow looks for on the board. */
+export interface TaskRule {
   /** Field id -> accepted option ids; empty lists are ignored. */
   fieldFilters: Record<string, string[]>;
   /** Accepted repository paths; empty accepts all. */
@@ -11,7 +11,7 @@ export interface SentinelRule {
   onlyUnassigned: boolean;
 }
 
-export function matchesRule(item: BoardItem, rule: SentinelRule) {
+export function matchesRule(item: BoardItem, rule: TaskRule) {
   if (!rule.columnId || item.columnId !== rule.columnId || item.isClosed) return false;
   // Agents work on a repository, so drafts without one are left to people.
   if (!item.repository) return false;
@@ -33,16 +33,16 @@ function priorityRank(item: BoardItem, fields: BoardField[]) {
 }
 
 /** Matching tasks, highest priority first, then the oldest. */
-export function pickTasks(items: BoardItem[], fields: BoardField[], rule: SentinelRule) {
+export function pickTasks(items: BoardItem[], fields: BoardField[], rule: TaskRule) {
   return items
     .filter((item) => matchesRule(item, rule))
     .sort((a, b) => priorityRank(a, fields) - priorityRank(b, fields) || a.updatedAt.localeCompare(b.updatedAt));
 }
 
-/** First message of an agent launched for a task; the server appends the board README after it. */
+/** Message describing a task for an agent; the server appends the board README after it. */
 export function taskPrompt(item: BoardItem, instructions: string) {
   const ref = item.repository && item.number ? `${item.repository}#${item.number}` : 'do quadro';
   const parts = [`Resolva a tarefa ${ref}: ${item.title}`, item.url ?? '', '', item.body.trim()];
-  if (instructions.trim()) parts.push('', '---', 'Instruções da sentinela:', instructions.trim());
+  if (instructions.trim()) parts.push('', '---', 'Instruções extras:', instructions.trim());
   return parts.join('\n').trim();
 }

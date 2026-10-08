@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
-import { matchesRule, pickTasks, type SentinelRule, taskPrompt } from './match.js';
+import { matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
 
 const priority: BoardField = {
   id: 'prio',
@@ -28,7 +28,7 @@ function item(overrides: Partial<BoardItem> = {}): BoardItem {
   };
 }
 
-const rule: SentinelRule = { fieldFilters: { tipo: ['bug'] }, repositories: [], columnId: 'todo', onlyUnassigned: true };
+const rule: TaskRule = { fieldFilters: { tipo: ['bug'] }, repositories: [], columnId: 'todo', onlyUnassigned: true };
 
 describe('matchesRule', () => {
   it('accepts a task of the watched column with the filtered field values', () => {
@@ -71,10 +71,10 @@ describe('pickTasks', () => {
 });
 
 describe('taskPrompt', () => {
-  it('includes the task and the sentinel instructions', () => {
+  it('includes the task and the extra instructions', () => {
     const prompt = taskPrompt(item(), 'Rode os testes antes de terminar.');
     assert.match(prompt, /^Resolva a tarefa org\/repo#7: Corrigir login/);
-    assert.match(prompt, /Instruções da sentinela:\nRode os testes antes de terminar\.$/);
+    assert.match(prompt, /Instruções extras:\nRode os testes antes de terminar\.$/);
     assert.doesNotMatch(taskPrompt(item(), '  '), /Instruções/);
   });
 });
