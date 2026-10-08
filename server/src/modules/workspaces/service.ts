@@ -2,12 +2,43 @@ import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import type { Project, Workspace } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
-import { toHostPath } from '../../lib/paths.js';
+import { mkdir, stat } from 'node:fs/promises';
+import { toContainerPath, toHostPath } from '../../lib/paths.js';
+import { workspaceNameProblem } from './names.js';
 import { scanProjectsRoot } from './scanner.js';
 
 export interface ScanSummary {
   workspaces: { total: number; added: number; missing: number };
   projects: { total: number; added: number; missing: number };
+}
+
+/** Creates the workspace folder in the central folder and registers it (with a scan). */
+export async function createWorkspace(name: string) {
+  const trimmed = name.trim();
+  const problem = workspaceNameProblem(trimmed, config.scanExclude);
+  if (problem) throw new HttpError(422, problem);
+
+  const folder = toContainerPath(trimmed);
+  const exists = await stat(folder).then(
+    () => true,
+    () => false,
+  );
+  // Folder names are compared without case on Windows, so an existing workspace with another case also clashes.
+  const clash = await prisma.workspace.findFirst({ where: { name: { equals: trimmed, mode: 'insensitive' } } });
+  if (exists || clash) throw new HttpError(409, `Já existe uma pasta "${clash?.name ?? trimmed}" na pasta central.`);
+
+  try {
+    await mkdir(folder);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EROFS' || code === 'EACCES' || code === 'EPERM') {
+      throw new HttpError(503, 'A pasta central está montada somente para leitura no Studio; não é possível criar pastas nela.');
+    }
+    throw error;
+  }
+  await scanWorkspaces();
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { name: trimmed } });
+  return getWorkspace(workspace.id);
 }
 
 /** Syncs the database with the folders on disk. Folders that disappeared are flagged, never deleted. */

@@ -10,6 +10,7 @@ import {
 } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
+import { NewWorkspaceForm } from '../components/workspace/NewWorkspaceForm';
 
 function plural(count: number, singular: string, pluralForm: string) {
   return `${count} ${count === 1 ? singular : pluralForm}`;
@@ -32,6 +33,7 @@ export function WorkspacesPage() {
   const [includeIgnored, setIncludeIgnored] = useState(false);
   const workspaces = useWorkspaces(includeIgnored);
   const scan = useScanWorkspaces();
+  const [creating, setCreating] = useState(false);
 
   return (
     <section>
@@ -49,11 +51,18 @@ export function WorkspacesPage() {
             />
             Mostrar ignorados
           </label>
-          <Button variant="primary" onClick={() => scan.mutate()} disabled={scan.isPending}>
+          <Button onClick={() => scan.mutate()} disabled={scan.isPending}>
             {scan.isPending ? 'Lendo...' : 'Reler diretório'}
           </Button>
+          {!creating && (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              Novo workspace
+            </Button>
+          )}
         </div>
       </header>
+
+      {creating && <NewWorkspaceForm onCancel={() => setCreating(false)} />}
 
       {scan.data && <p className="mt-4 text-sm text-emerald-300">{describeScan(scan.data)}</p>}
       {scan.error && <p className="mt-4 text-sm text-red-300">{scan.error.message}</p>}

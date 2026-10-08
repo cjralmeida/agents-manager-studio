@@ -41,6 +41,14 @@ server/     backend: src/modules/<modulo>/routes.ts + service.ts, prisma/
 ui/         frontend: src/api, src/components, src/pages
 ```
 
+## Workspaces
+
+Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
+
+- **Criar um workspace:** use **Novo workspace** na página Workspaces. O Studio cria a pasta e a registra. Depois coloque ou clone os projetos dentro dela e clique em "Reler diretório".
+- **Permissões:** o Studio só escreve na pasta central, porque ela é montada com escrita no server, e não no disco inteiro.
+- **Trocar a pasta central:** mude `PROJECTS_HOST_DIR` no `.env`, rode `docker compose up -d` e releia o diretório. **Configurações → Geral** mostra a pasta atual.
+
 ## Quadro de tarefas
 
 Cada workspace pode vincular um quadro próprio (aba **Quadro**):

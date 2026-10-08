@@ -1,3 +1,4 @@
+import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { HttpError } from '../../lib/errors.js';
 import { parseBoardUrl } from '../boards/board-url.js';
@@ -9,10 +10,15 @@ export interface StudioSettings {
 
 const DEFAULTS: StudioSettings = { githubBoardTemplateUrl: null };
 
-export async function getStudioSettings(): Promise<StudioSettings> {
+/** Set in .env (PROJECTS_HOST_DIR, SCAN_EXCLUDE): changing the folder means remounting it, so it is read-only here. */
+function projectsRoot() {
+  return { hostPath: config.projectsHostDir, excluded: config.scanExclude };
+}
+
+export async function getStudioSettings() {
   const rows = await prisma.studioSetting.findMany();
   const stored = Object.fromEntries(rows.map((row) => [row.key, row.value]));
-  return { ...DEFAULTS, ...(stored as Partial<StudioSettings>) };
+  return { ...DEFAULTS, ...(stored as Partial<StudioSettings>), projectsRoot: projectsRoot() };
 }
 
 export async function updateStudioSettings(input: StudioSettings) {

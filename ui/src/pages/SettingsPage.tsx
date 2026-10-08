@@ -1,10 +1,12 @@
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
 import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
 import { GitAccountsSection } from '../components/settings/GitAccountsSection';
+import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { Tabs, useTabParam } from '../components/Tabs';
 
 const tabs = [
+  { id: 'general', label: 'Geral' },
   { id: 'ai', label: 'Inteligência artificial' },
   { id: 'git', label: 'Git' },
 ] as const;
@@ -19,7 +21,9 @@ export function SettingsPage() {
         <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       </div>
       <div className="mt-6 space-y-10">
-        {activeTab === 'ai' ? (
+        {activeTab === 'general' ? (
+          <ProjectsRootSection />
+        ) : activeTab === 'ai' ? (
           <>
             <AgentAccountsSection />
             <SkillsSection />

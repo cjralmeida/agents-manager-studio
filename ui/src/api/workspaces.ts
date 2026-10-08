@@ -88,3 +88,12 @@ export function useDeleteWorkspace() {
     onSuccess: invalidate,
   });
 }
+
+/** Creates a folder in the central folder and registers it as a workspace. */
+export function useCreateWorkspace() {
+  const invalidate = useInvalidateWorkspaces();
+  return useMutation({
+    mutationFn: (name: string) => api.post<WorkspaceDetail>('/workspaces', { name }),
+    onSuccess: invalidate,
+  });
+}

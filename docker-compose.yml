@@ -72,7 +72,8 @@ services:
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PROJECTS_HOST_DIR}:/data/Projetos:ro
+      # Writable so the Studio can create workspace folders here (only this folder, not the whole drive).
+      - ${PROJECTS_HOST_DIR}:/data/Projetos
       # One isolated clone per agent; also mounted into each agent container.
       - ${AGENTS_HOST_DIR}:/data/agents
       - ${CLAUDE_SKILLS_HOST_DIR:?set CLAUDE_SKILLS_HOST_DIR in .env}:/data/claude-skills:ro

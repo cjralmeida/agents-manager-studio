@@ -3,6 +3,8 @@ import { api } from './client';
 
 export interface StudioSettings {
   githubBoardTemplateUrl: string | null;
+  /** Central folder (from .env): each folder in it is a workspace. */
+  projectsRoot: { hostPath: string; excluded: string[] };
 }
 
 const key = ['studio-settings'] as const;
@@ -14,7 +16,7 @@ export function useStudioSettings() {
 export function useUpdateStudioSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: StudioSettings) => api.put<StudioSettings>('/studio-settings', input),
+    mutationFn: (input: Pick<StudioSettings, 'githubBoardTemplateUrl'>) => api.put<StudioSettings>('/studio-settings', input),
     onSuccess: (settings) => queryClient.setQueryData(key, settings),
   });
 }
