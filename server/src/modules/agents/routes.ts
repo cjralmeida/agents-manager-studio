@@ -99,6 +99,22 @@ const runnerEvents = z
             data: z.object({ isError: z.boolean(), text: z.string(), durationMs: z.number().optional() }),
           }),
           z.object({ type: z.literal('sleeping'), data: z.object({}).strict() }),
+          z.object({
+            type: z.literal('usage'),
+            data: z.object({
+              models: z.record(
+                z.string().max(200),
+                z.object({
+                  inputTokens: z.number().min(0),
+                  outputTokens: z.number().min(0),
+                  cacheReadInputTokens: z.number().min(0),
+                  cacheCreationInputTokens: z.number().min(0),
+                  costUSD: z.number().min(0),
+                }),
+              ),
+            }),
+          }),
+          z.object({ type: z.literal('rate_limit'), data: z.looseObject({}) }),
         ]),
       )
       .max(200),

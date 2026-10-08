@@ -8,6 +8,7 @@ import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { moveAgentTask, taskForAgent } from '../boards/service.js';
 import { getResourceUsage } from '../system/service.js';
+import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { openPullRequest } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
@@ -128,7 +129,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   if (!input.confirmHighUsage) {
     const usage = await getResourceUsage().catch(() => null);
     if (usage && usage.launchWarnings.length > 0) {
-      throw new HttpError(409, 'O Docker está com consumo alto.', { code: 'HIGH_USAGE', warnings: usage.launchWarnings });
+      throw new HttpError(409, 'O Studio está com consumo alto no Docker.', { code: 'HIGH_USAGE', warnings: usage.launchWarnings });
     }
   }
 
@@ -399,6 +400,19 @@ function findGitAccount(workspaceId: string, remote: RemoteInfo) {
   return findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
 }
 
+/** Totals of the agent across models; cost is an estimate at API list prices. */
+function usageOf(agent: Agent) {
+  const models = Object.values((agent.usageTotals ?? {}) as unknown as UsageTotals);
+  const sum = (key: keyof UsageTotals[string]) => models.reduce((total, model) => total + (model[key] ?? 0), 0);
+  return {
+    costUsd: agent.costUsd,
+    inputTokens: sum('inputTokens'),
+    outputTokens: sum('outputTokens'),
+    cacheReadTokens: sum('cacheReadInputTokens'),
+    cacheCreationTokens: sum('cacheCreationInputTokens'),
+  };
+}
+
 function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace'>>) {
   return {
     id: agent.id,
@@ -418,6 +432,7 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     taskItemId: agent.taskItemId,
     taskRef: agent.taskRef,
     taskUrl: agent.taskUrl,
+    usage: usageOf(agent),
     errorMessage: agent.errorMessage,
     lastActivityAt: agent.lastActivityAt,
     createdAt: agent.createdAt,

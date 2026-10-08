@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
 
-export type ContainerKind = 'studio' | 'agent' | 'other';
+export type ContainerKind = 'studio' | 'agent';
 
 export interface ContainerUsage {
   id: string;
@@ -23,24 +23,24 @@ export interface ResourceUsage {
 }
 
 export interface DiskSummary {
-  images: number;
-  containers: number;
-  volumes: number;
-  buildCache: number;
+  items: { label: string; bytes: number }[];
 }
 
-export function useResourceUsage() {
+const scoped = (path: string, workspaceId?: string) => (workspaceId ? `${path}?workspaceId=${workspaceId}` : path);
+
+/** Without a workspace: every Studio container; with one, only that workspace's agent containers. */
+export function useResourceUsage(workspaceId?: string) {
   return useQuery({
-    queryKey: ['system', 'resources'],
-    queryFn: () => api.get<ResourceUsage>('/system/resources'),
+    queryKey: ['system', 'resources', workspaceId ?? 'all'],
+    queryFn: () => api.get<ResourceUsage>(scoped('/system/resources', workspaceId)),
     refetchInterval: 5_000,
   });
 }
 
-export function useDiskUsage() {
+export function useDiskUsage(workspaceId?: string) {
   return useQuery({
-    queryKey: ['system', 'disk'],
-    queryFn: () => api.get<DiskSummary>('/system/disk'),
+    queryKey: ['system', 'disk', workspaceId ?? 'all'],
+    queryFn: () => api.get<DiskSummary>(scoped('/system/disk', workspaceId)),
     refetchInterval: 120_000,
   });
 }

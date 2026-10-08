@@ -158,6 +158,20 @@ async function canUseTool(toolName, input) {
   return { behavior: 'allow', updatedInput: { ...input, answers } };
 }
 
+function pickUsage(modelUsage = {}) {
+  const models = {};
+  for (const [model, usage] of Object.entries(modelUsage)) {
+    models[model] = {
+      inputTokens: usage.inputTokens ?? 0,
+      outputTokens: usage.outputTokens ?? 0,
+      cacheReadInputTokens: usage.cacheReadInputTokens ?? 0,
+      cacheCreationInputTokens: usage.cacheCreationInputTokens ?? 0,
+      costUSD: usage.costUSD ?? 0,
+    };
+  }
+  return models;
+}
+
 async function main() {
   log('Runner started', { model: MODEL, resume: Boolean(RESUME_SESSION_ID) });
   void pollInbox();
@@ -187,8 +201,13 @@ async function main() {
           await emit('tool_use', { name: block.name, summary: summarizeTool(block.name, block.input) });
         }
       }
+    } else if (message.type === 'rate_limit_event') {
+      // Plan limits (5-hour and weekly windows) for the usage dashboard.
+      await emit('rate_limit', message.rate_limit_info ?? {});
     } else if (message.type === 'result') {
       busy = false;
+      // Running totals per model for the session; the server turns them into per-turn usage.
+      await emit('usage', { models: pickUsage(message.modelUsage) });
       // A turn cut short by our own shutdown (idle pause) is not an error for the user.
       if (stopping) continue;
       await emit('turn_end', {

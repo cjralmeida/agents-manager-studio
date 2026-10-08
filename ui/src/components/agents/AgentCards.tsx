@@ -1,28 +1,38 @@
 import { Link } from 'react-router';
 import type { Agent } from '../../api/agents';
+import type { ContainerUsage } from '../../api/system';
 import { timeAgo } from '../../lib/time';
 import { AgentStatusBadge } from './AgentStatusBadge';
+import { AgentUsageLine } from './AgentUsage';
 
 /** Agent cards; the server already puts agents waiting for the user first, and those cards glow. */
-export function AgentCards({ agents, showWorkspace = false }: { agents: Agent[]; showWorkspace?: boolean }) {
+interface AgentCardsProps {
+  agents: Agent[];
+  showWorkspace?: boolean;
+  /** Running containers by agent id, for the live memory/CPU. */
+  live?: Map<string, ContainerUsage>;
+}
+
+export function AgentCards({ agents, showWorkspace = false, live }: AgentCardsProps) {
   if (agents.length === 0) return <p className="text-sm text-muted">Nenhum agente ainda.</p>;
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
       {agents.map((agent) => (
-        <AgentCard key={agent.id} agent={agent} showWorkspace={showWorkspace} />
+        <AgentCard key={agent.id} agent={agent} showWorkspace={showWorkspace} live={live?.get(agent.id)} />
       ))}
     </div>
   );
 }
 
-function AgentCard({ agent, showWorkspace }: { agent: Agent; showWorkspace: boolean }) {
+function AgentCard({ agent, showWorkspace, live }: { agent: Agent; showWorkspace: boolean; live?: ContainerUsage }) {
   const waiting = agent.status === 'WAITING_INPUT';
   const question = agent.pendingQuestion?.[0];
 
   return (
     <Link
       to={`/agents/${agent.id}`}
+      title={`Branch ${agent.branch}`}
       className={`flex flex-col rounded-lg border bg-panel p-4 transition-colors hover:border-accent/60 ${
         waiting ? 'glow-question border-amber-400/70' : 'border-border'
       }`}
@@ -47,7 +57,7 @@ function AgentCard({ agent, showWorkspace }: { agent: Agent; showWorkspace: bool
       )}
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-[11px] text-muted">
-        <span className="truncate font-mono">{agent.branch}</span>
+        <AgentUsageLine agent={agent} live={live} />
         <span className="shrink-0">
           {agent.model} · {timeAgo(agent.lastActivityAt)}
         </span>

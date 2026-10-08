@@ -1,7 +1,7 @@
 import { config } from '../../config.js';
 import { imageExists, runOnce } from '../../lib/docker.js';
 import { HttpError } from '../../lib/errors.js';
-import { parseClaudeResult } from './claude-result.js';
+import { parseClaudeResult, parseRateLimit } from './claude-result.js';
 
 const CHECK_TIMEOUT_MS = 90_000;
 
@@ -19,7 +19,19 @@ export async function verifyClaudeToken(token: string) {
 
   const run = await runOnce({
     image: config.agentRunnerImage,
-    cmd: ['claude', '-p', 'Responda apenas com a palavra OK.', '--model', 'haiku', '--max-turns', '1', '--output-format', 'json'],
+    // stream-json also carries the plan rate-limit event, so a check refreshes the plan usage.
+    cmd: [
+      'claude',
+      '-p',
+      'Responda apenas com a palavra OK.',
+      '--model',
+      'haiku',
+      '--max-turns',
+      '1',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+    ],
     env: { CLAUDE_CODE_OAUTH_TOKEN: token },
     labels: { 'agents-manager-studio.role': 'account-check' },
     timeoutMs: CHECK_TIMEOUT_MS,
@@ -35,5 +47,5 @@ export async function verifyClaudeToken(token: string) {
   if (result.is_error) {
     throw new HttpError(502, `Falha no Claude Code: ${(result.result ?? 'erro desconhecido').slice(0, 300)}`);
   }
-  return { ok: true as const };
+  return { ok: true as const, rateLimit: parseRateLimit(run.stdout) };
 }

@@ -227,10 +227,9 @@ export function containerStats(id: string) {
 }
 
 export interface DiskUsage {
-  LayersSize?: number;
-  Containers?: { SizeRw?: number }[];
-  Volumes?: { UsageData?: { Size?: number } }[];
-  BuildCache?: { Size?: number }[];
+  Images?: { Id: string; RepoTags?: string[] | null; Size?: number }[];
+  Containers?: { ImageID?: string; SizeRw?: number; Labels?: Record<string, string> | null }[];
+  Volumes?: { Name: string; Labels?: Record<string, string> | null; UsageData?: { Size?: number } }[];
 }
 
 /** Can take a few seconds on large installations. */

@@ -10,6 +10,7 @@ import { healthRoutes } from './modules/health/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
 import { systemRoutes } from './modules/system/routes.js';
+import { usageRoutes } from './modules/usage/routes.js';
 import { workspaceSettingsRoutes } from './modules/workspace-settings/routes.js';
 import { workspaceRoutes } from './modules/workspaces/routes.js';
 
@@ -47,6 +48,7 @@ export async function buildApp() {
     async (api) => {
       await api.register(healthRoutes);
       await api.register(systemRoutes);
+      await api.register(usageRoutes);
       await api.register(workspaceRoutes);
       await api.register(workspaceSettingsRoutes);
       await api.register(gitAccountRoutes);

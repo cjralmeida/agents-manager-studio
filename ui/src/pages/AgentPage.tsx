@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAgent, useAgentAction, useDeleteAgent } from '../api/agents';
+import { formatTokens, formatUsd, totalTokens } from '../api/usage';
 import { AgentStatusBadge } from '../components/agents/AgentStatusBadge';
 import { Conversation } from '../components/agents/Conversation';
 import { DiffView } from '../components/agents/DiffView';
@@ -58,6 +59,11 @@ export function AgentPage() {
             (de {data.baseBranch})
           </p>
           <p className="mt-0.5 font-mono text-xs text-muted">{data.workdirHostPath}</p>
+          {totalTokens(data.usage) > 0 && (
+            <p className="mt-0.5 text-xs text-muted" title="Custo estimado a preço de API; no plano Max não é cobrado à parte.">
+              Consumo: {formatTokens(totalTokens(data.usage))} tokens · ≈ {formatUsd(data.usage.costUsd)}
+            </p>
+          )}
           {data.prUrl && (
             <a href={data.prUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm text-accent hover:underline">
               Abrir PR/MR ↗

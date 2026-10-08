@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import type { Agent } from '../../api/agents';
+import { useResourceUsage } from '../../api/system';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { AgentCards } from './AgentCards';
 import { AgentList } from './AgentList';
@@ -16,6 +17,12 @@ interface AgentsViewProps {
 /** Agents as cards or table, with a header showing how many wait for the user. */
 export function AgentsView({ agents, viewKey, showWorkspace = false, title, actions }: AgentsViewProps) {
   const [view, setView] = usePersistedView(viewKey);
+  // Shares the sample of the resource panel; only agent containers are relevant here.
+  const resources = useResourceUsage();
+  const live = useMemo(
+    () => new Map((resources.data?.containers ?? []).flatMap((container) => (container.agentId ? [[container.agentId, container]] : []))),
+    [resources.data],
+  );
   const waiting = agents.filter((agent) => agent.status === 'WAITING_INPUT').length;
 
   return (
@@ -35,9 +42,9 @@ export function AgentsView({ agents, viewKey, showWorkspace = false, title, acti
         </div>
       </div>
       {view === 'cards' ? (
-        <AgentCards agents={agents} showWorkspace={showWorkspace} />
+        <AgentCards agents={agents} showWorkspace={showWorkspace} live={live} />
       ) : (
-        <AgentList agents={agents} showWorkspace={showWorkspace} />
+        <AgentList agents={agents} showWorkspace={showWorkspace} live={live} />
       )}
     </div>
   );

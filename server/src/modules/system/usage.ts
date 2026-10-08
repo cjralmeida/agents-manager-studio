@@ -34,10 +34,10 @@ export interface UsageTotals {
 export function launchWarnings(totals: UsageTotals, limits: LaunchLimits) {
   const warnings: string[] = [];
   if (totals.memoryPercent >= limits.memoryPercent) {
-    warnings.push(`Memória do Docker em ${Math.round(totals.memoryPercent)}% (limite ${limits.memoryPercent}%).`);
+    warnings.push(`Memória usada pelo Studio em ${Math.round(totals.memoryPercent)}% (limite ${limits.memoryPercent}%).`);
   }
   if (totals.cpuPercent >= limits.cpuPercent) {
-    warnings.push(`CPU do Docker em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
+    warnings.push(`CPU usada pelo Studio em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
   }
   return warnings;
 }

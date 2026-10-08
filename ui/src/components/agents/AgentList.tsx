@@ -1,10 +1,19 @@
 import { Link } from 'react-router';
 import type { Agent } from '../../api/agents';
+import type { ContainerUsage } from '../../api/system';
 import { timeAgo } from '../../lib/time';
 import { AgentStatusBadge } from './AgentStatusBadge';
+import { AgentUsageLine } from './AgentUsage';
 
 /** Simple table of agents; agents waiting for the user come first (ordered by the server). */
-export function AgentList({ agents, showWorkspace = false }: { agents: Agent[]; showWorkspace?: boolean }) {
+interface AgentListProps {
+  agents: Agent[];
+  showWorkspace?: boolean;
+  /** Running containers by agent id, for the live memory/CPU. */
+  live?: Map<string, ContainerUsage>;
+}
+
+export function AgentList({ agents, showWorkspace = false, live }: AgentListProps) {
   if (agents.length === 0) return <p className="text-sm text-muted">Nenhum agente ainda.</p>;
 
   return (
@@ -16,6 +25,7 @@ export function AgentList({ agents, showWorkspace = false }: { agents: Agent[]; 
             {showWorkspace && <th className="px-4 py-2 font-medium">Workspace</th>}
             <th className="px-4 py-2 font-medium">Projeto</th>
             <th className="px-4 py-2 font-medium">Situação</th>
+            <th className="px-4 py-2 font-medium">Consumo</th>
             <th className="px-4 py-2 font-medium">Atividade</th>
           </tr>
         </thead>
@@ -35,6 +45,9 @@ export function AgentList({ agents, showWorkspace = false }: { agents: Agent[]; 
               <td className="px-4 py-2">{agent.projectName}</td>
               <td className="px-4 py-2">
                 <AgentStatusBadge status={agent.status} />
+              </td>
+              <td className="px-4 py-2">
+                <AgentUsageLine agent={agent} live={live?.get(agent.id)} />
               </td>
               <td className="px-4 py-2 text-muted">{timeAgo(agent.lastActivityAt)}</td>
             </tr>

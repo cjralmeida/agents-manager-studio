@@ -39,8 +39,8 @@ describe('launchWarnings', () => {
 
   it('explains each exceeded limit', () => {
     assert.deepEqual(launchWarnings({ memoryPercent: 91.4, cpuPercent: 90 }, limits), [
-      'Memória do Docker em 91% (limite 80%).',
-      'CPU do Docker em 90% (limite 85%).',
+      'Memória usada pelo Studio em 91% (limite 80%).',
+      'CPU usada pelo Studio em 90% (limite 85%).',
     ]);
   });
 });

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
+import type { UsageTotals } from './usage';
 
 export type AgentStatus =
   | 'PREPARING'
@@ -44,6 +45,8 @@ export interface Agent {
   taskItemId: string | null;
   taskRef: string | null;
   taskUrl: string | null;
+  /** Tokens and estimated cost (API list prices) used by the agent. */
+  usage: UsageTotals;
   errorMessage: string | null;
   lastActivityAt: string;
   createdAt: string;

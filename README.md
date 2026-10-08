@@ -62,4 +62,10 @@ Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "
 
 - **Imagem do agente** (`agent-runner/`): traz Node.js 24, Python 3 (com pip e venv), git e o Claude Code. Depois de alterá-la, reconstrua com `docker compose --profile tools build agent-runner`.
 - **Notificações do navegador:** para ativar, use o botão no rodapé do menu lateral. O aviso chega quando um agente faz uma pergunta, fica pronto para revisão, abre o PR/MR ou falha, desde que o Studio esteja aberto em alguma aba e sem foco. O título da aba mostra quantos agentes aguardam você.
-- **Consumo do Docker:** o Dashboard mostra memória, CPU, containers e disco. Lançar um agente pede confirmação quando a memória ou a CPU passam de `AGENT_LAUNCH_MEMORY_PERCENT` ou `AGENT_LAUNCH_CPU_PERCENT`, que por padrão são 80% e 85%.
+- **Consumo do Studio no Docker:** o Dashboard mostra memória, CPU, containers e disco, considerando só os serviços do Studio e os agentes. Lançar um agente pede confirmação quando a memória ou a CPU passam de `AGENT_LAUNCH_MEMORY_PERCENT` ou `AGENT_LAUNCH_CPU_PERCENT`, que por padrão são 80% e 85%.
+- **Consumo do Claude:** o Dashboard mostra, por conta Claude, as janelas do plano: a sessão de 5 horas e a semanal, em %, com o horário em que reiniciam. Essas janelas vêm junto de cada requisição dos agentes, e o botão "Atualizar" faz uma chamada mínima com o Haiku para lê-las.
+- **Uso dos agentes:** o Dashboard mostra tokens e custo estimado, que é o preço de API e não é cobrado no plano Max. Há totais de hoje, 7 e 30 dias, um gráfico dos últimos 14 dias e rankings por workspace, por modelo e por agente. O histórico continua depois que o agente é excluído.
+- **Dashboard por workspace** (aba Dashboard do workspace): é o mesmo dashboard do geral, mas restrito ao workspace.
+  - Mostra os agentes, o consumo do Claude, os containers dos agentes e o disco usado pelas cópias dos projetos e pelas sessões dos agentes.
+  - Os serviços do Studio são compartilhados e aparecem só no geral.
+  - As janelas do plano são da conta Claude inteira.

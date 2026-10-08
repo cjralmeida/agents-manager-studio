@@ -3,13 +3,13 @@ import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } 
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { BoardTab } from '../components/board/BoardTab';
+import { Dashboard } from '../components/dashboard/Dashboard';
 import { Tabs, useTabParam } from '../components/Tabs';
-import { WorkspaceAgentsTab } from '../components/workspace/WorkspaceAgentsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'board', label: 'Quadro' },
-  { id: 'agents', label: 'Agentes' },
   { id: 'projects', label: 'Projetos' },
   { id: 'settings', label: 'Configuração' },
 ] as const;
@@ -62,7 +62,7 @@ export function WorkspacePage() {
 
       <div className="mt-6">
         {activeTab === 'board' && <BoardTab workspace={data} />}
-        {activeTab === 'agents' && <WorkspaceAgentsTab workspace={data} />}
+        {activeTab === 'dashboard' && <Dashboard workspace={data} />}
         {activeTab === 'projects' && (
           <>
             <p className="text-xs text-muted">Agentes só podem ser lançados em projetos com git.</p>

@@ -93,6 +93,9 @@ model AgentAccount {
   label          String
   tokenEncrypted String        @map("token_encrypted")
   tokenHint      String        @map("token_hint")
+  /// Last plan rate-limit reading (5-hour and weekly windows), sent by Claude with every request.
+  planUsage      Json?         @map("plan_usage")
+  planUsageAt    DateTime?     @map("plan_usage_at") @db.Timestamptz(3)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -177,6 +180,10 @@ model Agent {
   /// Issue reference, e.g. GlobalFarm-Hub/automacoes#12 (null for draft items).
   taskRef         String?     @map("task_ref")
   taskUrl         String?     @map("task_url")
+  /// Cumulative usage per model as last reported by the session; new reports are turned into AgentUsage deltas.
+  usageTotals     Json        @default("{}") @map("usage_totals")
+  /// Estimated cost (API list prices) of everything the agent used.
+  costUsd         Float       @default(0) @map("cost_usd")
   errorMessage    String?     @map("error_message")
   lastActivityAt  DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   finishedAt      DateTime?   @map("finished_at") @db.Timestamptz(3)
@@ -187,6 +194,7 @@ model Agent {
   project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   events    AgentEvent[]
   inbox     AgentInbox[]
+  usage     AgentUsage[]
 
   @@index([workspaceId])
   @@index([projectId])
@@ -255,4 +263,25 @@ model StudioSetting {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("studio_settings")
+}
+
+/// Tokens and estimated cost an agent used between two reports, per model; summed for the usage dashboard.
+/// Kept when the agent is deleted, so the history of consumption stays complete.
+model AgentUsage {
+  id                  Int      @id @default(autoincrement())
+  agentId             String?  @map("agent_id") @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  model               String
+  inputTokens         Int      @map("input_tokens")
+  outputTokens        Int      @map("output_tokens")
+  cacheReadTokens     Int      @map("cache_read_tokens")
+  cacheCreationTokens Int      @map("cache_creation_tokens")
+  costUsd             Float    @map("cost_usd")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([agentId])
+  @@map("agent_usage")
 }

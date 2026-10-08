@@ -3,6 +3,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { prisma } from '../../db.js';
 import { type AgentStatus, Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
+import type { RateLimitInfo, UsageTotals } from '../usage/calc.js';
+import { recordAgentUsage, recordPlanUsageForAgent } from '../usage/service.js';
 import { hashSecret } from './runtime.js';
 import { addEvent } from './service.js';
 
@@ -57,7 +59,9 @@ export type RunnerEvent =
   | { type: 'tool_use'; data: { name: string; summary: string } }
   | { type: 'question'; data: { questions: unknown[] } }
   | { type: 'turn_end'; data: { isError: boolean; text: string; durationMs?: number } }
-  | { type: 'sleeping'; data: Record<string, never> };
+  | { type: 'sleeping'; data: Record<string, never> }
+  | { type: 'usage'; data: { models: UsageTotals } }
+  | { type: 'rate_limit'; data: RateLimitInfo };
 
 /** Stores the runner events in the timeline and moves the agent through its statuses. */
 export async function applyRunnerEvents(agentId: string, events: RunnerEvent[]) {
@@ -91,6 +95,12 @@ export async function applyRunnerEvents(agentId: string, events: RunnerEvent[]) 
         data.errorMessage = event.data.isError ? event.data.text.slice(0, 500) : null;
         break;
       }
+      case 'usage':
+        await recordAgentUsage(agentId, event.data.models);
+        continue;
+      case 'rate_limit':
+        await recordPlanUsageForAgent(agentId, event.data);
+        continue;
       case 'sleeping':
         await addEvent(agentId, 'status', { message: 'Container pausado por inatividade; ele volta quando você responder.' });
         break;
