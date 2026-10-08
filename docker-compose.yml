@@ -66,6 +66,7 @@ services:
       AGENT_LAUNCH_MEMORY_PERCENT: ${AGENT_LAUNCH_MEMORY_PERCENT:-80}
       AGENT_LAUNCH_CPU_PERCENT: ${AGENT_LAUNCH_CPU_PERCENT:-85}
       SENTINEL_PLAN_LIMIT_PERCENT: ${SENTINEL_PLAN_LIMIT_PERCENT:-80}
+      RENDER_API_URL: ${RENDER_API_URL:-https://api.render.com/v1}
       TZ: ${TZ:-America/Sao_Paulo}
     # The Docker socket is root-only; access to it is root-equivalent anyway.
     user: root

@@ -8,6 +8,7 @@ import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
 import { boardRoutes } from './modules/boards/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
+import { renderRoutes } from './modules/render/routes.js';
 import { sentinelRoutes } from './modules/sentinels/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
@@ -59,6 +60,7 @@ export async function buildApp() {
       await api.register(studioSettingsRoutes);
       await api.register(boardRoutes);
       await api.register(sentinelRoutes);
+      await api.register(renderRoutes);
       await api.register(agentProfileRoutes);
       await api.register(agentRoutes);
       await api.register(agentRunnerRoutes);

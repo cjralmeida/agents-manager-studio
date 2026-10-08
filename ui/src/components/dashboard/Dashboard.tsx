@@ -6,6 +6,7 @@ import { AgentsView } from '../agents/AgentsView';
 import { NewAgentForm } from '../agents/NewAgentForm';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
+import { DeploymentsPanel } from '../render/DeploymentsPanel';
 import { ResourcePanel } from '../system/ResourcePanel';
 import { ClaudeUsagePanel } from '../usage/ClaudeUsagePanel';
 
@@ -56,6 +57,11 @@ export function Dashboard({ workspace }: { workspace?: WorkspaceDetail }) {
         <Panel title={workspace ? 'Recursos dos agentes no Docker' : 'Consumo do Studio no Docker'}>
           <ResourcePanel workspaceId={workspace?.id} />
         </Panel>
+        {workspace && (
+          <Panel title="Deploys">
+            <DeploymentsPanel workspaceId={workspace.id} />
+          </Panel>
+        )}
         {!workspace && <SystemStatus />}
       </aside>
     </div>

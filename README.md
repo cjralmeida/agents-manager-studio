@@ -79,3 +79,12 @@ As sentinelas ficam na aba **Sentinelas** de cada workspace. Elas vigiam o quadr
 - **O que vai para o agente:** a tarefa e as instruções extras da sentinela. O agente segue o fluxo normal: o card vai para andamento e, no fim, você revisa e conclui.
 - **Quando ela para:** respeita o limite de agentes simultâneos e pausa quando a janela de 5 horas do Claude passa de `SENTINEL_PLAN_LIMIT_PERCENT` (padrão 80%) ou quando o Docker está no limite.
 - **Atualização dos quadros:** o server lê cada quadro a cada 2 minutos (configurável de 1 a 15 minutos na Configuração do workspace) e roda as sentinelas logo depois. Tudo fica no banco, então volta a funcionar sozinho quando o Studio reinicia.
+
+## Deploy (Render)
+
+O deploy é configurado em **Configuração do workspace → Deploy (Render)**:
+
+1. Conecte com a chave de API do Render. Ela fica criptografada e nunca vai para os agentes.
+2. Escolha o serviço de **homologação** e, se houver, o de **produção** de cada projeto.
+
+Um deploy faz o merge do PR/MR do agente, quando houver um, e dispara o serviço de homologação. Um monitor acompanha o deploy até ficar no ar ou falhar, mesmo depois de um reinício. O Dashboard do workspace mostra os últimos deploys. `RENDER_API_URL` existe só para testes.

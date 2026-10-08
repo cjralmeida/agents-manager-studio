@@ -41,6 +41,8 @@ const envSchema = z.object({
   AGENT_LAUNCH_CPU_PERCENT: z.coerce.number().min(1).max(100).default(85),
   // Sentinels stop launching agents while the Claude 5-hour window is at or above this percentage.
   SENTINEL_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
+  // Render API base; overridable to point tests at a fake server.
+  RENDER_API_URL: z.url().default('https://api.render.com/v1'),
 });
 
 function loadConfig() {
@@ -73,6 +75,7 @@ function loadConfig() {
     launchMemoryPercent: env.AGENT_LAUNCH_MEMORY_PERCENT,
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
     sentinelPlanLimitPercent: env.SENTINEL_PLAN_LIMIT_PERCENT,
+    renderApiUrl: env.RENDER_API_URL.replace(/\/+$/, ''),
   };
 }
 

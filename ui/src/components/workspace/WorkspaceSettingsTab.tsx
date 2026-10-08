@@ -11,6 +11,7 @@ import {
 } from '../../api/workspaceSettings';
 import { remoteHost } from '../../lib/git';
 import { BoardLinkSection } from '../board/BoardLinkSection';
+import { RenderSection } from '../render/RenderSection';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Field, Select } from '../form';
@@ -41,6 +42,7 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
         skills={skills.data}
       />
       <BoardLinkSection workspaceId={workspace.id} />
+      <RenderSection workspace={workspace} />
     </div>
   );
 }

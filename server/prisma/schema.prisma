@@ -34,6 +34,9 @@ model Workspace {
   taskBoard   TaskBoard?
   sentinels   Sentinel[]
   agentProfiles AgentProfile[]
+  render        RenderConnection?
+  renderServices RenderService[]
+  deployments   Deployment[]
 
   @@map("workspaces")
 }
@@ -51,8 +54,9 @@ model Project {
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agents    Agent[]
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agents         Agent[]
+  renderServices RenderService[]
 
   @@unique([workspaceId, name])
   @@map("projects")
@@ -374,4 +378,72 @@ model AgentProfile {
 
   @@unique([workspaceId, name])
   @@map("agent_profiles")
+}
+
+/// Deploy environments; deploys always start in homologation.
+enum DeployEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+
+  @@map("deploy_environment")
+}
+
+/// Render account of a workspace (API key encrypted like the other tokens).
+model RenderConnection {
+  workspaceId     String   @id @map("workspace_id") @db.Uuid
+  apiKeyEncrypted String   @map("api_key_encrypted")
+  apiKeyHint      String   @map("api_key_hint")
+  /// Workspace/team name reported by Render when the key was checked.
+  ownerName       String   @map("owner_name")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("render_connections")
+}
+
+/// Render service that runs a project in an environment.
+model RenderService {
+  id           String            @id @default(uuid(7)) @db.Uuid
+  workspaceId  String            @map("workspace_id") @db.Uuid
+  projectId    String            @map("project_id") @db.Uuid
+  environment  DeployEnvironment
+  serviceId    String            @map("service_id")
+  serviceName  String            @map("service_name")
+  /// Branch the service deploys from, as configured on Render.
+  branch       String?
+  url          String?
+  dashboardUrl String?           @map("dashboard_url")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, environment])
+  @@map("render_services")
+}
+
+/// A deploy started by the Studio; followed until it is live or fails (also after a restart).
+model Deployment {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  workspaceId    String            @map("workspace_id") @db.Uuid
+  projectId      String?           @map("project_id") @db.Uuid
+  environment    DeployEnvironment
+  serviceId      String            @map("service_id")
+  serviceName    String            @map("service_name")
+  renderDeployId String?           @map("render_deploy_id")
+  /// Render status (created, build_in_progress, live, build_failed...) or "merging" / "error" before Render.
+  status         String
+  commitId       String?           @map("commit_id")
+  prUrl          String?           @map("pr_url")
+  agentId        String?           @map("agent_id") @db.Uuid
+  error          String?
+  startedAt      DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?         @map("finished_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, startedAt])
+  @@index([finishedAt])
+  @@map("deployments")
 }
