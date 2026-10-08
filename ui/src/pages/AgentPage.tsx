@@ -47,8 +47,8 @@ export function AgentPage() {
 
   return (
     <section className="max-w-5xl">
-      <Link to={`/workspaces/${data.workspaceId}`} className="text-sm text-muted hover:text-white">
-        ← {data.workspaceName}
+      <Link to={`/workspaces/${data.workspaceId}/agents/${data.profileId ?? 'avulsos'}`} className="text-sm text-muted hover:text-white">
+        ← {data.workspaceName} / {data.profileName ?? 'Agentes avulsos'}
       </Link>
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-4">

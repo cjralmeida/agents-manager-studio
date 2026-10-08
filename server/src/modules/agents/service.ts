@@ -90,9 +90,13 @@ export async function markFailed(agentId: string, error: unknown) {
 
 // ---------------------------------------------------------------- queries
 
-export async function listAgents(filter: { workspaceId?: string }) {
+export async function listAgents(filter: { workspaceId?: string; profileId?: string; unassigned?: boolean }) {
   const agents = await prisma.agent.findMany({
-    where: filter.workspaceId ? { workspaceId: filter.workspaceId } : {},
+    where: {
+      ...(filter.workspaceId && { workspaceId: filter.workspaceId }),
+      ...(filter.profileId && { profileId: filter.profileId }),
+      ...(filter.unassigned && { profileId: null }),
+    },
     include: agentInclude,
     orderBy: { lastActivityAt: 'desc' },
     take: 500,

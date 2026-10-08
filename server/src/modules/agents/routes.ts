@@ -20,7 +20,15 @@ import {
 
 const idParams = z.object({ id: z.uuid() });
 
-const listQuery = z.object({ workspaceId: z.uuid().optional() }).strict();
+const listQuery = z
+  .object({
+    workspaceId: z.uuid().optional(),
+    /** Executions of one workspace agent. */
+    profileId: z.uuid().optional(),
+    /** Executions without a workspace agent ("avulsos"). */
+    unassigned: z.stringbool().optional(),
+  })
+  .strict();
 
 const launchBody = z
   .object({

@@ -127,6 +127,18 @@ export function useAgents(workspaceId?: string) {
   });
 }
 
+/** Executions of one workspace agent, or the ones without an agent ("avulsos") of a workspace. */
+export function useAgentExecutions(filter: { workspaceId: string; profileId?: string; unassigned?: boolean }) {
+  const params = new URLSearchParams({ workspaceId: filter.workspaceId });
+  if (filter.profileId) params.set('profileId', filter.profileId);
+  if (filter.unassigned) params.set('unassigned', 'true');
+  return useQuery({
+    queryKey: [...agentKeys.all, 'executions', filter.workspaceId, filter.profileId ?? 'avulsos'] as const,
+    queryFn: () => api.get<Agent[]>(`/agents?${params}`),
+    refetchInterval: 5_000,
+  });
+}
+
 export function useAgent(id: string) {
   return useQuery({
     queryKey: agentKeys.detail(id),

@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router';
 import {
   type AgentProfile,
   type AgentProfileInput,
@@ -137,6 +138,12 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         <Button size="sm" variant="primary" onClick={onRun} disabled={workspace.isMissing}>
           Executar
         </Button>
+        <Link
+          to={`/workspaces/${workspace.id}/agents/${profile.id}`}
+          className="rounded-md border border-border bg-panel px-2 py-1 text-xs font-medium text-gray-200 hover:bg-border"
+        >
+          Abrir
+        </Link>
         <Button size="sm" onClick={onEdit}>
           Editar
         </Button>
