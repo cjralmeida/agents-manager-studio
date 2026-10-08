@@ -6,7 +6,8 @@ import './index.css';
 import { router } from './router';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  // Coming back to the tab refreshes what is on screen (changes may have happened elsewhere).
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } },
 });
 
 createRoot(document.getElementById('root')!).render(

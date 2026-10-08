@@ -48,6 +48,8 @@ export function useWorkspaces(includeIgnored = false) {
   return useQuery({
     queryKey: workspaceKeys.list(includeIgnored),
     queryFn: () => api.get<WorkspaceSummary[]>(`/workspaces?includeIgnored=${includeIgnored}`),
+    // Workspaces also change outside this screen (another tab, Órbi, the scan), so the menu keeps up.
+    refetchInterval: 30_000,
   });
 }
 
