@@ -14,6 +14,7 @@ import {
 } from '../../api/agentProfiles';
 import type { AgentModel } from '../../api/agents';
 import type { WorkspaceDetail } from '../../api/workspaces';
+import { plural } from '../../lib/time';
 import { NewAgentForm } from '../agents/NewAgentForm';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
@@ -131,7 +132,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
       </div>
       {profile.instructions && <p className="mt-3 line-clamp-3 text-xs whitespace-pre-line text-gray-300">{profile.instructions}</p>}
       <p className="mt-auto pt-3 text-[11px] text-muted">
-        {profile.workingAgents} trabalhando · {profile.totalAgents} execução(ões)
+        {profile.workingAgents} trabalhando · {plural(profile.totalAgents, 'execução', 'execuções')}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">

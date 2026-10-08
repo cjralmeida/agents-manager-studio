@@ -13,3 +13,8 @@ export function timeAgo(iso: string) {
 export function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
+
+/** "1 execução", "9 execuções". */
+export function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}

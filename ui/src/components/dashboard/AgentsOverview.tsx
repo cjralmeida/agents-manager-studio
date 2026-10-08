@@ -4,7 +4,7 @@ import type { AgentProfile } from '../../api/agentProfiles';
 import type { Agent } from '../../api/agents';
 import { formatBytes, useResourceUsage } from '../../api/system';
 import { formatTokens, formatUsd } from '../../api/usage';
-import { timeAgo } from '../../lib/time';
+import { plural, timeAgo } from '../../lib/time';
 import { AgentStatusBadge } from '../agents/AgentStatusBadge';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
@@ -139,10 +139,12 @@ function AgentCard({ summary, showWorkspace, onRun }: { summary: AgentSummary; s
         <p className="mt-3 text-xs text-muted">Ainda não executou.</p>
       )}
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+      {/* Wraps to two lines on narrow cards instead of overflowing. */}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-3">
         <AgentUsageSummary summary={summary} />
-        <span className="shrink-0 text-[11px] text-muted">
-          {summary.executions.length} execução(ões){summary.lastActivityAt ? ` · ${timeAgo(summary.lastActivityAt)}` : ''}
+        <span className="text-[11px] whitespace-nowrap text-muted">
+          {plural(summary.executions.length, 'execução', 'execuções')}
+          {summary.lastActivityAt ? ` · ${timeAgo(summary.lastActivityAt)}` : ''}
         </span>
       </div>
       {onRun && (

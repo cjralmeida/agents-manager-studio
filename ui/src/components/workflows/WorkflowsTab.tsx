@@ -12,7 +12,7 @@ import {
   useWorkflows,
 } from '../../api/workflows';
 import type { WorkspaceDetail } from '../../api/workspaces';
-import { timeAgo } from '../../lib/time';
+import { plural, timeAgo } from '../../lib/time';
 import { Badge } from '../Badge';
 import { OptionChip } from '../board/OptionChip';
 import { Button } from '../Button';
@@ -169,7 +169,7 @@ function WorkflowCard({
 
       {workflow.statusMessage && <p className="mt-3 text-xs text-gray-300">{workflow.statusMessage}</p>}
       <p className="mt-1 text-[11px] text-muted">
-        {workflow.runningRuns} em andamento · {workflow.totalRuns} execução(ões)
+        {workflow.runningRuns} em andamento · {plural(workflow.totalRuns, 'execução', 'execuções')}
         {workflow.lastCheckedAt && ` · verificado ${timeAgo(workflow.lastCheckedAt)}`}
       </p>
 
