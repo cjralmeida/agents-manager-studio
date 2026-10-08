@@ -18,3 +18,29 @@ body {
   background-color: var(--color-surface);
   color: #e6e9ef;
 }
+
+/* Card of a task whose agent is waiting for the user. */
+@keyframes question-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(251 191 36 / 0.55),
+      0 0 8px rgb(251 191 36 / 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(251 191 36 / 1),
+      0 0 20px rgb(251 191 36 / 0.5);
+  }
+}
+
+.glow-question {
+  animation: question-glow 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-question {
+    animation: none;
+    box-shadow: 0 0 0 1px rgb(251 191 36 / 1);
+  }
+}

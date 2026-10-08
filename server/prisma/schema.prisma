@@ -31,6 +31,7 @@ model Workspace {
   settings    WorkspaceSettings?
   gitAccounts WorkspaceGitAccount[]
   agents      Agent[]
+  taskBoard   TaskBoard?
 
   @@map("workspaces")
 }
@@ -171,6 +172,11 @@ model Agent {
   /// Question waiting for the user (AskUserQuestion input).
   pendingQuestion Json?       @map("pending_question")
   prUrl           String?     @map("pr_url")
+  /// Board item the agent is solving (see TaskBoard); moved across columns as the agent progresses.
+  taskItemId      String?     @map("task_item_id")
+  /// Issue reference, e.g. GlobalFarm-Hub/automacoes#12 (null for draft items).
+  taskRef         String?     @map("task_ref")
+  taskUrl         String?     @map("task_url")
   errorMessage    String?     @map("error_message")
   lastActivityAt  DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   finishedAt      DateTime?   @map("finished_at") @db.Timestamptz(3)
@@ -185,6 +191,7 @@ model Agent {
   @@index([workspaceId])
   @@index([projectId])
   @@index([status])
+  @@index([taskItemId])
   @@map("agents")
 }
 
@@ -215,4 +222,37 @@ model AgentInbox {
 
   @@index([agentId, deliveredAt])
   @@map("agent_inbox")
+}
+
+/// Task board (GitHub Project v2 or GitLab group issue board) linked to a workspace.
+model TaskBoard {
+  workspaceId String      @id @map("workspace_id") @db.Uuid
+  provider    GitProvider
+  /// API host; the workspace git account for this host is used to talk to the board.
+  host        String
+  /// GitHub: project node id. GitLab: "<groupId>:<boardId>".
+  externalId  String      @map("external_id")
+  /// GitHub owner login or GitLab group path.
+  ownerPath   String      @map("owner_path")
+  title       String
+  url         String
+  /// Board guidelines; GitHub reads them from the project README, GitLab keeps them here.
+  readme      String?
+  /// Column id for each role (todo, inProgress, review, done, blocked) used by agent automation.
+  statusMap   Json        @default("{}") @map("status_map")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("task_boards")
+}
+
+/// Global key/value settings of the Studio (e.g. the GitHub board template).
+model StudioSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("studio_settings")
 }

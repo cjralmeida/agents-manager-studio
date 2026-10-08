@@ -40,6 +40,10 @@ export interface Agent {
   isContainerRunning: boolean;
   pendingQuestion: AgentQuestion[] | null;
   prUrl: string | null;
+  /** Board item the agent is solving. */
+  taskItemId: string | null;
+  taskRef: string | null;
+  taskUrl: string | null;
   errorMessage: string | null;
   lastActivityAt: string;
   createdAt: string;
@@ -76,6 +80,7 @@ export interface LaunchAgentInput {
   title?: string;
   model: AgentModel;
   baseBranch?: string;
+  taskItemId?: string;
 }
 
 /** Statuses where the agent may still change on its own, so the UI keeps polling. */

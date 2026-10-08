@@ -11,11 +11,21 @@ const models: { value: AgentModel; label: string }[] = [
   { value: 'haiku', label: 'Haiku (rápido e econômico)' },
 ];
 
-export function NewAgentForm({ projects, onCancel }: { projects: Project[]; onCancel: () => void }) {
+interface NewAgentFormProps {
+  projects: Project[];
+  onCancel: () => void;
+  /** Pre-filled values, e.g. from a board task. */
+  initial?: { projectId?: string | null; title?: string; prompt?: string };
+  /** Board item the agent will solve. */
+  taskItemId?: string;
+}
+
+export function NewAgentForm({ projects, onCancel, initial, taskItemId }: NewAgentFormProps) {
   const available = projects.filter((project) => project.isGitRepo && !project.isMissing);
-  const [projectId, setProjectId] = useState(available[0]?.id ?? '');
-  const [title, setTitle] = useState('');
-  const [prompt, setPrompt] = useState('');
+  const initialProject = available.find((project) => project.id === initial?.projectId);
+  const [projectId, setProjectId] = useState(initialProject?.id ?? available[0]?.id ?? '');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [model, setModel] = useState<AgentModel>('sonnet');
   const [baseBranch, setBaseBranch] = useState('');
   const launch = useLaunchAgent();
@@ -24,7 +34,14 @@ export function NewAgentForm({ projects, onCancel }: { projects: Project[]; onCa
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     launch.mutate(
-      { projectId, prompt, model, ...(title.trim() && { title }), ...(baseBranch.trim() && { baseBranch }) },
+      {
+        projectId,
+        prompt,
+        model,
+        ...(title.trim() && { title }),
+        ...(baseBranch.trim() && { baseBranch }),
+        ...(taskItemId && { taskItemId }),
+      },
       { onSuccess: (agent) => navigate(`/agents/${agent.id}`) },
     );
   };
@@ -35,7 +52,13 @@ export function NewAgentForm({ projects, onCancel }: { projects: Project[]; onCa
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-panel p-4">
-      <h3 className="text-sm font-medium">Novo agente</h3>
+      <h3 className="text-sm font-medium">{taskItemId ? 'Resolver tarefa com agente' : 'Novo agente'}</h3>
+      {taskItemId && (
+        <p className="mt-1 text-xs text-muted">
+          Ao lançar, a tarefa vai para a coluna de andamento e você vira o responsável. As regras do README do quadro
+          são enviadas junto. Ao concluir, o PR/MR referencia a issue e a tarefa vai para validação.
+        </p>
+      )}
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
         <Field label="Projeto">
           <Select value={projectId} onChange={(event) => setProjectId(event.target.value)}>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { authenticatedPushUrl, parseRemote, remoteHostname } from './remote.js';
+import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname } from './remote.js';
 
 describe('parseRemote', () => {
   it('parses https remotes with and without .git', () => {
@@ -51,5 +51,13 @@ describe('authenticatedPushUrl', () => {
       authenticatedPushUrl({ host: 'github.com', path: 'o/r' }, 'GITHUB', 'ghp_x'),
       'https://x-access-token:ghp_x@github.com/o/r.git',
     );
+  });
+});
+
+describe('closingReference', () => {
+  it('closes the issue only when it lives in the PR repository', () => {
+    assert.equal(closingReference('GlobalFarm-Hub/automacoes#12', 'globalfarm-hub/automacoes'), 'Closes #12');
+    assert.equal(closingReference('GlobalFarm-Hub/outro#12', 'GlobalFarm-Hub/automacoes'), null);
+    assert.equal(closingReference(null, 'GlobalFarm-Hub/automacoes'), null);
   });
 });

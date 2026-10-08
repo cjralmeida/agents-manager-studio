@@ -1,4 +1,5 @@
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
+import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
 import { GitAccountsSection } from '../components/settings/GitAccountsSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { Tabs, useTabParam } from '../components/Tabs';
@@ -24,7 +25,10 @@ export function SettingsPage() {
             <SkillsSection />
           </>
         ) : (
-          <GitAccountsSection />
+          <>
+            <GitAccountsSection />
+            <BoardTemplateSection />
+          </>
         )}
       </div>
     </div>

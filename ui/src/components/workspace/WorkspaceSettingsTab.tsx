@@ -10,6 +10,7 @@ import {
   useWorkspaceSettings,
 } from '../../api/workspaceSettings';
 import { remoteHost } from '../../lib/git';
+import { BoardLinkSection } from '../board/BoardLinkSection';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Field, Select } from '../form';
@@ -39,6 +40,7 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
         gitAccounts={gitAccounts.data}
         skills={skills.data}
       />
+      <BoardLinkSection workspaceId={workspace.id} />
     </div>
   );
 }

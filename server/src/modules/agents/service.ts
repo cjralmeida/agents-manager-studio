@@ -6,8 +6,10 @@ import { config } from '../../config.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
+import { moveAgentTask, taskForAgent } from '../boards/service.js';
+import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { openPullRequest } from './pull-requests.js';
-import { authenticatedPushUrl, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
+import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { commitAndPush, currentBranch, prepareWorkdir, removeWorkdir, workdirDiff, workdirHostPath } from './workdir.js';
 
@@ -20,7 +22,13 @@ export interface LaunchAgentInput {
   title?: string;
   model: AgentModel;
   baseBranch?: string;
+  /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
+  taskItemId?: string;
 }
+
+/** Separates the task from the board guidelines in the first message (the PR body keeps only the task). */
+const BOARD_RULES_SEPARATOR = '\n\n---\nRegras do quadro de tarefas (README):\n';
+const MAX_BOARD_RULES = 6_000;
 
 /** Agents needing the user come first, then the most recently active. */
 const STATUS_PRIORITY: Partial<Record<AgentStatus, number>> = { WAITING_INPUT: 0, READY_FOR_REVIEW: 1 };
@@ -121,7 +129,9 @@ export async function launchAgent(input: LaunchAgentInput) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
 
+  const task = input.taskItemId ? await taskForAgent(project.workspaceId, input.taskItemId) : null;
   const prompt = input.prompt.trim();
+  const message = task?.readme ? `${prompt}${BOARD_RULES_SEPARATOR}${task.readme.slice(0, MAX_BOARD_RULES)}` : prompt;
   const title = input.title?.trim() || (prompt.split('\n')[0] ?? prompt).slice(0, 80);
   const shortId = randomBytes(4).toString('hex');
   const slug = slugify(title);
@@ -135,14 +145,21 @@ export async function launchAgent(input: LaunchAgentInput) {
       baseBranch,
       branch: `agent/${slug ? `${slug}-` : ''}${shortId}`,
       workdir: `${project.workspace.name}/${project.name}-${shortId}`,
+      ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
     },
     include: agentInclude,
   });
-  await addEvent(agent.id, 'user_message', { text: prompt });
-  await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: prompt } } });
+  await addEvent(agent.id, 'user_message', { text: message });
+  await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
   void prepareAndStart(agent.id, projectDir, project.gitRemoteUrl);
+  if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
+}
+
+async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review', assignSelf = false) {
+  const message = await moveAgentTask(agent, role, { assignSelf });
+  if (message) await addEvent(agent.id, 'status', { message });
 }
 
 async function prepareAndStart(agentId: string, projectDir: string, remoteUrl: string | null) {
@@ -308,8 +325,10 @@ async function finalizeInBackground(id: string) {
       where: { agentId: id, type: 'user_message' },
       orderBy: { id: 'asc' },
     });
-    const task = (firstMessage?.data as { text?: string } | null)?.text ?? agent.title;
-    const body = `${task}\n\n---\nGerado pelo Agents Manager Studio.`;
+    const firstText = (firstMessage?.data as { text?: string } | null)?.text ?? agent.title;
+    const task = firstText.split(BOARD_RULES_SEPARATOR)[0]!;
+    const closes = closingReference(agent.taskRef, remote.path);
+    const body = `${task}${closes ? `\n\n${closes}` : ''}\n\n---\nGerado pelo Agents Manager Studio.`;
 
     await commitAndPush({
       workdir: agent.workdir,
@@ -342,6 +361,7 @@ async function finalizeInBackground(id: string) {
       data: { status: 'COMPLETED', prUrl, finishedAt: new Date(), lastActivityAt: new Date() },
     });
     await addEvent(id, 'completed', { prUrl });
+    await reportTaskMove(agent, 'review');
   } catch (error) {
     // Back to review so the user can fix the cause (e.g. a token) and try again.
     const message = errorMessage(error);
@@ -366,16 +386,8 @@ async function findOrThrow(id: string) {
 }
 
 /** The workspace account whose host matches the project remote. */
-async function findGitAccount(workspaceId: string, remote: RemoteInfo) {
-  const hostname = remoteHostname(remote);
-  const link = await prisma.workspaceGitAccount.findFirst({
-    where: { workspaceId, gitAccount: { host: { in: [hostname, remote.host] } } },
-    include: { gitAccount: true },
-  });
-  if (!link) {
-    throw new HttpError(422, `Nenhuma conta git para ${hostname} está vinculada a este workspace.`);
-  }
-  return link.gitAccount;
+function findGitAccount(workspaceId: string, remote: RemoteInfo) {
+  return findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
 }
 
 function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace'>>) {
@@ -394,6 +406,9 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     isContainerRunning: agent.containerId !== null,
     pendingQuestion: agent.pendingQuestion,
     prUrl: agent.prUrl,
+    taskItemId: agent.taskItemId,
+    taskRef: agent.taskRef,
+    taskUrl: agent.taskUrl,
     errorMessage: agent.errorMessage,
     lastActivityAt: agent.lastActivityAt,
     createdAt: agent.createdAt,

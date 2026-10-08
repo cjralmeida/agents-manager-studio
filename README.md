@@ -40,3 +40,20 @@ infra/      proxy (Caddyfile) e scripts de init do Postgres
 server/     backend: src/modules/<modulo>/routes.ts + service.ts, prisma/
 ui/         frontend: src/api, src/components, src/pages
 ```
+
+## Quadro de tarefas
+
+Cada workspace pode vincular um quadro próprio (aba **Quadro**):
+
+- **GitHub:** um GitHub Project (v2). O token fine-grained da conta precisa de *Projects: leitura e escrita* na organização e *Issues: leitura e escrita* nos repositórios.
+- **GitLab:** um board de grupo. As colunas são labels `Status: …` e os campos são labels `Campo: valor`. "A fazer" corresponde às issues abertas sem coluna, e "Concluído" às fechadas.
+
+Se o Studio não encontrar um quadro, ele pode criar um no estilo do template (`server/src/modules/boards/template.ts`). No GitHub, ele copia o projeto-modelo definido em Configurações → Git, quando houver.
+
+Ao lançar um agente a partir de um card:
+
+1. a tarefa vai para a coluna de andamento;
+2. o PR/MR referencia a issue com `Closes #N`;
+3. a tarefa vai para validação.
+
+Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "bloqueada" ("Aguardando aprovação") não aceitam agentes.

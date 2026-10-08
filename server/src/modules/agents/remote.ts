@@ -37,3 +37,10 @@ export function authenticatedPushUrl(remote: RemoteInfo, provider: 'GITHUB' | 'G
   const user = provider === 'GITHUB' ? 'x-access-token' : 'oauth2';
   return `https://${user}:${encodeURIComponent(token)}@${remote.host}/${remote.path}.git`;
 }
+
+/** "Closes #N" when the task issue lives in the repository receiving the PR/MR, so merging closes it. */
+export function closingReference(taskRef: string | null, repositoryPath: string) {
+  const match = taskRef ? /^(.+)#(\d+)$/.exec(taskRef) : null;
+  if (!match || match[1]!.toLowerCase() !== repositoryPath.toLowerCase()) return null;
+  return `Closes #${match[2]}`;
+}
