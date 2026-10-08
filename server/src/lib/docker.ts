@@ -91,6 +91,8 @@ export interface RunOnceOptions {
   cmd: string[];
   env?: Record<string, string>;
   labels?: Record<string, string>;
+  /** Volume or bind mounts, e.g. "volume-name:/home/node/.claude". */
+  binds?: string[];
   timeoutMs: number;
 }
 
@@ -109,6 +111,7 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     Env: Object.entries(options.env ?? {}).map(([key, value]) => `${key}=${value}`),
     Labels: options.labels ?? {},
     Tty: false,
+    HostConfig: { Binds: options.binds ?? [] },
   });
 
   try {
