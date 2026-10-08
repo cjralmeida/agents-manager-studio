@@ -19,7 +19,7 @@ export interface AgentProfileInput {
 
 const WORKING_STATUSES = ['PREPARING', 'RUNNING', 'WAITING_INPUT'] as const;
 
-async function toResponse(profile: AgentProfile) {
+async function toResponse(profile: AgentProfile & { workspace?: { name: string } }) {
   const [working, total] = await Promise.all([
     prisma.agent.count({ where: { profileId: profile.id, status: { in: [...WORKING_STATUSES] } } }),
     prisma.agent.count({ where: { profileId: profile.id } }),
@@ -27,6 +27,7 @@ async function toResponse(profile: AgentProfile) {
   return {
     id: profile.id,
     workspaceId: profile.workspaceId,
+    workspaceName: profile.workspace?.name ?? null,
     name: profile.name,
     description: profile.description,
     instructions: profile.instructions,
@@ -52,6 +53,16 @@ async function validateProjects(workspaceId: string, projectIds: string[]) {
 
 function duplicateName(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+/** Agents of every workspace, for the general dashboard. */
+export async function listAllAgentProfiles() {
+  const profiles = await prisma.agentProfile.findMany({
+    where: { workspace: { isIgnored: false, missingAt: null } },
+    include: { workspace: { select: { name: true } } },
+    orderBy: [{ workspace: { name: 'asc' } }, { name: 'asc' }],
+  });
+  return Promise.all(profiles.map(toResponse));
 }
 
 export async function listAgentProfiles(workspaceId: string) {

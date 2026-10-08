@@ -1,14 +1,15 @@
 import { type ReactNode, useState } from 'react';
+import { type AgentProfile, useAgentProfiles, useAllAgentProfiles } from '../../api/agentProfiles';
 import { useAgents } from '../../api/agents';
 import { useHealth } from '../../api/health';
 import type { WorkspaceDetail } from '../../api/workspaces';
-import { AgentsView } from '../agents/AgentsView';
 import { NewAgentForm } from '../agents/NewAgentForm';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { DeploymentsPanel } from '../render/DeploymentsPanel';
 import { ResourcePanel } from '../system/ResourcePanel';
 import { ClaudeUsagePanel } from '../usage/ClaudeUsagePanel';
+import { AgentsOverview } from './AgentsOverview';
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -25,24 +26,39 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
  */
 export function Dashboard({ workspace }: { workspace?: WorkspaceDetail }) {
   const agents = useAgents(workspace?.id);
-  const [creating, setCreating] = useState(false);
+  // The workspace dashboard lists its own agents; the general one, every workspace's.
+  const workspaceProfiles = useAgentProfiles(workspace?.id ?? '', Boolean(workspace));
+  const allProfiles = useAllAgentProfiles(!workspace);
+  const profiles = workspace ? workspaceProfiles : allProfiles;
+  /** Launch form: a workspace agent, an ad hoc agent ("avulso") or closed. */
+  const [launching, setLaunching] = useState<AgentProfile | 'avulso' | null>(null);
 
   return (
     <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
       <div className="min-w-0 flex-1 space-y-4">
-        {workspace && creating && <NewAgentForm workspaceId={workspace.id} projects={workspace.projects} onCancel={() => setCreating(false)} />}
-        <ErrorText error={agents.error} />
-        {agents.data && (
-          <AgentsView
-            agents={agents.data}
+        {workspace && launching && (
+          <NewAgentForm
+            key={launching === 'avulso' ? 'avulso' : launching.id}
+            workspaceId={workspace.id}
+            projects={workspace.projects}
+            initial={launching === 'avulso' ? undefined : { profileId: launching.id }}
+            onCancel={() => setLaunching(null)}
+          />
+        )}
+        <ErrorText error={agents.error ?? profiles.error} />
+        {agents.data && profiles.data && (
+          <AgentsOverview
+            profiles={profiles.data}
+            executions={agents.data}
             viewKey={workspace ? 'workspace-agents' : 'dashboard-agents'}
             showWorkspace={!workspace}
             title={<h2 className="text-sm font-medium">{workspace ? 'Agentes do workspace' : 'Agentes de todos os workspaces'}</h2>}
+            onRun={workspace && !workspace.isMissing ? (profile) => setLaunching(profile) : undefined}
             actions={
               workspace &&
-              !creating && (
-                <Button variant="primary" onClick={() => setCreating(true)} disabled={workspace.isMissing}>
-                  Novo agente
+              !launching && (
+                <Button onClick={() => setLaunching('avulso')} disabled={workspace.isMissing} title="Agente sem papel fixo, só com a tarefa">
+                  Agente avulso
                 </Button>
               )
             }

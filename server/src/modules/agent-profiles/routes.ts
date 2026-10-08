@@ -7,6 +7,7 @@ import {
   createAgentProfile,
   deleteAgentProfile,
   listAgentProfiles,
+  listAllAgentProfiles,
   updateAgentProfile,
 } from './service.js';
 
@@ -27,6 +28,8 @@ const profileBody = z
   .strict();
 
 export async function agentProfileRoutes(app: FastifyInstance) {
+  app.get('/agent-profiles', async () => listAllAgentProfiles());
+
   app.get('/workspaces/:id/agent-profiles', async (request) => listAgentProfiles(parseInput(workspaceParams, request.params).id));
 
   app.post('/workspaces/:id/agent-profiles', async (request, reply) => {

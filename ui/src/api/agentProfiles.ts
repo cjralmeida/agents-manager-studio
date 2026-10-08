@@ -9,6 +9,8 @@ export type ProfileTool = 'board';
 export interface AgentProfile {
   id: string;
   workspaceId: string;
+  /** Filled when listing agents of every workspace. */
+  workspaceName: string | null;
   name: string;
   description: string;
   instructions: string;
@@ -39,20 +41,27 @@ export const toolLabels: Record<ProfileTool, string> = {
 
 const key = (workspaceId: string) => ['agent-profiles', workspaceId] as const;
 
-export function useAgentProfiles(workspaceId: string) {
+/** Agents of every workspace (general dashboard). */
+export function useAllAgentProfiles(enabled = true) {
+  return useQuery({ queryKey: ['agent-profiles', 'all'] as const, queryFn: () => api.get<AgentProfile[]>('/agent-profiles'), enabled });
+}
+
+export function useAgentProfiles(workspaceId: string, enabled = true) {
   return useQuery({
     queryKey: key(workspaceId),
     queryFn: () => api.get<AgentProfile[]>(`/workspaces/${workspaceId}/agent-profiles`),
+    enabled,
   });
 }
 
-function useInvalidate(workspaceId: string) {
+/** A change shows in the workspace list and in the all-workspaces list. */
+function useInvalidate() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: key(workspaceId) });
+  return () => queryClient.invalidateQueries({ queryKey: ['agent-profiles'] });
 }
 
 export function useCreateAgentProfile(workspaceId: string) {
-  const invalidate = useInvalidate(workspaceId);
+  const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (input: AgentProfileInput) => api.post<AgentProfile>(`/workspaces/${workspaceId}/agent-profiles`, input),
     onSuccess: invalidate,
@@ -60,7 +69,7 @@ export function useCreateAgentProfile(workspaceId: string) {
 }
 
 export function useUpdateAgentProfile(workspaceId: string) {
-  const invalidate = useInvalidate(workspaceId);
+  const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ id, ...input }: Partial<AgentProfileInput> & { id: string }) =>
       api.patch<AgentProfile>(`/agent-profiles/${id}`, input),
@@ -69,6 +78,6 @@ export function useUpdateAgentProfile(workspaceId: string) {
 }
 
 export function useDeleteAgentProfile(workspaceId: string) {
-  const invalidate = useInvalidate(workspaceId);
+  const invalidate = useInvalidate();
   return useMutation({ mutationFn: (id: string) => api.delete<void>(`/agent-profiles/${id}`), onSuccess: invalidate });
 }
