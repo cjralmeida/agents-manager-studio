@@ -24,10 +24,27 @@ export function BoardTab({ workspace }: { workspace: WorkspaceDetail }) {
   if (board.error) return <ErrorText error={board.error} />;
   if (!board.data) return <p className="text-sm text-muted">Carregando o quadro de {link.data.title}...</p>;
 
-  return <BoardView workspace={workspace} board={board.data} fetchedAt={board.dataUpdatedAt} />;
+  return <BoardView workspace={workspace} board={board.data} />;
 }
 
-function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail; board: Board; fetchedAt: number }) {
+/** "Lido há 1 min · automático a cada 2 min", or the last sync error. */
+function SyncStatus({ board }: { board: Board }) {
+  const { lastSyncedAt, lastSyncError, refreshIntervalSec } = board.link;
+  if (lastSyncError) {
+    return (
+      <span className="text-xs text-red-300" title={lastSyncError}>
+        Falha ao atualizar o quadro
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-muted">
+      {lastSyncedAt ? `Lido ${timeAgo(lastSyncedAt)}` : 'Ainda não lido'} · automático a cada {Math.round(refreshIntervalSec / 60)} min
+    </span>
+  );
+}
+
+function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Board }) {
   const [view, setView] = usePersistedView('board');
   const [search, setSearch] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
@@ -50,6 +67,7 @@ function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail
             {board.title} ↗
           </a>
           {waitingCount > 0 && <Badge tone="warning">{waitingCount} aguardando você</Badge>}
+          <SyncStatus board={board} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <TextInput
@@ -59,7 +77,7 @@ function BoardView({ workspace, board, fetchedAt }: { workspace: WorkspaceDetail
             className="w-60"
           />
           <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
-          <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} title={`Atualizado ${timeAgo(new Date(fetchedAt).toISOString())}`}>
+          <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Lê o quadro do provedor agora">
             {refresh.isPending ? 'Atualizando...' : 'Atualizar'}
           </Button>
           <Button variant="primary" onClick={() => setCreating(true)}>

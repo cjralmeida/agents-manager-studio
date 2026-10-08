@@ -45,6 +45,9 @@ export interface Agent {
   taskItemId: string | null;
   taskRef: string | null;
   taskUrl: string | null;
+  /** Sentinel that launched the agent. */
+  sentinelId: string | null;
+  sentinelName: string | null;
   /** Tokens and estimated cost (API list prices) used by the agent. */
   usage: UsageTotals;
   errorMessage: string | null;

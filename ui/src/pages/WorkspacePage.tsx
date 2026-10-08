@@ -4,12 +4,14 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { BoardTab } from '../components/board/BoardTab';
 import { Dashboard } from '../components/dashboard/Dashboard';
+import { SentinelsTab } from '../components/sentinels/SentinelsTab';
 import { Tabs, useTabParam } from '../components/Tabs';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'board', label: 'Quadro' },
+  { id: 'sentinels', label: 'Sentinelas' },
   { id: 'projects', label: 'Projetos' },
   { id: 'settings', label: 'Configuração' },
 ] as const;
@@ -62,6 +64,7 @@ export function WorkspacePage() {
 
       <div className="mt-6">
         {activeTab === 'board' && <BoardTab workspace={data} />}
+        {activeTab === 'sentinels' && <SentinelsTab workspace={data} />}
         {activeTab === 'dashboard' && <Dashboard workspace={data} />}
         {activeTab === 'projects' && (
           <>

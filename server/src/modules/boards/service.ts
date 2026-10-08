@@ -14,8 +14,7 @@ import type { BoardCandidate, BoardItem, BoardRef, BoardSnapshot, NewTask, Statu
 
 type BoardProvider = 'GITHUB' | 'GITLAB';
 
-/** Boards are read from the provider at most this often; Studio changes update the cached copy directly. */
-const CACHE_TTL_MS = 20_000;
+/** Last board read per workspace; refreshed by the board sync, and Studio changes update it directly. */
 const cache = new Map<string, { at: number; snapshot: BoardSnapshot }>();
 /** GitHub listings take a few seconds to include new items; items created here are kept until they show up. */
 const RECENT_TTL_MS = 60_000;
@@ -92,6 +91,9 @@ function linkResponse(board: TaskBoard | null) {
     title: board.title,
     url: board.url,
     statusMap: board.statusMap as StatusMap,
+    refreshIntervalSec: board.refreshIntervalSec,
+    lastSyncedAt: board.lastSyncedAt,
+    lastSyncError: board.lastSyncError,
   };
 }
 
@@ -222,9 +224,10 @@ export async function updateStatusMap(workspaceId: string, map: StatusMap) {
 
 // ---------------------------------------------------------------- board contents
 
+/** The cached board, read from the provider only when forced or not cached yet (the board sync keeps it fresh). */
 async function loadSnapshot(board: TaskBoard, force: boolean) {
   const cached = cache.get(board.workspaceId);
-  if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.snapshot;
+  if (!force && cached) return cached.snapshot;
   const adapter = await adapterFor(board);
   const snapshot = await adapter.load(refOf(board));
   const recent = (recentItems.get(board.workspaceId) ?? []).filter((entry) => Date.now() - entry.at < RECENT_TTL_MS);
@@ -236,15 +239,40 @@ async function loadSnapshot(board: TaskBoard, force: boolean) {
   return snapshot;
 }
 
-export async function getBoard(workspaceId: string, refresh: boolean) {
-  const board = await findBoard(workspaceId);
-  const [snapshot, repos] = await Promise.all([loadSnapshot(board, refresh), workspaceRepos(workspaceId)]);
+/** Reads the board from the provider now and records when (or why it failed) for the UI. */
+export async function syncBoard(board: TaskBoard) {
+  try {
+    const snapshot = await loadSnapshot(board, true);
+    await prisma.taskBoard.update({ where: { workspaceId: board.workspaceId }, data: { lastSyncedAt: new Date(), lastSyncError: null } });
+    return snapshot;
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
+    await prisma.taskBoard.update({ where: { workspaceId: board.workspaceId }, data: { lastSyncError: message } }).catch(() => undefined);
+    throw error;
+  }
+}
 
+/** Board, its cached contents and how to find the workspace project of an item (used by the sentinels). */
+export async function boardContext(workspaceId: string) {
+  const board = await findBoard(workspaceId);
+  const [snapshot, repos] = await Promise.all([loadSnapshot(board, false), workspaceRepos(workspaceId)]);
   const projectOf = (item: BoardItem) =>
     item.repository
       ? (repos.find((repo) => repo.provider === board.provider && repo.host === board.host && sameRepo(repo.path, item.repository!))
           ?.projectId ?? null)
       : null;
+  return { board, snapshot, repos, projectOf };
+}
+
+export async function updateBoardSettings(workspaceId: string, input: { refreshIntervalSec: number }) {
+  await findBoard(workspaceId);
+  const saved = await prisma.taskBoard.update({ where: { workspaceId }, data: { refreshIntervalSec: input.refreshIntervalSec } });
+  return linkResponse(saved);
+}
+
+export async function getBoard(workspaceId: string, refresh: boolean) {
+  if (refresh) await syncBoard(await findBoard(workspaceId));
+  const { board, snapshot, repos, projectOf } = await boardContext(workspaceId);
 
   return {
     link: linkResponse(board),

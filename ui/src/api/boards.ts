@@ -12,6 +12,10 @@ export interface BoardLink {
   title: string;
   url: string;
   statusMap: StatusMap;
+  /** The server reads the board from the provider this often. */
+  refreshIntervalSec: number;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
 }
 
 export interface BoardOption {
@@ -121,7 +125,7 @@ export function useBoardLink(workspaceId: string) {
   });
 }
 
-/** Board contents; the server caches the provider for ~20s, so polling stays cheap. */
+/** Board contents as last read by the server (it refreshes them on its own), so polling stays cheap. */
 export function useBoard(workspaceId: string, enabled: boolean) {
   return useQuery({
     queryKey: boardKeys.contents(workspaceId),
@@ -175,6 +179,14 @@ export function useUnlinkBoard(workspaceId: string) {
   return useMutation({
     mutationFn: () => api.delete<void>(`${base(workspaceId)}/link`),
     onSuccess: () => queryClient.resetQueries({ queryKey: boardKeys.all(workspaceId) }),
+  });
+}
+
+export function useUpdateBoardSettings(workspaceId: string) {
+  const invalidate = useInvalidateBoard(workspaceId);
+  return useMutation({
+    mutationFn: (input: { refreshIntervalSec: number }) => api.put<BoardLink>(`${base(workspaceId)}/settings`, input),
+    onSuccess: invalidate,
   });
 }
 

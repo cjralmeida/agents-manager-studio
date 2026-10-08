@@ -9,6 +9,7 @@ import {
   useBoard,
   useBoardLink,
   useUnlinkBoard,
+  useUpdateBoardSettings,
   useUpdateStatusMap,
 } from '../../api/boards';
 import { Badge } from '../Badge';
@@ -42,6 +43,31 @@ export function BoardLinkSection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+const INTERVALS = [1, 2, 5, 10, 15];
+
+/** How often the server reads the board (and runs the sentinels); 2 minutes keeps provider calls low. */
+function RefreshInterval({ workspaceId, link }: { workspaceId: string; link: BoardLink }) {
+  const update = useUpdateBoardSettings(workspaceId);
+  return (
+    <div className="mt-4 max-w-sm">
+      <Field label="Atualização automática" hint="O server lê o quadro nesse intervalo e, em seguida, roda as sentinelas.">
+        <Select
+          value={Math.round(link.refreshIntervalSec / 60)}
+          onChange={(event) => update.mutate({ refreshIntervalSec: Number(event.target.value) * 60 })}
+          disabled={update.isPending}
+        >
+          {INTERVALS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              A cada {minutes} min{minutes === 2 ? ' (recomendado)' : ''}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <ErrorText error={update.error} />
+    </div>
+  );
+}
+
 function LinkedBoard({ workspaceId, link, columns }: { workspaceId: string; link: BoardLink; columns: BoardOption[] }) {
   const [map, setMap] = useState<StatusMap>(link.statusMap);
   const update = useUpdateStatusMap(workspaceId);
@@ -62,6 +88,8 @@ function LinkedBoard({ workspaceId, link, columns }: { workspaceId: string; link
         <span className="text-xs text-muted">{link.ownerPath}</span>
       </div>
       <p className="mt-1 text-xs text-muted">O quadro é próprio deste workspace e não entra na cópia de configuração.</p>
+
+      <RefreshInterval workspaceId={workspaceId} link={link} />
 
       <h3 className="mt-5 text-sm font-medium">Papel das colunas</h3>
       <p className="mt-1 text-xs text-muted">Usado para mover as tarefas automaticamente conforme o agente avança.</p>

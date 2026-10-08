@@ -32,6 +32,7 @@ model Workspace {
   gitAccounts WorkspaceGitAccount[]
   agents      Agent[]
   taskBoard   TaskBoard?
+  sentinels   Sentinel[]
 
   @@map("workspaces")
 }
@@ -180,6 +181,8 @@ model Agent {
   /// Issue reference, e.g. GlobalFarm-Hub/automacoes#12 (null for draft items).
   taskRef         String?     @map("task_ref")
   taskUrl         String?     @map("task_url")
+  /// Sentinel that launched the agent, if any.
+  sentinelId      String?     @map("sentinel_id") @db.Uuid
   /// Cumulative usage per model as last reported by the session; new reports are turned into AgentUsage deltas.
   usageTotals     Json        @default("{}") @map("usage_totals")
   /// Estimated cost (API list prices) of everything the agent used.
@@ -192,6 +195,7 @@ model Agent {
 
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sentinel  Sentinel?    @relation(fields: [sentinelId], references: [id], onDelete: SetNull)
   events    AgentEvent[]
   inbox     AgentInbox[]
   usage     AgentUsage[]
@@ -200,6 +204,7 @@ model Agent {
   @@index([projectId])
   @@index([status])
   @@index([taskItemId])
+  @@index([sentinelId])
   @@map("agents")
 }
 
@@ -248,6 +253,10 @@ model TaskBoard {
   readme      String?
   /// Column id for each role (todo, inProgress, review, done, blocked) used by agent automation.
   statusMap   Json        @default("{}") @map("status_map")
+  /// The server reads the board from the provider this often (and then runs the sentinels).
+  refreshIntervalSec Int       @default(120) @map("refresh_interval_sec")
+  lastSyncedAt       DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  lastSyncError      String?   @map("last_sync_error")
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -284,4 +293,36 @@ model AgentUsage {
   @@index([createdAt])
   @@index([agentId])
   @@map("agent_usage")
+}
+
+/// Watches the workspace task board and launches an agent for each task matching its filters.
+model Sentinel {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  name            String
+  isEnabled       Boolean   @default(true) @map("is_enabled")
+  /// Board field id -> accepted option ids; a task matches when every listed field has one of them.
+  fieldFilters    Json      @default("{}") @map("field_filters")
+  /// Repository paths accepted; empty accepts every repository of the workspace.
+  repositories    String[]  @default([])
+  /// Column watched; null uses the board's "todo" column.
+  columnId        String?   @map("column_id")
+  /// Takes only tasks nobody is assigned to.
+  onlyUnassigned  Boolean   @default(true) @map("only_unassigned")
+  /// Extra instructions sent to every agent it launches.
+  instructions    String    @default("")
+  model           String    @default("sonnet")
+  maxConcurrent   Int       @default(1) @map("max_concurrent")
+  /// Last evaluation and what happened (e.g. "Pausada: plano em 85%").
+  lastCheckedAt   DateTime? @map("last_checked_at") @db.Timestamptz(3)
+  lastLaunchAt    DateTime? @map("last_launch_at") @db.Timestamptz(3)
+  statusMessage   String?   @map("status_message")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agents    Agent[]
+
+  @@index([workspaceId])
+  @@map("sentinels")
 }

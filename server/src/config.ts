@@ -39,6 +39,8 @@ const envSchema = z.object({
   // Launching an agent asks for confirmation when Docker usage is at or above these percentages.
   AGENT_LAUNCH_MEMORY_PERCENT: z.coerce.number().min(1).max(100).default(80),
   AGENT_LAUNCH_CPU_PERCENT: z.coerce.number().min(1).max(100).default(85),
+  // Sentinels stop launching agents while the Claude 5-hour window is at or above this percentage.
+  SENTINEL_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
 });
 
 function loadConfig() {
@@ -70,6 +72,7 @@ function loadConfig() {
     agentIdleTimeoutMs: env.AGENT_IDLE_TIMEOUT_MS,
     launchMemoryPercent: env.AGENT_LAUNCH_MEMORY_PERCENT,
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
+    sentinelPlanLimitPercent: env.SENTINEL_PLAN_LIMIT_PERCENT,
   };
 }
 

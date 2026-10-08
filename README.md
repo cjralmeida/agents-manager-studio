@@ -69,3 +69,13 @@ Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "
   - Mostra os agentes, o consumo do Claude, os containers dos agentes e o disco usado pelas cópias dos projetos e pelas sessões dos agentes.
   - Os serviços do Studio são compartilhados e aparecem só no geral.
   - As janelas do plano são da conta Claude inteira.
+
+## Sentinelas
+
+As sentinelas ficam na aba **Sentinelas** de cada workspace. Elas vigiam o quadro de tarefas e lançam um agente para cada tarefa do tipo delas.
+
+- **O que a sentinela procura:** tarefas da coluna vigiada (por padrão, "A fazer") que batem com os filtros pelos campos do quadro (Tipo, Área, Prioridade, repositório). A opção "só tarefas sem responsável" fica ligada por padrão.
+- **Ordem:** a tarefa de maior prioridade primeiro e, entre iguais, a mais antiga. Uma tarefa que já teve agente não é pega de novo.
+- **O que vai para o agente:** a tarefa e as instruções extras da sentinela. O agente segue o fluxo normal: o card vai para andamento e, no fim, você revisa e conclui.
+- **Quando ela para:** respeita o limite de agentes simultâneos e pausa quando a janela de 5 horas do Claude passa de `SENTINEL_PLAN_LIMIT_PERCENT` (padrão 80%) ou quando o Docker está no limite.
+- **Atualização dos quadros:** o server lê cada quadro a cada 2 minutos (configurável de 1 a 15 minutos na Configuração do workspace) e roda as sentinelas logo depois. Tudo fica no banco, então volta a funcionar sozinho quando o Studio reinicia.

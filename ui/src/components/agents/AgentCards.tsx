@@ -45,6 +45,7 @@ function AgentCard({ agent, showWorkspace, live }: { agent: Agent; showWorkspace
         {showWorkspace && agent.workspaceName ? `${agent.workspaceName} · ` : ''}
         {agent.projectName}
         {agent.taskRef ? ` · ${agent.taskRef.split('/').at(-1)}` : ''}
+        {agent.sentinelName ? ` · sentinela ${agent.sentinelName}` : ''}
       </p>
 
       {question && (

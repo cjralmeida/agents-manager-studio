@@ -28,6 +28,8 @@ export interface LaunchAgentInput {
   taskItemId?: string;
   /** The user already confirmed launching while Docker usage is high. */
   confirmHighUsage?: boolean;
+  /** Sentinel launching the agent (not accepted from the public API). */
+  sentinelId?: string;
 }
 
 /** Separates the task from the board guidelines in the first message (the PR body keeps only the task). */
@@ -40,6 +42,7 @@ const STATUS_PRIORITY: Partial<Record<AgentStatus, number>> = { WAITING_INPUT: 0
 const agentInclude = {
   project: { select: { name: true } },
   workspace: { select: { name: true } },
+  sentinel: { select: { name: true } },
 } satisfies Prisma.AgentInclude;
 
 type AgentWithNames = Prisma.AgentGetPayload<{ include: typeof agentInclude }>;
@@ -156,6 +159,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       branch: `agent/${slug ? `${slug}-` : ''}${shortId}`,
       workdir: `${project.workspace.name}/${project.name}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
+      ...(input.sentinelId && { sentinelId: input.sentinelId }),
     },
     include: agentInclude,
   });
@@ -413,7 +417,7 @@ function usageOf(agent: Agent) {
   };
 }
 
-function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace'>>) {
+function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'workspace' | 'sentinel'>>) {
   return {
     id: agent.id,
     workspaceId: agent.workspaceId,
@@ -432,6 +436,8 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     taskItemId: agent.taskItemId,
     taskRef: agent.taskRef,
     taskUrl: agent.taskUrl,
+    sentinelId: agent.sentinelId,
+    sentinelName: agent.sentinel?.name ?? null,
     usage: usageOf(agent),
     errorMessage: agent.errorMessage,
     lastActivityAt: agent.lastActivityAt,

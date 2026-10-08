@@ -11,6 +11,7 @@ import {
   moveItem,
   setItemField,
   unlinkBoard,
+  updateBoardSettings,
   updateStatusMap,
 } from './service.js';
 import { STATUS_ROLES } from './types.js';
@@ -32,6 +33,9 @@ const createBody = z
   .strict();
 
 const statusMapBody = z.object(Object.fromEntries(STATUS_ROLES.map((role) => [role, z.string().min(1).optional()]))).strict();
+
+/** 1 to 15 minutes between automatic reads of the board. */
+const settingsBody = z.object({ refreshIntervalSec: z.number().int().min(60).max(900) }).strict();
 
 const taskBody = z
   .object({
@@ -70,6 +74,11 @@ export async function boardRoutes(app: FastifyInstance) {
   app.put('/workspaces/:id/board/status-map', async (request) => {
     const { id } = parseInput(workspaceParams, request.params);
     return updateStatusMap(id, parseInput(statusMapBody, request.body));
+  });
+
+  app.put('/workspaces/:id/board/settings', async (request) => {
+    const { id } = parseInput(workspaceParams, request.params);
+    return updateBoardSettings(id, parseInput(settingsBody, request.body));
   });
 
   app.get('/workspaces/:id/board', async (request) => {
