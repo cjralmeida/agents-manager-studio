@@ -7,3 +7,46 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum GitProvider {
+  GITHUB
+  GITLAB
+  OTHER
+
+  @@map("git_provider")
+}
+
+/// A top-level folder of the projects root (e.g. D:\Projetos\GlobalFarm).
+model Workspace {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  /// Folder name; unique because it identifies the folder on disk.
+  name      String    @unique
+  isIgnored Boolean   @default(false) @map("is_ignored")
+  /// Set when the folder disappears from disk; cleared if it comes back.
+  missingAt DateTime? @map("missing_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  projects Project[]
+
+  @@map("workspaces")
+}
+
+/// A folder inside a workspace, where agents work on the code.
+model Project {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  workspaceId  String       @map("workspace_id") @db.Uuid
+  name         String
+  isGitRepo    Boolean      @default(false) @map("is_git_repo")
+  /// "origin" remote, without embedded credentials.
+  gitRemoteUrl String?      @map("git_remote_url")
+  gitProvider  GitProvider? @map("git_provider")
+  missingAt    DateTime?    @map("missing_at") @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@map("projects")
+}

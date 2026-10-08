@@ -1,10 +1,25 @@
 import { z } from 'zod';
 
+const commaSeparated = z
+  .string()
+  .default('')
+  .transform((value) =>
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().min(1),
+  // Projects root as seen inside the container, and the same folder on the host machine.
+  PROJECTS_DIR: z.string().min(1).default('/data/Projetos'),
+  PROJECTS_HOST_DIR: z.string().min(1),
+  // Top-level folders that must not become workspaces (case-insensitive).
+  SCAN_EXCLUDE: commaSeparated,
 });
 
 function loadConfig() {
@@ -21,6 +36,9 @@ function loadConfig() {
     port: env.PORT,
     logLevel: env.LOG_LEVEL,
     databaseUrl: env.DATABASE_URL,
+    projectsDir: env.PROJECTS_DIR,
+    projectsHostDir: env.PROJECTS_HOST_DIR,
+    scanExclude: env.SCAN_EXCLUDE.map((name) => name.toLowerCase()),
   };
 }
 

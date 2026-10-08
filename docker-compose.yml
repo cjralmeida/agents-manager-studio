@@ -52,7 +52,12 @@ services:
       PORT: 3000
       LOG_LEVEL: info
       DATABASE_URL: postgresql://studio:${POSTGRES_PASSWORD}@postgres:5432/studio
+      PROJECTS_DIR: /data/Projetos
+      PROJECTS_HOST_DIR: ${PROJECTS_HOST_DIR:?set PROJECTS_HOST_DIR in .env}
+      SCAN_EXCLUDE: ${SCAN_EXCLUDE:-Pessoais}
       TZ: ${TZ:-America/Sao_Paulo}
+    volumes:
+      - ${PROJECTS_HOST_DIR}:/data/Projetos:ro
     depends_on:
       postgres:
         condition: service_healthy
