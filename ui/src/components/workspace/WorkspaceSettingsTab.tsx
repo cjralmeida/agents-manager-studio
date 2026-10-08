@@ -88,9 +88,11 @@ function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }
   return (
     <>
       <section className="rounded-lg border border-border bg-panel p-4">
-        <h3 className="text-sm font-medium">Conta de agente</h3>
+        <h2 className="text-base font-semibold">Inteligência artificial</h2>
+
+        <h3 className="mt-4 text-sm font-medium">Conta de agente</h3>
         <div className="mt-3 max-w-sm">
-          <Field label="Claude" hint={agentAccounts.length === 0 && <NoAccountsHint />}>
+          <Field label="Claude" hint={agentAccounts.length === 0 && <NoAccountsHint tab="ai" />}>
             <Select value={agentAccountId ?? ''} onChange={(event) => setAgentAccountId(event.target.value || null)}>
               <option value="">Nenhuma</option>
               {agentAccounts.map((account) => (
@@ -101,10 +103,40 @@ function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }
             </Select>
           </Field>
         </div>
+
+        <h3 className="mt-6 text-sm font-medium">Skills</h3>
+        <p className="mt-1 text-xs text-muted">
+          Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code.
+        </p>
+        {groupSkills(skills).map(([source, items]) => (
+          <div key={source} className="mt-3">
+            <h4 className="text-xs font-medium tracking-wider text-muted uppercase">{skillSourceLabels[source]}</h4>
+            <ul className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
+              {items.map((skill) => (
+                <li key={skill.id}>
+                  <label className="flex items-start gap-2 text-sm" title={skill.description}>
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={enabledSkillIds.includes(skill.id)}
+                      onChange={() => setEnabledSkillIds(toggle(enabledSkillIds, skill.id))}
+                    />
+                    <span>
+                      {skill.name}
+                      <span className="line-clamp-1 text-xs text-muted">{skill.description}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </section>
 
       <section className="rounded-lg border border-border bg-panel p-4">
-        <h3 className="text-sm font-medium">Contas Git</h3>
+        <h2 className="text-base font-semibold">Git</h2>
+
+        <h3 className="mt-4 text-sm font-medium">Contas</h3>
         <p className="mt-1 text-xs text-muted">
           O agente usa a conta cujo host é o mesmo do remote do projeto, por isso só uma conta por host.
         </p>
@@ -122,7 +154,7 @@ function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }
 
         {gitAccounts.length === 0 ? (
           <p className="mt-3 text-sm">
-            <NoAccountsHint />
+            <NoAccountsHint tab="git" />
           </p>
         ) : (
           <ul className="mt-3 space-y-1">
@@ -149,34 +181,6 @@ function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }
         )}
       </section>
 
-      <section className="rounded-lg border border-border bg-panel p-4">
-        <h3 className="text-sm font-medium">Skills</h3>
-        <p className="mt-1 text-xs text-muted">Disponíveis para os agentes deste workspace.</p>
-        {groupSkills(skills).map(([source, items]) => (
-          <div key={source} className="mt-3">
-            <h4 className="text-xs font-medium tracking-wider text-muted uppercase">{skillSourceLabels[source]}</h4>
-            <ul className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
-              {items.map((skill) => (
-                <li key={skill.id}>
-                  <label className="flex items-start gap-2 text-sm" title={skill.description}>
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={enabledSkillIds.includes(skill.id)}
-                      onChange={() => setEnabledSkillIds(toggle(enabledSkillIds, skill.id))}
-                    />
-                    <span>
-                      {skill.name}
-                      <span className="line-clamp-1 text-xs text-muted">{skill.description}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
-
       <div className="flex items-center gap-3">
         <Button variant="primary" onClick={handleSave} disabled={!isDirty || !!duplicatedHost || update.isPending}>
           {update.isPending ? 'Salvando...' : 'Salvar configuração'}
@@ -190,11 +194,11 @@ function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }
   );
 }
 
-function NoAccountsHint() {
+function NoAccountsHint({ tab }: { tab: 'ai' | 'git' }) {
   return (
     <>
       Nenhuma conta cadastrada.{' '}
-      <Link to="/settings" className="text-accent hover:underline">
+      <Link to={tab === 'ai' ? '/settings' : '/settings?tab=git'} className="text-accent hover:underline">
         Cadastrar em Configurações
       </Link>
     </>

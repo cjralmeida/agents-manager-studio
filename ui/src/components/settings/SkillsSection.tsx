@@ -15,8 +15,10 @@ export function SkillsSection() {
     <section>
       <h2 className="text-base font-semibold">Skills disponíveis</h2>
       <p className="mt-1 text-sm text-muted">
-        Lidas da sua pasta <code className="text-gray-300">.claude/skills</code>. Escolha quais cada workspace usa na
-        configuração do workspace.
+        Lidas da instalação do Claude Code nesta máquina (<code className="text-gray-300">~/.claude/skills</code>), que
+        sincroniza as skills da sua conta claude.ai. O token da assinatura só dá acesso ao modelo, não às skills da
+        conta. As skills embutidas no Claude Code (code-review, simplify etc.) ficam sempre disponíveis aos agentes.
+        Escolha quais destas cada workspace usa na configuração do workspace.
       </p>
 
       {skills.data?.length === 0 && <p className="mt-4 text-sm text-muted">Nenhuma skill encontrada.</p>}

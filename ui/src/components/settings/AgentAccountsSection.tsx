@@ -5,6 +5,7 @@ import {
   useCreateAgentAccount,
   useDeleteAgentAccount,
   useUpdateAgentAccount,
+  useVerifyAgentAccount,
 } from '../../api/accounts';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
@@ -17,8 +18,9 @@ export function AgentAccountsSection() {
     <section>
       <h2 className="text-base font-semibold">Contas de agente</h2>
       <p className="mt-1 text-sm text-muted">
-        Assinatura do Claude usada pelos agentes. Gere o token com <code className="text-gray-300">claude setup-token</code>{' '}
-        no terminal.
+        Sua assinatura Claude (Pro/Max) usada pelos agentes, sem API key nem cobrança por uso. Rode{' '}
+        <code className="text-gray-300">claude setup-token</code> no terminal, faça login com a conta do plano e cole o
+        token gerado (<code className="text-gray-300">sk-ant-oat01-…</code>). O uso dos agentes conta no limite do plano.
       </p>
 
       <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
@@ -34,6 +36,7 @@ export function AgentAccountsSection() {
 function AgentAccountItem({ account }: { account: AgentAccount }) {
   const [editing, setEditing] = useState(false);
   const remove = useDeleteAgentAccount();
+  const verify = useVerifyAgentAccount();
 
   const handleRemove = () => {
     const usage = account.workspaceCount > 0 ? ` ${account.workspaceCount} workspace(s) ficarão sem conta de agente.` : '';
@@ -50,13 +53,20 @@ function AgentAccountItem({ account }: { account: AgentAccount }) {
         <span className="font-mono text-xs text-muted">{account.tokenHint}</span>
         <span className="text-xs text-muted">· {account.workspaceCount} workspace(s)</span>
       </div>
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => setEditing(true)}>
-          Editar
-        </Button>
-        <Button size="sm" variant="danger" onClick={handleRemove} disabled={remove.isPending}>
-          Remover
-        </Button>
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => verify.mutate(account.id)} disabled={verify.isPending}>
+            {verify.isPending ? 'Testando...' : 'Testar'}
+          </Button>
+          <Button size="sm" onClick={() => setEditing(true)}>
+            Editar
+          </Button>
+          <Button size="sm" variant="danger" onClick={handleRemove} disabled={remove.isPending}>
+            Remover
+          </Button>
+        </div>
+        {verify.isSuccess && <p className="text-xs text-emerald-300">Token válido: o Claude respondeu.</p>}
+        {verify.error && <p className="text-xs text-red-300">{verify.error.message}</p>}
       </div>
     </li>
   );
@@ -122,7 +132,7 @@ function NewAgentAccountForm() {
         <Field label="Nome">
           <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Ex.: Claude Max" required />
         </Field>
-        <Field label="Token">
+        <Field label="Token da assinatura (claude setup-token)">
           <TextInput
             type="password"
             value={token}

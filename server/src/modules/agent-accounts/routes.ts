@@ -1,18 +1,28 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
-import { createAgentAccount, deleteAgentAccount, listAgentAccounts, updateAgentAccount } from './service.js';
+import {
+  createAgentAccount,
+  deleteAgentAccount,
+  listAgentAccounts,
+  updateAgentAccount,
+  verifyAgentAccount,
+} from './service.js';
 
 const idParams = z.object({ id: z.uuid() });
 
 const label = z.string().trim().min(1).max(80);
-// Token printed by `claude setup-token`.
+// Token printed by `claude setup-token`. Terminals wrap it when copying; tokens never contain whitespace.
 const token = z
   .string()
-  .trim()
-  .min(20)
-  .max(500)
-  .startsWith('sk-ant-', 'O token deve começar com "sk-ant-" (gere com `claude setup-token`).');
+  .transform((value) => value.replace(/\s+/g, ''))
+  .pipe(
+    z
+      .string()
+      .min(20)
+      .max(500)
+      .startsWith('sk-ant-', 'O token deve começar com "sk-ant-" (gere com `claude setup-token`).'),
+  );
 
 const createBody = z.object({ label, token }).strict();
 
@@ -33,6 +43,10 @@ export async function agentAccountRoutes(app: FastifyInstance) {
     const { id } = parseInput(idParams, request.params);
     return updateAgentAccount(id, parseInput(updateBody, request.body));
   });
+
+  app.post('/agent-accounts/:id/verify', async (request) =>
+    verifyAgentAccount(parseInput(idParams, request.params).id),
+  );
 
   app.delete('/agent-accounts/:id', async (request, reply) => {
     await deleteAgentAccount(parseInput(idParams, request.params).id);

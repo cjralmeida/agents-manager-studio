@@ -100,6 +100,13 @@ export function useUpdateAgentAccount() {
   });
 }
 
+/** Runs a real Claude Code request with the stored token (takes a few seconds). */
+export function useVerifyAgentAccount() {
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ ok: true }>(`/agent-accounts/${id}/verify`),
+  });
+}
+
 export function useDeleteAgentAccount() {
   const invalidate = useInvalidate(agentKeys);
   return useMutation({

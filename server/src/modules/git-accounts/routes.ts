@@ -12,7 +12,11 @@ import {
 const idParams = z.object({ id: z.uuid() });
 
 const label = z.string().trim().min(1).max(80);
-const token = z.string().trim().min(8).max(500);
+// Terminals wrap long tokens when copying; tokens never contain whitespace.
+const token = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, ''))
+  .pipe(z.string().min(8).max(500));
 
 const createBody = z
   .object({

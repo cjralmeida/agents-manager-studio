@@ -24,6 +24,8 @@ const envSchema = z.object({
   ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i),
   // Claude skills folder (~/.claude/skills), mounted read-only.
   SKILLS_DIR: z.string().min(1).default('/data/claude-skills'),
+  // Image used for agent containers and account checks.
+  AGENT_RUNNER_IMAGE: z.string().min(1).default('agents-manager-studio-agent-runner:latest'),
 });
 
 function loadConfig() {
@@ -45,6 +47,7 @@ function loadConfig() {
     scanExclude: env.SCAN_EXCLUDE.map((name) => name.toLowerCase()),
     encryptionKey: env.ENCRYPTION_KEY,
     skillsDir: env.SKILLS_DIR,
+    agentRunnerImage: env.AGENT_RUNNER_IMAGE,
   };
 }
 

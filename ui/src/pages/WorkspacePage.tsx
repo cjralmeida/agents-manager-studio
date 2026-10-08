@@ -1,7 +1,8 @@
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
+import { Tabs, useTabParam } from '../components/Tabs';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
@@ -19,8 +20,7 @@ export function WorkspacePage() {
   const { workspaceId = '' } = useParams();
   const workspace = useWorkspace(workspaceId);
   const setIgnored = useSetWorkspaceIgnored();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'projects';
+  const [activeTab, setActiveTab] = useTabParam(tabs);
 
   if (workspace.isPending) return <p className="text-sm text-muted">Carregando...</p>;
   if (workspace.error) return <p className="text-sm text-red-300">{workspace.error.message}</p>;
@@ -52,18 +52,9 @@ export function WorkspacePage() {
         )}
       </header>
 
-      <nav className="mt-6 flex gap-1 border-b border-border">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSearchParams(tab.id === 'projects' ? {} : { tab: tab.id })}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${activeTab === tab.id ? 'border-accent text-white' : 'border-transparent text-muted hover:text-white'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      <div className="mt-6">
+        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      </div>
 
       <div className="mt-6">
         {activeTab === 'projects' ? (

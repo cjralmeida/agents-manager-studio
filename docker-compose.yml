@@ -57,13 +57,25 @@ services:
       SCAN_EXCLUDE: ${SCAN_EXCLUDE:-Pessoais}
       ENCRYPTION_KEY: ${STUDIO_ENCRYPTION_KEY:?set STUDIO_ENCRYPTION_KEY in .env}
       SKILLS_DIR: /data/claude-skills
+      AGENT_RUNNER_IMAGE: agents-manager-studio-agent-runner:latest
       TZ: ${TZ:-America/Sao_Paulo}
+    # The Docker socket is root-only; access to it is root-equivalent anyway.
+    user: root
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - ${PROJECTS_HOST_DIR}:/data/Projetos:ro
       - ${CLAUDE_SKILLS_HOST_DIR:?set CLAUDE_SKILLS_HOST_DIR in .env}:/data/claude-skills:ro
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Image only: the server starts containers from it (agents and account checks).
+  # Build with: docker compose --profile tools build agent-runner
+  agent-runner:
+    image: agents-manager-studio-agent-runner:latest
+    build:
+      context: ./agent-runner
+    profiles: ["tools"]
 
   ui:
     build:

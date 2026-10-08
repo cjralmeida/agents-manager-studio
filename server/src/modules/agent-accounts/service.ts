@@ -3,6 +3,7 @@ import type { AgentAccount } from '../../generated/prisma/client.js';
 import { secretHint } from '../../lib/crypto.js';
 import { notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
+import { verifyClaudeToken } from './verify.js';
 
 export interface AgentAccountInput {
   label?: string;
@@ -45,6 +46,12 @@ export async function updateAgentAccount(id: string, input: AgentAccountInput) {
     include: { _count: { select: { workspaceSettings: true } } },
   });
   return { ...toResponse(account), workspaceCount: _count.workspaceSettings };
+}
+
+/** Runs a real Claude Code request with the stored token. */
+export async function verifyAgentAccount(id: string) {
+  const account = await findOrThrow(id);
+  return verifyClaudeToken(secrets.decrypt(account.tokenEncrypted));
 }
 
 /** Workspaces using the account keep their other settings and lose only the account (ON DELETE SET NULL). */
