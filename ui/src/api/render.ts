@@ -17,7 +17,8 @@ export interface RenderServiceLink {
 }
 
 export interface RenderSettings {
-  connection: { ownerName: string; apiKeyHint: string } | null;
+  /** Render account the workspace picked in its settings. */
+  connection: { accountId: string; label: string; ownerName: string; apiKeyHint: string } | null;
   services: RenderServiceLink[];
 }
 
@@ -75,22 +76,6 @@ function useSetSettings(workspaceId: string) {
   };
 }
 
-export function useConnectRender(workspaceId: string) {
-  const setSettings = useSetSettings(workspaceId);
-  return useMutation({
-    mutationFn: (apiKey: string) => api.put<RenderSettings>(`/workspaces/${workspaceId}/render`, { apiKey }),
-    onSuccess: setSettings,
-  });
-}
-
-export function useDisconnectRender(workspaceId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.delete<void>(`/workspaces/${workspaceId}/render`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['render', workspaceId] }),
-  });
-}
-
 export function useSetRenderService(workspaceId: string) {
   const setSettings = useSetSettings(workspaceId);
   return useMutation({
@@ -120,11 +105,70 @@ export function useStartDeploy(workspaceId: string) {
 export interface RenderConnectionSummary {
   workspaceId: string;
   workspaceName: string;
+  accountLabel: string;
   ownerName: string;
   services: number;
 }
 
-/** Workspaces with Render connected (the key is set per workspace). */
+/** Workspaces that picked a Render account. */
 export function useRenderConnections() {
   return useQuery({ queryKey: ['render', 'connections'] as const, queryFn: () => api.get<RenderConnectionSummary[]>('/render/connections') });
+}
+
+// ---------------------------------------------------------------- accounts
+
+export interface RenderAccount {
+  id: string;
+  label: string;
+  ownerName: string;
+  apiKeyHint: string;
+  workspaceCount: number;
+}
+
+const accountKeys = ['render-accounts'] as const;
+
+function useInvalidateAccounts() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: accountKeys });
+    void queryClient.invalidateQueries({ queryKey: ['render'] });
+  };
+}
+
+export function useRenderAccounts() {
+  return useQuery({ queryKey: accountKeys, queryFn: () => api.get<RenderAccount[]>('/render-accounts') });
+}
+
+export function useCreateRenderAccount() {
+  const invalidate = useInvalidateAccounts();
+  return useMutation({
+    mutationFn: (input: { label: string; apiKey: string }) => api.post<RenderAccount>('/render-accounts', input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateRenderAccount() {
+  const invalidate = useInvalidateAccounts();
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; label?: string; apiKey?: string }) =>
+      api.patch<RenderAccount>(`/render-accounts/${id}`, input),
+    onSuccess: invalidate,
+  });
+}
+
+/** Checks the stored key on Render again. */
+export function useVerifyRenderAccount() {
+  const invalidate = useInvalidateAccounts();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ ok: true; ownerName: string }>(`/render-accounts/${id}/verify`),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteRenderAccount() {
+  const invalidate = useInvalidateAccounts();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/render-accounts/${id}`),
+    onSuccess: invalidate,
+  });
 }

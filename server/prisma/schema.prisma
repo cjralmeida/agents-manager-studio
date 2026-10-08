@@ -34,7 +34,6 @@ model Workspace {
   taskBoard   TaskBoard?
   workflows   Workflow[]
   agentProfiles AgentProfile[]
-  render        RenderConnection?
   renderServices RenderService[]
   deployments   Deployment[]
 
@@ -113,15 +112,19 @@ model AgentAccount {
 model WorkspaceSettings {
   workspaceId     String   @id @map("workspace_id") @db.Uuid
   agentAccountId  String?  @map("agent_account_id") @db.Uuid
+  /// Render account used to deploy this workspace's projects.
+  renderAccountId String?  @map("render_account_id") @db.Uuid
   /// Skill ids (path relative to the skills folder) enabled for agents of this workspace.
   enabledSkillIds String[] @default([]) @map("enabled_skill_ids")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agentAccount AgentAccount? @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
+  agentAccount  AgentAccount?  @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
+  renderAccount RenderAccount? @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
 
   @@index([agentAccountId])
+  @@index([renderAccountId])
   @@map("workspace_settings")
 }
 
@@ -368,9 +371,10 @@ enum DeployEnvironment {
   @@map("deploy_environment")
 }
 
-/// Render account of a workspace (API key encrypted like the other tokens).
-model RenderConnection {
-  workspaceId     String   @id @map("workspace_id") @db.Uuid
+/// Render account (API key encrypted like the other tokens); workspaces pick one in their settings.
+model RenderAccount {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  label           String
   apiKeyEncrypted String   @map("api_key_encrypted")
   apiKeyHint      String   @map("api_key_hint")
   /// Workspace/team name reported by Render when the key was checked.
@@ -378,9 +382,9 @@ model RenderConnection {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceSettings WorkspaceSettings[]
 
-  @@map("render_connections")
+  @@map("render_accounts")
 }
 
 /// Render service that runs a project in an environment.

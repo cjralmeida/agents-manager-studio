@@ -56,7 +56,8 @@ async function context(workspaceId: string) {
         : null,
     render: {
       connected: Boolean(render.connection),
-      services: render.services.map((service) => ({ project: projectName(service.projectId), environment: service.environment, service: service.serviceName })),
+      account: render.connection?.label ?? null,
+      services: render.services.map((service: { projectId: string; environment: string; serviceName: string }) => ({ project: projectName(service.projectId), environment: service.environment, service: service.serviceName })),
     },
     agents: profiles.map((profile) => ({
       id: profile.id,

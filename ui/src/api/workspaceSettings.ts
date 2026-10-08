@@ -3,6 +3,7 @@ import { api } from './client';
 
 export interface WorkspaceSettings {
   agentAccountId: string | null;
+  renderAccountId: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }
@@ -26,6 +27,8 @@ export function useUpdateWorkspaceSettings(workspaceId: string) {
       // Account usage counts changed.
       void queryClient.invalidateQueries({ queryKey: ['git-accounts'] });
       void queryClient.invalidateQueries({ queryKey: ['agent-accounts'] });
+      void queryClient.invalidateQueries({ queryKey: ['render-accounts'] });
+      void queryClient.invalidateQueries({ queryKey: ['render'] });
     },
   });
 }

@@ -8,6 +8,7 @@ const idParams = z.object({ id: z.uuid() });
 const settingsBody = z
   .object({
     agentAccountId: z.uuid().nullable(),
+    renderAccountId: z.uuid().nullable().default(null),
     gitAccountIds: z.array(z.uuid()).max(20),
     enabledSkillIds: z.array(z.string().min(1).max(300)).max(200),
   })

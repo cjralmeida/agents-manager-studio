@@ -1,8 +1,9 @@
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { useAgentAccounts, useGitAccounts } from '../api/accounts';
-import { useRenderConnections } from '../api/render';
+import { useRenderAccounts } from '../api/render';
 import { Button } from '../components/Button';
 import { type ConnectorId, ConnectorIcon } from '../components/connectors/ConnectorIcon';
+import { RenderAccountsSection } from '../components/render/RenderAccountsSection';
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
 import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
 import { GitAccountsSection } from '../components/settings/GitAccountsSection';
@@ -23,7 +24,7 @@ export function ConnectorsPage() {
   const selected = params.get('c') as ConnectorId | null;
   const agentAccounts = useAgentAccounts();
   const gitAccounts = useGitAccounts();
-  const renderConnections = useRenderConnections();
+  const renderAccounts = useRenderAccounts();
 
   const gitStatus = (provider: 'GITHUB' | 'GITLAB') => {
     const accounts = gitAccounts.data?.filter((account) => account.provider === provider) ?? [];
@@ -34,7 +35,8 @@ export function ConnectorsPage() {
     };
   };
   const claudeWorkspaces = agentAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
-  const renderCount = renderConnections.data?.length ?? 0;
+  const renderCount = renderAccounts.data?.length ?? 0;
+  const renderWorkspaces = renderAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
 
   const cards: ConnectorCardInfo[] = [
     {
@@ -54,7 +56,7 @@ export function ConnectorsPage() {
       name: 'Render',
       purpose: 'Deploy em homologação e produção a partir dos workflows.',
       connected: renderCount > 0,
-      status: renderCount > 0 ? `conectado em ${plural(renderCount, 'workspace', 'workspaces')}` : 'Configurado em cada workspace',
+      status: renderCount > 0 ? `${plural(renderCount, 'conta', 'contas')} · em ${plural(renderWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
     },
   ];
   const select = (id: ConnectorId) => setParams(id === selected ? {} : { c: id });
@@ -113,38 +115,9 @@ export function ConnectorsPage() {
             </>
           )}
           {current.id === 'gitlab' && <GitAccountsSection provider="GITLAB" />}
-          {current.id === 'render' && <RenderConnections />}
+          {current.id === 'render' && <RenderAccountsSection />}
         </div>
       )}
-    </section>
-  );
-}
-
-function RenderConnections() {
-  const connections = useRenderConnections();
-  return (
-    <section>
-      <p className="max-w-3xl text-sm text-muted">
-        A chave do Render é informada em cada workspace (aba Conectores do workspace), junto com o serviço de homologação e
-        produção de cada projeto.
-      </p>
-      {connections.data && connections.data.length === 0 && <p className="mt-3 text-sm text-muted">Nenhum workspace conectado ao Render.</p>}
-      <ul className="mt-3 divide-y divide-border rounded-lg border border-border">
-        {connections.data?.map((connection) => (
-          <li key={connection.workspaceId} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-            <span>
-              <span className="font-medium">{connection.workspaceName}</span>
-              <span className="text-muted">
-                {' '}
-                · {connection.ownerName} · {plural(connection.services, 'serviço', 'serviços')}
-              </span>
-            </span>
-            <Link to={`/workspaces/${connection.workspaceId}?tab=connectors`} className="text-xs text-accent hover:underline">
-              Abrir
-            </Link>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

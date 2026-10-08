@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { type AccountGitProvider, useAgentAccounts, useGitAccounts } from '../../api/accounts';
 import { useBoardLink } from '../../api/boards';
-import { useRenderSettings } from '../../api/render';
+import { useRenderAccounts } from '../../api/render';
 import { type WorkspaceSettings, useUpdateWorkspaceSettings, useWorkspaceSettings } from '../../api/workspaceSettings';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { remoteHost } from '../../lib/git';
@@ -54,12 +54,12 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
   const agentAccounts = useAgentAccounts();
   const gitAccounts = useGitAccounts();
   const board = useBoardLink(workspace.id);
-  const render = useRenderSettings(workspace.id);
+  const renderAccounts = useRenderAccounts();
   const update = useUpdateWorkspaceSettings(workspace.id);
 
-  const error = settings.error ?? agentAccounts.error ?? gitAccounts.error;
+  const error = settings.error ?? agentAccounts.error ?? gitAccounts.error ?? renderAccounts.error;
   if (error) return <ErrorText error={error} />;
-  if (!settings.data || !agentAccounts.data || !gitAccounts.data) return <p className="text-sm text-muted">Carregando...</p>;
+  if (!settings.data || !agentAccounts.data || !gitAccounts.data || !renderAccounts.data) return <p className="text-sm text-muted">Carregando...</p>;
   const current = settings.data;
 
   /** Each change is saved right away, keeping the rest of the workspace settings. */
@@ -175,10 +175,26 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
           <ConnectorCard
             icon={<ConnectorIcon id="render" />}
             name="Render"
-            purpose="Deploy em homologação e produção a partir dos workflows. A chave é deste workspace."
-            connected={Boolean(render.data?.connection)}
+            purpose="Deploy em homologação e produção a partir dos workflows."
+            connected={Boolean(current.renderAccountId)}
           >
-            <RenderSection workspace={workspace} />
+            {renderAccounts.data.length === 0 ? (
+              <p className="text-sm text-muted">{noAccountsLink}.</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="max-w-md">
+                  <Select value={current.renderAccountId ?? ''} onChange={(event) => save({ renderAccountId: event.target.value || null })} disabled={update.isPending}>
+                    <option value="">Nenhuma (sem deploy)</option>
+                    {renderAccounts.data.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.label} ({account.ownerName})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {current.renderAccountId && <RenderSection key={current.renderAccountId} workspace={workspace} />}
+              </div>
+            )}
           </ConnectorCard>
         </div>
       </div>

@@ -5,6 +5,8 @@ import { listSkills } from '../skills/service.js';
 
 export interface WorkspaceSettingsData {
   agentAccountId: string | null;
+  /** Render account used for deploys (services per project are set apart). */
+  renderAccountId: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }
@@ -44,13 +46,18 @@ async function readSettings(db: Tx, workspaceId: string): Promise<WorkspaceSetti
   ]);
   return {
     agentAccountId: settings?.agentAccountId ?? null,
+    renderAccountId: settings?.renderAccountId ?? null,
     gitAccountIds: links.map((link) => link.gitAccountId),
     enabledSkillIds: settings?.enabledSkillIds ?? [],
   };
 }
 
 async function writeSettings(tx: Tx, workspaceId: string, settings: WorkspaceSettingsData) {
-  const data = { agentAccountId: settings.agentAccountId, enabledSkillIds: settings.enabledSkillIds };
+  const data = {
+    agentAccountId: settings.agentAccountId,
+    renderAccountId: settings.renderAccountId,
+    enabledSkillIds: settings.enabledSkillIds,
+  };
   await tx.workspaceSettings.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
   await tx.workspaceGitAccount.deleteMany({ where: { workspaceId } });
   await tx.workspaceGitAccount.createMany({
@@ -62,6 +69,10 @@ async function validateSettings(input: WorkspaceSettingsData) {
   if (input.agentAccountId) {
     const exists = await prisma.agentAccount.count({ where: { id: input.agentAccountId } });
     if (!exists) throw new HttpError(422, 'Conta de agente não encontrada.');
+  }
+
+  if (input.renderAccountId && !(await prisma.renderAccount.count({ where: { id: input.renderAccountId } }))) {
+    throw new HttpError(422, 'Conta do Render não encontrada.');
   }
 
   const gitAccounts = await prisma.gitAccount.findMany({

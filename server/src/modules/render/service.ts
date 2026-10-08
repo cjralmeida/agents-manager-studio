@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
-import type { DeployEnvironment, Deployment } from '../../generated/prisma/client.js';
+import type { DeployEnvironment, Deployment, RenderAccount } from '../../generated/prisma/client.js';
 import { secretHint } from '../../lib/crypto.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
@@ -10,21 +10,85 @@ import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { createRenderClient } from './api.js';
 import { isFinished, isSuccess, pullRequestNumber, statusLabel } from './status.js';
 
-// ---------------------------------------------------------------- connection
+// ---------------------------------------------------------------- accounts
+
+const withUsage = { _count: { select: { workspaceSettings: true } } } as const;
+
+function accountResponse(account: RenderAccount & { _count: { workspaceSettings: number } }) {
+  return {
+    id: account.id,
+    label: account.label,
+    ownerName: account.ownerName,
+    apiKeyHint: account.apiKeyHint,
+    workspaceCount: account._count.workspaceSettings,
+  };
+}
+
+/** Name of the Render workspace/team behind a key; also proves the key works. */
+async function ownerNameOf(apiKey: string) {
+  const owners = await createRenderClient(apiKey).owners();
+  return owners.map((owner) => owner.name).join(', ') || 'Render';
+}
+
+export async function listRenderAccounts() {
+  const accounts = await prisma.renderAccount.findMany({ include: withUsage, orderBy: { label: 'asc' } });
+  return accounts.map(accountResponse);
+}
+
+export async function createRenderAccount(input: { label: string; apiKey: string }) {
+  const ownerName = await ownerNameOf(input.apiKey);
+  const account = await prisma.renderAccount.create({
+    data: { label: input.label, apiKeyEncrypted: secrets.encrypt(input.apiKey), apiKeyHint: secretHint(input.apiKey), ownerName },
+    include: withUsage,
+  });
+  return accountResponse(account);
+}
+
+export async function updateRenderAccount(id: string, input: { label?: string; apiKey?: string }) {
+  await findAccount(id);
+  const keyData = input.apiKey
+    ? { apiKeyEncrypted: secrets.encrypt(input.apiKey), apiKeyHint: secretHint(input.apiKey), ownerName: await ownerNameOf(input.apiKey) }
+    : {};
+  const account = await prisma.renderAccount.update({ where: { id }, data: { label: input.label, ...keyData }, include: withUsage });
+  return accountResponse(account);
+}
+
+/** Checks the stored key on Render again. */
+export async function verifyRenderAccount(id: string) {
+  const account = await findAccount(id);
+  const ownerName = await ownerNameOf(secrets.decrypt(account.apiKeyEncrypted));
+  await prisma.renderAccount.update({ where: { id }, data: { ownerName } });
+  return { ok: true as const, ownerName };
+}
+
+/** Workspaces using it keep their services but lose the account (ON DELETE SET NULL). */
+export async function deleteRenderAccount(id: string) {
+  await findAccount(id);
+  await prisma.renderAccount.delete({ where: { id } });
+}
+
+async function findAccount(id: string) {
+  const account = await prisma.renderAccount.findUnique({ where: { id } });
+  if (!account) throw notFound('Conta do Render não encontrada.');
+  return account;
+}
+
+// ---------------------------------------------------------------- workspace
 
 async function clientFor(workspaceId: string) {
-  const connection = await prisma.renderConnection.findUnique({ where: { workspaceId } });
-  if (!connection) throw new HttpError(422, 'Conecte o Render na aba Conectores do workspace.');
-  return createRenderClient(secrets.decrypt(connection.apiKeyEncrypted));
+  const settings = await prisma.workspaceSettings.findUnique({ where: { workspaceId }, include: { renderAccount: true } });
+  if (!settings?.renderAccount) throw new HttpError(422, 'Escolha uma conta do Render na aba Conectores do workspace.');
+  return createRenderClient(secrets.decrypt(settings.renderAccount.apiKeyEncrypted));
 }
 
 export async function getRenderSettings(workspaceId: string) {
-  const [connection, services] = await Promise.all([
-    prisma.renderConnection.findUnique({ where: { workspaceId } }),
+  const [settings, services] = await Promise.all([
+    prisma.workspaceSettings.findUnique({ where: { workspaceId }, include: { renderAccount: true } }),
     prisma.renderService.findMany({ where: { workspaceId }, orderBy: { serviceName: 'asc' } }),
   ]);
+  const account = settings?.renderAccount;
   return {
-    connection: connection ? { ownerName: connection.ownerName, apiKeyHint: connection.apiKeyHint } : null,
+    connection: account ? { accountId: account.id, label: account.label, ownerName: account.ownerName, apiKeyHint: account.apiKeyHint } : null,
     services: services.map(({ id, projectId, environment, serviceId, serviceName, branch, url, dashboardUrl }) => ({
       id,
       projectId,
@@ -38,36 +102,20 @@ export async function getRenderSettings(workspaceId: string) {
   };
 }
 
-/** Checks the key on Render before saving it. */
-export async function connectRender(workspaceId: string, apiKey: string) {
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
-  if (!workspace) throw notFound('Workspace não encontrado.');
-  const owners = await createRenderClient(apiKey).owners();
-  const data = {
-    apiKeyEncrypted: secrets.encrypt(apiKey),
-    apiKeyHint: secretHint(apiKey),
-    ownerName: owners.map((owner) => owner.name).join(', ') || 'Render',
-  };
-  await prisma.renderConnection.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
-  return getRenderSettings(workspaceId);
-}
-
-/** Workspaces with Render connected (the key is set per workspace), for the Connectors page. */
+/** Workspaces that use a Render account, for the Connectors page. */
 export async function listRenderConnections() {
-  const connections = await prisma.renderConnection.findMany({
-    include: { workspace: { select: { name: true, _count: { select: { renderServices: true } } } } },
+  const settings = await prisma.workspaceSettings.findMany({
+    where: { renderAccountId: { not: null } },
+    include: { renderAccount: true, workspace: { select: { name: true, _count: { select: { renderServices: true } } } } },
     orderBy: { workspace: { name: 'asc' } },
   });
-  return connections.map((connection) => ({
-    workspaceId: connection.workspaceId,
-    workspaceName: connection.workspace.name,
-    ownerName: connection.ownerName,
-    services: connection.workspace._count.renderServices,
+  return settings.map((entry) => ({
+    workspaceId: entry.workspaceId,
+    workspaceName: entry.workspace.name,
+    accountLabel: entry.renderAccount!.label,
+    ownerName: entry.renderAccount!.ownerName,
+    services: entry.workspace._count.renderServices,
   }));
-}
-
-export async function disconnectRender(workspaceId: string) {
-  await prisma.renderConnection.deleteMany({ where: { workspaceId } });
 }
 
 /** Services the key can see, to choose which one runs each project. */
