@@ -116,3 +116,15 @@ export function useStartDeploy(workspaceId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.deployments(workspaceId) }),
   });
 }
+
+export interface RenderConnectionSummary {
+  workspaceId: string;
+  workspaceName: string;
+  ownerName: string;
+  services: number;
+}
+
+/** Workspaces with Render connected (the key is set per workspace). */
+export function useRenderConnections() {
+  return useQuery({ queryKey: ['render', 'connections'] as const, queryFn: () => api.get<RenderConnectionSummary[]>('/render/connections') });
+}

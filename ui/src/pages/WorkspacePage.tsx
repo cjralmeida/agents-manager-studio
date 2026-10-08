@@ -9,6 +9,7 @@ import { Dashboard } from '../components/dashboard/Dashboard';
 import { WorkflowsTab } from '../components/workflows/WorkflowsTab';
 import { Tabs, useTabParam } from '../components/Tabs';
 import { CloneRepositoryForm } from '../components/workspace/CloneRepositoryForm';
+import { WorkspaceConnectorsTab } from '../components/workspace/WorkspaceConnectorsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
@@ -17,6 +18,7 @@ const tabs = [
   { id: 'agents', label: 'Agentes' },
   { id: 'workflows', label: 'Workflows' },
   { id: 'projects', label: 'Projetos' },
+  { id: 'connectors', label: 'Conectores' },
   { id: 'settings', label: 'Configuração' },
 ] as const;
 
@@ -72,6 +74,7 @@ export function WorkspacePage() {
         {activeTab === 'workflows' && <WorkflowsTab workspace={data} />}
         {activeTab === 'dashboard' && <Dashboard workspace={data} />}
         {activeTab === 'projects' && <ProjectsTab workspace={data} />}
+        {activeTab === 'connectors' && <WorkspaceConnectorsTab workspace={data} />}
         {activeTab === 'settings' && <WorkspaceSettingsTab workspace={data} />}
       </div>
     </section>

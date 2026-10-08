@@ -8,6 +8,7 @@ import { OrbiPanel } from './orbi/OrbiPanel';
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/workspaces', label: 'Workspaces', end: true },
+  { to: '/connectors', label: 'Conectores', end: false },
   { to: '/settings', label: 'Configurações', end: false },
 ];
 

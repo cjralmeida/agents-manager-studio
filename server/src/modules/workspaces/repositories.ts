@@ -64,7 +64,7 @@ async function gitlabRepos(host: string, token: string, search: string) {
 /** Repositories the git accounts of the workspace can reach, to clone without typing the URL. */
 export async function listAccountRepositories(workspaceId: string, search = '') {
   const links = await prisma.workspaceGitAccount.findMany({ where: { workspaceId }, include: { gitAccount: true } });
-  if (links.length === 0) throw new HttpError(422, 'Vincule uma conta git (GitHub ou GitLab) na Configuração do workspace para listar repositórios.');
+  if (links.length === 0) throw new HttpError(422, 'Ative uma conta GitHub ou GitLab na aba Conectores do workspace para listar repositórios.');
 
   const repositories: AccountRepository[] = [];
   const warnings: string[] = [];

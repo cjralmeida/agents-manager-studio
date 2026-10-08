@@ -8,6 +8,7 @@ import {
   getRenderSettings,
   listAvailableServices,
   listDeployments,
+  listRenderConnections,
   setProjectService,
   startDeploy,
 } from './service.js';
@@ -20,6 +21,8 @@ const serviceBody = z.object({ projectId: z.uuid(), environment, serviceId: z.st
 const deployBody = z.object({ projectId: z.uuid(), environment: environment.default('HOMOLOGACAO') }).strict();
 
 export async function renderRoutes(app: FastifyInstance) {
+  app.get('/render/connections', async () => listRenderConnections());
+
   app.get('/workspaces/:id/render', async (request) => getRenderSettings(parseInput(workspaceParams, request.params).id));
 
   app.put('/workspaces/:id/render', async (request) => {

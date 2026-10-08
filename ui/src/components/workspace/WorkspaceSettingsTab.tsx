@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { type AgentAccount, type GitAccount, useAgentAccounts, useGitAccounts } from '../../api/accounts';
 import { type Skill, skillSourceLabels, useSkills } from '../../api/skills';
 import { type WorkspaceDetail, useWorkspaces } from '../../api/workspaces';
 import {
@@ -9,50 +7,34 @@ import {
   useUpdateWorkspaceSettings,
   useWorkspaceSettings,
 } from '../../api/workspaceSettings';
-import { remoteHost } from '../../lib/git';
-import { BoardLinkSection } from '../board/BoardLinkSection';
-import { RenderSection } from '../render/RenderSection';
 import { Badge } from '../Badge';
+import { BoardBehaviorSection } from '../board/BoardLinkSection';
 import { Button } from '../Button';
-import { ErrorText, Field, Select } from '../form';
-import { gitProviderLabels } from '../settings/GitAccountsSection';
+import { ErrorText } from '../form';
 import { groupSkills } from '../settings/SkillsSection';
 
+/** What belongs only to the workspace: skills, how the board is handled, copying the setup. Tools live in Conectores. */
 export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const settings = useWorkspaceSettings(workspace.id);
-  const agentAccounts = useAgentAccounts();
-  const gitAccounts = useGitAccounts();
   const skills = useSkills();
 
-  const error = settings.error ?? agentAccounts.error ?? gitAccounts.error ?? skills.error;
+  const error = settings.error ?? skills.error;
   if (error) return <ErrorText error={error} />;
-  if (!settings.data || !agentAccounts.data || !gitAccounts.data || !skills.data) {
-    return <p className="text-sm text-muted">Carregando...</p>;
-  }
+  if (!settings.data || !skills.data) return <p className="text-sm text-muted">Carregando...</p>;
 
   return (
-    <div className="space-y-8">
-      <SettingsForm
+    <div className="max-w-5xl space-y-8">
+      <SkillsForm
         // Remount with fresh state whenever the saved settings change.
         key={settings.dataUpdatedAt}
         workspace={workspace}
         initial={settings.data}
-        agentAccounts={agentAccounts.data}
-        gitAccounts={gitAccounts.data}
         skills={skills.data}
       />
-      <BoardLinkSection workspaceId={workspace.id} />
-      <RenderSection workspace={workspace} />
+      <BoardBehaviorSection workspaceId={workspace.id} />
+      <CopySettingsPanel workspaceId={workspace.id} disabled={false} />
     </div>
   );
-}
-
-interface SettingsFormProps {
-  workspace: WorkspaceDetail;
-  initial: WorkspaceSettings;
-  agentAccounts: AgentAccount[];
-  gitAccounts: GitAccount[];
-  skills: Skill[];
 }
 
 function toggle(values: string[], value: string) {
@@ -63,149 +45,46 @@ function sameItems(a: string[], b: string[]) {
   return a.length === b.length && a.every((item) => b.includes(item));
 }
 
-function SettingsForm({ workspace, initial, agentAccounts, gitAccounts, skills }: SettingsFormProps) {
-  const [agentAccountId, setAgentAccountId] = useState(initial.agentAccountId);
-  const [gitAccountIds, setGitAccountIds] = useState(initial.gitAccountIds);
+function SkillsForm({ workspace, initial, skills }: { workspace: WorkspaceDetail; initial: WorkspaceSettings; skills: Skill[] }) {
   const [enabledSkillIds, setEnabledSkillIds] = useState(initial.enabledSkillIds);
   const update = useUpdateWorkspaceSettings(workspace.id);
-
-  const isDirty =
-    agentAccountId !== initial.agentAccountId ||
-    !sameItems(gitAccountIds, initial.gitAccountIds) ||
-    !sameItems(enabledSkillIds, initial.enabledSkillIds);
-
-  const selectedGitAccounts = gitAccounts.filter((account) => gitAccountIds.includes(account.id));
-  const selectedHosts = selectedGitAccounts.map((account) => account.host);
-  const duplicatedHost = selectedHosts.find((host, index) => selectedHosts.indexOf(host) !== index);
-
-  const projectHosts = [
-    ...new Set(
-      workspace.projects
-        .filter((project) => !project.isMissing && project.gitRemoteUrl)
-        .map((project) => remoteHost(project.gitRemoteUrl ?? ''))
-        .filter((host): host is string => host !== null),
-    ),
-  ].sort();
-
-  const handleSave = () => update.mutate({ agentAccountId, gitAccountIds, enabledSkillIds });
+  const isDirty = !sameItems(enabledSkillIds, initial.enabledSkillIds);
 
   return (
-    <>
-      <section className="rounded-lg border border-border bg-panel p-4">
-        <h2 className="text-base font-semibold">Inteligência artificial</h2>
-
-        <h3 className="mt-4 text-sm font-medium">Conta de agente</h3>
-        <div className="mt-3 max-w-sm">
-          <Field label="Claude" hint={agentAccounts.length === 0 && <NoAccountsHint tab="ai" />}>
-            <Select value={agentAccountId ?? ''} onChange={(event) => setAgentAccountId(event.target.value || null)}>
-              <option value="">Nenhuma</option>
-              {agentAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.label} ({account.tokenHint})
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        <h3 className="mt-6 text-sm font-medium">Skills</h3>
-        <p className="mt-1 text-xs text-muted">
-          Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code.
-        </p>
-        {groupSkills(skills).map(([source, items]) => (
-          <div key={source} className="mt-3">
-            <h4 className="text-xs font-medium tracking-wider text-muted uppercase">{skillSourceLabels[source]}</h4>
-            <ul className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
-              {items.map((skill) => (
-                <li key={skill.id}>
-                  <label className="flex items-start gap-2 text-sm" title={skill.description}>
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={enabledSkillIds.includes(skill.id)}
-                      onChange={() => setEnabledSkillIds(toggle(enabledSkillIds, skill.id))}
-                    />
-                    <span>
-                      {skill.name}
-                      <span className="line-clamp-1 text-xs text-muted">{skill.description}</span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
-
-      <section className="rounded-lg border border-border bg-panel p-4">
-        <h2 className="text-base font-semibold">Git</h2>
-
-        <h3 className="mt-4 text-sm font-medium">Contas</h3>
-        <p className="mt-1 text-xs text-muted">
-          O agente usa a conta cujo host é o mesmo do remote do projeto, por isso só uma conta por host.
-        </p>
-
-        {projectHosts.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="text-muted">Hosts dos projetos:</span>
-            {projectHosts.map((host) => (
-              <Badge key={host} tone={selectedHosts.includes(host) ? 'success' : 'warning'}>
-                {host} {selectedHosts.includes(host) ? '✓' : '— sem conta'}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {gitAccounts.length === 0 ? (
-          <p className="mt-3 text-sm">
-            <NoAccountsHint tab="git" />
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-1">
-            {gitAccounts.map((account) => (
-              <li key={account.id}>
-                <label className="flex items-center gap-2 text-sm">
+    <section className="rounded-lg border border-border bg-panel p-4">
+      <h2 className="text-base font-semibold">Skills</h2>
+      <p className="mt-1 text-xs text-muted">Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code.</p>
+      {groupSkills(skills).map(([source, items]) => (
+        <div key={source} className="mt-3">
+          <h3 className="text-xs font-medium tracking-wider text-muted uppercase">{skillSourceLabels[source]}</h3>
+          <ul className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
+            {items.map((skill) => (
+              <li key={skill.id}>
+                <label className="flex items-start gap-2 text-sm" title={skill.description}>
                   <input
                     type="checkbox"
-                    checked={gitAccountIds.includes(account.id)}
-                    onChange={() => setGitAccountIds(toggle(gitAccountIds, account.id))}
+                    className="mt-1"
+                    checked={enabledSkillIds.includes(skill.id)}
+                    onChange={() => setEnabledSkillIds(toggle(enabledSkillIds, skill.id))}
                   />
-                  <Badge tone="info">{gitProviderLabels[account.provider]}</Badge>
-                  <span>{account.label}</span>
-                  <span className="text-xs text-muted">
-                    @{account.username} · {account.host}
+                  <span>
+                    {skill.name}
+                    <span className="line-clamp-1 text-xs text-muted">{skill.description}</span>
                   </span>
                 </label>
               </li>
             ))}
           </ul>
-        )}
-        {duplicatedHost && (
-          <p className="mt-2 text-sm text-red-300">Selecione só uma conta para {duplicatedHost}.</p>
-        )}
-      </section>
-
-      <div className="flex items-center gap-3">
-        <Button variant="primary" onClick={handleSave} disabled={!isDirty || !!duplicatedHost || update.isPending}>
-          {update.isPending ? 'Salvando...' : 'Salvar configuração'}
+        </div>
+      ))}
+      <div className="mt-4 flex items-center gap-3">
+        <Button variant="primary" onClick={() => update.mutate({ ...initial, enabledSkillIds })} disabled={!isDirty || update.isPending}>
+          {update.isPending ? 'Salvando...' : 'Salvar skills'}
         </Button>
         {isDirty && <span className="text-xs text-amber-300">Alterações não salvas</span>}
         <ErrorText error={update.error} />
       </div>
-
-      <CopySettingsPanel workspaceId={workspace.id} disabled={isDirty} />
-    </>
-  );
-}
-
-function NoAccountsHint({ tab }: { tab: 'ai' | 'git' }) {
-  return (
-    <>
-      Nenhuma conta cadastrada.{' '}
-      <Link to={tab === 'ai' ? '/settings' : '/settings?tab=git'} className="text-accent hover:underline">
-        Cadastrar em Configurações
-      </Link>
-    </>
+    </section>
   );
 }
 
@@ -227,7 +106,8 @@ function CopySettingsPanel({ workspaceId, disabled }: { workspaceId: string; dis
     <section className="rounded-lg border border-border p-4">
       <h3 className="text-sm font-medium">Copiar configuração</h3>
       <p className="mt-1 text-xs text-muted">
-        Conta de agente, contas git e skills substituem a configuração dos workspaces selecionados.
+        A conta Claude, as contas git (aba Conectores) e as skills substituem as dos workspaces selecionados. O quadro e o
+        Render são próprios de cada workspace e não são copiados.
       </p>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
         {targets.map((workspace) => (

@@ -14,7 +14,7 @@ import { isFinished, isSuccess, pullRequestNumber, statusLabel } from './status.
 
 async function clientFor(workspaceId: string) {
   const connection = await prisma.renderConnection.findUnique({ where: { workspaceId } });
-  if (!connection) throw new HttpError(422, 'Conecte uma conta do Render nas configurações do workspace.');
+  if (!connection) throw new HttpError(422, 'Conecte o Render na aba Conectores do workspace.');
   return createRenderClient(secrets.decrypt(connection.apiKeyEncrypted));
 }
 
@@ -50,6 +50,20 @@ export async function connectRender(workspaceId: string, apiKey: string) {
   };
   await prisma.renderConnection.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
   return getRenderSettings(workspaceId);
+}
+
+/** Workspaces with Render connected (the key is set per workspace), for the Connectors page. */
+export async function listRenderConnections() {
+  const connections = await prisma.renderConnection.findMany({
+    include: { workspace: { select: { name: true, _count: { select: { renderServices: true } } } } },
+    orderBy: { workspace: { name: 'asc' } },
+  });
+  return connections.map((connection) => ({
+    workspaceId: connection.workspaceId,
+    workspaceName: connection.workspace.name,
+    ownerName: connection.ownerName,
+    services: connection.workspace._count.renderServices,
+  }));
 }
 
 export async function disconnectRender(workspaceId: string) {

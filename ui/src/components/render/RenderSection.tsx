@@ -16,14 +16,13 @@ import { ErrorText, Field, Select, TextInput } from '../form';
 
 const ENVIRONMENTS: DeployEnvironment[] = ['HOMOLOGACAO', 'PRODUCAO'];
 
-/** Render account of the workspace and which service runs each project in each environment. */
+/** Render account of the workspace and which service runs each project in each environment (inside its connector card). */
 export function RenderSection({ workspace }: { workspace: WorkspaceDetail }) {
   const settings = useRenderSettings(workspace.id);
 
   return (
-    <section className="rounded-lg border border-border bg-panel p-4">
-      <h2 className="text-base font-semibold">Deploy (Render)</h2>
-      <p className="mt-1 text-xs text-muted">
+    <div>
+      <p className="text-xs text-muted">
         Os workflows fazem o merge do PR/MR do agente e disparam o deploy do serviço de homologação do projeto. A chave
         fica criptografada e nunca vai para os agentes.
       </p>
@@ -34,7 +33,7 @@ export function RenderSection({ workspace }: { workspace: WorkspaceDetail }) {
         ) : (
           <ConnectForm workspaceId={workspace.id} />
         ))}
-    </section>
+    </div>
   );
 }
 

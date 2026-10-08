@@ -12,7 +12,7 @@ export function NewWorkspaceForm({ onCancel }: { onCancel: () => void }) {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    create.mutate(name.trim(), { onSuccess: (workspace) => navigate(`/workspaces/${workspace.id}?tab=settings`) });
+    create.mutate(name.trim(), { onSuccess: (workspace) => navigate(`/workspaces/${workspace.id}?tab=connectors`) });
   };
 
   return (

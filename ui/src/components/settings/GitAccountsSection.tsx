@@ -21,12 +21,14 @@ const tokenHints: Record<AccountGitProvider, string> = {
   GITLAB: 'Personal access token com os escopos "api" e "write_repository".',
 };
 
-export function GitAccountsSection() {
+/** Git accounts; with `provider`, only that provider's (used inside its connector). */
+export function GitAccountsSection({ provider }: { provider?: AccountGitProvider }) {
   const accounts = useGitAccounts();
+  const list = provider ? accounts.data?.filter((account) => account.provider === provider) : accounts.data;
 
   return (
     <section>
-      <h2 className="text-base font-semibold">Contas Git</h2>
+      <h2 className="text-base font-semibold">{provider ? 'Contas' : 'Contas Git'}</h2>
       <p className="mt-1 text-sm text-muted">
         Usadas pelos agentes para push e para abrir PR/MR. O token é verificado no provedor e salvo criptografado.
       </p>
@@ -43,8 +45,8 @@ export function GitAccountsSection() {
             </tr>
           </thead>
           <tbody>
-            {accounts.data?.map((account) => <GitAccountRow key={account.id} account={account} />)}
-            {accounts.data?.length === 0 && (
+            {list?.map((account) => <GitAccountRow key={account.id} account={account} />)}
+            {list?.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-3 text-muted">
                   Nenhuma conta cadastrada.
@@ -55,7 +57,7 @@ export function GitAccountsSection() {
         </table>
       </div>
 
-      <NewGitAccountForm />
+      <NewGitAccountForm fixedProvider={provider} />
     </section>
   );
 }
@@ -156,8 +158,8 @@ function EditGitAccountRow({ account, onDone }: { account: GitAccount; onDone: (
   );
 }
 
-function NewGitAccountForm() {
-  const [provider, setProvider] = useState<AccountGitProvider>('GITHUB');
+function NewGitAccountForm({ fixedProvider }: { fixedProvider?: AccountGitProvider }) {
+  const [provider, setProvider] = useState<AccountGitProvider>(fixedProvider ?? 'GITHUB');
   const [label, setLabel] = useState('');
   const [host, setHost] = useState('');
   const [token, setToken] = useState('');
@@ -180,13 +182,15 @@ function NewGitAccountForm() {
   return (
     <form onSubmit={handleSubmit} className="mt-4 rounded-lg border border-border bg-panel p-4">
       <h3 className="text-sm font-medium">Adicionar conta</h3>
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
-        <Field label="Provedor">
-          <Select value={provider} onChange={(event) => setProvider(event.target.value as AccountGitProvider)}>
-            <option value="GITHUB">GitHub</option>
-            <option value="GITLAB">GitLab</option>
-          </Select>
-        </Field>
+      <div className={`mt-3 grid grid-cols-1 gap-3 ${fixedProvider ? 'md:grid-cols-3' : 'md:grid-cols-4'}`}>
+        {!fixedProvider && (
+          <Field label="Provedor">
+            <Select value={provider} onChange={(event) => setProvider(event.target.value as AccountGitProvider)}>
+              <option value="GITHUB">GitHub</option>
+              <option value="GITLAB">GitLab</option>
+            </Select>
+          </Field>
+        )}
         <Field label="Nome">
           <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Ex.: GitLab GlobalFarm" required />
         </Field>

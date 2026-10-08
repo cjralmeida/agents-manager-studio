@@ -1,14 +1,11 @@
-import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
-import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
-import { GitAccountsSection } from '../components/settings/GitAccountsSection';
+import { Link } from 'react-router';
 import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { Tabs, useTabParam } from '../components/Tabs';
 
 const tabs = [
   { id: 'general', label: 'Geral' },
-  { id: 'ai', label: 'Inteligência artificial' },
-  { id: 'git', label: 'Git' },
+  { id: 'skills', label: 'Skills' },
 ] as const;
 
 export function SettingsPage() {
@@ -17,24 +14,17 @@ export function SettingsPage() {
   return (
     <div className="max-w-5xl">
       <h1 className="text-xl font-semibold">Configurações</h1>
+      <p className="mt-1 text-sm text-muted">
+        As contas do Claude, GitHub, GitLab e Render ficam em{' '}
+        <Link to="/connectors" className="text-accent hover:underline">
+          Conectores
+        </Link>
+        .
+      </p>
       <div className="mt-4">
         <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       </div>
-      <div className="mt-6 space-y-10">
-        {activeTab === 'general' ? (
-          <ProjectsRootSection />
-        ) : activeTab === 'ai' ? (
-          <>
-            <AgentAccountsSection />
-            <SkillsSection />
-          </>
-        ) : (
-          <>
-            <GitAccountsSection />
-            <BoardTemplateSection />
-          </>
-        )}
-      </div>
+      <div className="mt-6 space-y-10">{activeTab === 'general' ? <ProjectsRootSection /> : <SkillsSection />}</div>
     </div>
   );
 }

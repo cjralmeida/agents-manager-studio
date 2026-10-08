@@ -41,6 +41,14 @@ server/     backend: src/modules/<modulo>/routes.ts + service.ts, prisma/
 ui/         frontend: src/api, src/components, src/pages
 ```
 
+## Conectores
+
+As ferramentas que o Studio e os agentes usam ficam em **Conectores** (menu lateral): **Claude**, **GitHub**, **GitLab** e **Render**.
+
+- **Página Conectores:** onde você conecta as contas. No card do GitHub também fica o projeto-modelo de quadro.
+- **Aba Conectores de cada workspace:** onde você escolhe quais contas os agentes daquele workspace usam, vincula o quadro de tarefas e configura o Render (a chave e os serviços são por workspace).
+- **Aba Configuração do workspace:** só o que é do próprio workspace: skills, comportamento do quadro (intervalo e papéis das colunas) e copiar a configuração para outros workspaces.
+
 ## Workspaces
 
 Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
@@ -126,7 +134,7 @@ O **Órbi** é o assistente do Studio. Ele abre pelo botão no canto inferior di
 
 ## Deploy (Render)
 
-O deploy é configurado em **Configuração do workspace → Deploy (Render)**:
+O deploy é configurado em **Conectores do workspace → Render**:
 
 1. Conecte com a chave de API do Render. Ela fica criptografada e nunca vai para os agentes.
 2. Escolha o serviço de **homologação** e, se houver, o de **produção** de cada projeto.
