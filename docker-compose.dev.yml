@@ -1,0 +1,36 @@
+# Development override: server and ui run from the source with hot reload.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  server:
+    build:
+      context: ./server
+      target: deps
+    command: sh -c "npm install && npx prisma generate && npm run dev"
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      # File events from Windows bind mounts are unreliable; poll instead.
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./server:/app
+      - server_node_modules:/app/node_modules
+
+  ui:
+    build:
+      context: ./ui
+      target: deps
+    command: sh -c "npm install && npm run dev"
+    environment:
+      # File events from Windows bind mounts are unreliable; poll instead.
+      VITE_USE_POLLING: "true"
+    volumes:
+      - ./ui:/app
+      - ui_node_modules:/app/node_modules
+
+  proxy:
+    environment:
+      UI_UPSTREAM: ui:5173
+
+volumes:
+  server_node_modules:
+  ui_node_modules:

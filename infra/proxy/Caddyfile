@@ -1,0 +1,17 @@
+{
+	auto_https off
+}
+
+http://studio.localhost {
+	handle /api/* {
+		reverse_proxy server:3000
+	}
+
+	handle {
+		reverse_proxy {$UI_UPSTREAM}
+	}
+}
+
+http://n8n.localhost {
+	reverse_proxy n8n:5678
+}
