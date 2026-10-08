@@ -44,3 +44,24 @@ body {
     box-shadow: 0 0 0 1px rgb(251 191 36 / 1);
   }
 }
+
+/* Amber agent of the logo while an agent waits for the user. */
+@keyframes logo-alert {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.logo-alert {
+  animation: logo-alert 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-alert {
+    animation: none;
+  }
+}

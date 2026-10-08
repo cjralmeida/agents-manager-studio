@@ -77,7 +77,7 @@ export function useAgentNotifications(enabled: boolean) {
       const message = MESSAGES[agent.status];
       if (!message || before.get(agent.id) === agent.status) continue;
       const { title, body } = message(agent);
-      const notification = new Notification(title, { body, tag: `${agent.id}:${agent.status}` });
+      const notification = new Notification(title, { body, tag: `${agent.id}:${agent.status}`, icon: '/icon-192.png' });
       notification.onclick = () => {
         window.focus();
         navigate(`/agents/${agent.id}`);
