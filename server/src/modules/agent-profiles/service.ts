@@ -3,8 +3,7 @@ import { type AgentProfile, Prisma } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import type { AgentModel } from '../agents/service.js';
 
-/** Studio tool groups a workspace agent can use. */
-export const PROFILE_TOOLS = ['board'] as const;
+import type { PROFILE_TOOLS } from './schema.js';
 
 export interface AgentProfileInput {
   name: string;

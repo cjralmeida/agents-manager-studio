@@ -58,6 +58,18 @@ export const stepSchema = z.discriminatedUnion('kind', [
 export type WorkflowStep = z.infer<typeof stepSchema>;
 export type AgentStep = Extract<WorkflowStep, { kind: 'agent' }>;
 
+/** A workflow as the form (and Órbi's proposals) describe it. */
+export const workflowSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(500).default(''),
+    isEnabled: z.boolean().default(true),
+    trigger: triggerSchema,
+    steps: z.array(stepSchema).min(1).max(12),
+    maxConcurrentRuns: z.number().int().min(1).max(5).default(1),
+  })
+  .strict();
+
 /** What validation needs to know about the workspace agents used by the steps. */
 export interface ProfileFacts {
   id: string;

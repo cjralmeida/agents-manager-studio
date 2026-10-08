@@ -152,6 +152,12 @@ const STUDIO_TOOL_LABELS = {
   board_get_task: () => 'Quadro: ler tarefa',
   board_create_task: (input) => `Quadro: criar tarefa "${input.title ?? ''}"`,
   board_update_task: (input) => `Quadro: atualizar tarefa${input.column ? ` → "${input.column}"` : ''}`,
+  studio_context: () => 'Lendo o workspace',
+  studio_list_runs: () => 'Lendo execuções de workflows',
+  studio_list_executions: () => 'Lendo execuções de agentes',
+  studio_get_execution: () => 'Lendo uma execução',
+  studio_usage: () => 'Lendo o consumo',
+  studio_propose: (input) => `Proposta: ${input.summary ?? input.kind ?? ''}`,
 };
 
 function summarizeTool(name, input = {}) {

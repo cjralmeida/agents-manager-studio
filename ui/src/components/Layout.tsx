@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { useWorkspaces } from '../api/workspaces';
 import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
 import { Logo } from './Logo';
+import { OrbiPanel } from './orbi/OrbiPanel';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -18,6 +20,7 @@ export function Layout() {
   const activeWorkspaces = workspaces.data?.filter((workspace) => !workspace.isMissing) ?? [];
   const notifications = useNotificationSettings();
   const waiting = useAgentNotifications(notifications.enabled);
+  const [orbiOpen, setOrbiOpen] = useState(false);
 
   return (
     <div className="flex h-full">
@@ -60,6 +63,20 @@ export function Layout() {
       <main className="flex-1 overflow-auto p-6">
         <Outlet />
       </main>
+
+      {orbiOpen ? (
+        <OrbiPanel onClose={() => setOrbiOpen(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOrbiOpen(true)}
+          className="fixed right-5 bottom-5 z-30 flex items-center gap-2 rounded-full border border-border bg-panel py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-lg transition-colors hover:border-accent/60"
+          title="Abrir o Órbi, o assistente do Studio"
+        >
+          <Logo size={30} />
+          Órbi
+        </button>
+      )}
     </div>
   );
 }

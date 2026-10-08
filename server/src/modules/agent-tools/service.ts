@@ -4,6 +4,7 @@ import { HttpError } from '../../lib/errors.js';
 import { boardContext, createTask, moveItem, setItemField } from '../boards/service.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
+import { runStudioTool } from './studio.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
 export const AGENT_TOOL_NAMES = [
@@ -12,6 +13,12 @@ export const AGENT_TOOL_NAMES = [
   'board_get_task',
   'board_create_task',
   'board_update_task',
+  'studio_context',
+  'studio_list_runs',
+  'studio_list_executions',
+  'studio_get_execution',
+  'studio_usage',
+  'studio_propose',
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -58,6 +65,28 @@ async function mergeResult(agentId: string, patch: AgentResult) {
   await prisma.agent.update({ where: { id: agentId }, data: { result: next as Prisma.InputJsonValue } });
 }
 
+/**
+ * Board task from names (repository, column, "Campo": "opção"), as agents and Órbi write it.
+ * Throws a message the agent can act on when a name does not exist.
+ */
+export async function prepareTaskByNames(workspaceId: string, args: Args) {
+  const { snapshot, repos } = await boardContext(workspaceId);
+  const title = text(args.title, 250);
+  if (!title) throw new HttpError(400, 'Informe o título da tarefa.');
+  const repositoryName = text(args.repository);
+  const repository = repositoryName
+    ? (repos.find((repo) => repo.path.toLowerCase() === repositoryName.toLowerCase()) ??
+      findByName(repos.map((repo) => ({ ...repo, name: repo.projectName })), repositoryName))
+    : null;
+  if (repositoryName && !repository) {
+    throw new HttpError(422, `Repositório "${repositoryName}" não é do workspace. Repositórios: ${repos.map((repo) => repo.path).join(', ')}.`);
+  }
+  const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
+  if (errors.length > 0) throw new HttpError(422, errors.join(' '));
+  const column = text(args.column) ? resolveColumn(snapshot.columns, text(args.column)!) : null;
+  return { title, body: text(args.body) ?? '', repository: repository?.path ?? null, columnId: column?.id ?? null, fields: resolved };
+}
+
 /** Runs a tool for an agent. Problems the agent can fix are thrown as messages it will read. */
 export async function runAgentTool(agentId: string, name: AgentToolName, args: Args) {
   const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -69,7 +98,14 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     return { ok: true, message: 'Resultado registrado. Encerre com um resumo curto.' };
   }
 
-  if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente não tem acesso ao quadro de tarefas.');
+  if (name.startsWith('studio_')) {
+    if (!agent.tools.includes('studio')) throw new HttpError(403, 'Ferramenta exclusiva do Órbi.');
+    return runStudioTool(agent.id, agent.workspaceId, name, args);
+  }
+
+  if (!agent.tools.includes('board') && !agent.tools.includes('board_read')) {
+    throw new HttpError(403, 'Este agente não tem acesso ao quadro de tarefas.');
+  }
   const { snapshot, repos } = await boardContext(agent.workspaceId);
   const findItem = (id: unknown) => {
     const item = snapshot.items.find((entry) => entry.id === id);
@@ -98,27 +134,9 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       return describeItem(snapshot, findItem(args.id), true);
 
     case 'board_create_task': {
-      const title = text(args.title, 250);
-      if (!title) throw new HttpError(400, 'Informe o título da tarefa.');
-      const repositoryName = text(args.repository);
-      const repository = repositoryName
-        ? (repos.find((repo) => repo.path.toLowerCase() === repositoryName.toLowerCase()) ??
-          findByName(repos.map((repo) => ({ ...repo, name: repo.projectName })), repositoryName))
-        : null;
-      if (repositoryName && !repository) {
-        throw new HttpError(422, `Repositório "${repositoryName}" não é do workspace. Repositórios: ${repos.map((repo) => repo.path).join(', ')}.`);
-      }
-      const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
-      if (errors.length > 0) throw new HttpError(422, errors.join(' '));
-      const column = text(args.column) ? resolveColumn(snapshot.columns, text(args.column)!) : null;
-
-      const { id } = await createTask(agent.workspaceId, {
-        title,
-        body: text(args.body) ?? '',
-        repository: repository?.path ?? null,
-        columnId: column?.id ?? null,
-        fields: resolved,
-      });
+      if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      const { id } = await createTask(agent.workspaceId, await prepareTaskByNames(agent.workspaceId, args));
+      const title = text(args.title, 250)!;
       const created = (await boardContext(agent.workspaceId)).snapshot.items.find((item) => item.id === id);
       const summary = created ? describeItem(snapshot, created) : { id, title, ref: null, url: null };
       await mergeResult(agentId, { createdTasks: [{ id, title, ref: summary.ref, url: summary.url }] });
@@ -126,6 +144,7 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     }
 
     case 'board_update_task': {
+      if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
       const item = findItem(args.id);
       if (text(args.column)) await moveItem(agent.workspaceId, item.id, resolveColumn(snapshot.columns, text(args.column)!).id);
       const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);

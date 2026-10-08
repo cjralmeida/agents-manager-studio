@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../../config.js';
 import { createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
+import { ORBI_GUIDE } from '../assistant/guide.js';
 import { workdirHostPath } from './workdir.js';
 
 export const AGENT_LABEL = 'agents-manager-studio.agent-id';
@@ -16,6 +17,7 @@ export function hashSecret(secret: string) {
 
 export interface RuntimeAgent {
   id: string;
+  kind: 'TASK' | 'ASSISTANT';
   model: string;
   workdir: string;
   branch: string;
@@ -34,6 +36,8 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output'>) {
 }
 
 function systemPromptAppend(agent: RuntimeAgent) {
+  // Órbi has its own guide (always the current version, also for resumed conversations).
+  if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
   const lines = ['Você é um agente gerenciado pelo Agents Manager Studio.'];
 

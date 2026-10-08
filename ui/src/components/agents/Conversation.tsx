@@ -1,11 +1,21 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentEvent, useAgentEvents, useSendAgentMessage, LIVE_STATUSES } from '../../api/agents';
 import { formatTime } from '../../lib/time';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { QuestionCard } from './QuestionCard';
 
-export function Conversation({ agent }: { agent: Agent }) {
+interface ConversationProps {
+  agent: Agent;
+  /** Who answers ("Agente", "Órbi"). */
+  speaker?: string;
+  /** Renders event types the timeline does not know (e.g. Órbi proposals). */
+  renderEvent?: (event: AgentEvent) => ReactNode | undefined;
+  /** Replaces the default message box. */
+  composer?: ReactNode;
+}
+
+export function Conversation({ agent, speaker = 'Agente', renderEvent, composer }: ConversationProps) {
   const events = useAgentEvents(agent.id, LIVE_STATUSES.includes(agent.status));
   const bottomRef = useRef<HTMLDivElement>(null);
   const count = events.data?.length ?? 0;
@@ -20,42 +30,49 @@ export function Conversation({ agent }: { agent: Agent }) {
       <ol className="space-y-3">
         {events.data?.map((event) => (
           <li key={event.id}>
-            <EventItem event={event} />
+            {renderEvent?.(event) ?? <EventItem event={event} speaker={speaker} />}
           </li>
         ))}
       </ol>
 
-      {agent.status === 'RUNNING' && <p className="animate-pulse text-sm text-muted">O agente está trabalhando...</p>}
+      {agent.status === 'RUNNING' && <p className="animate-pulse text-sm text-muted">{speaker === 'Agente' ? 'O agente está trabalhando...' : `${speaker} está pensando...`}</p>}
       {agent.status === 'PREPARING' && <p className="animate-pulse text-sm text-muted">Preparando a cópia do projeto...</p>}
       {agent.status === 'WAITING_INPUT' && agent.pendingQuestion && (
         <QuestionCard agentId={agent.id} questions={agent.pendingQuestion} />
       )}
 
       <div ref={bottomRef} />
-      {!['CANCELLED', 'FINALIZING'].includes(agent.status) && <Composer agent={agent} />}
+      {!['CANCELLED', 'FINALIZING'].includes(agent.status) && (composer ?? <Composer agent={agent} />)}
     </div>
   );
 }
 
-function EventItem({ event }: { event: AgentEvent }) {
+/** Context added to messages for Órbi ("[Contexto: ...]") is for the assistant, not for display. */
+const withoutContext = (text: string) => text.replace(/\n\n\[Contexto: [^\]]*\]$/, '');
+
+function EventItem({ event, speaker }: { event: AgentEvent; speaker: string }) {
   const time = <span className="text-xs text-muted">{formatTime(event.createdAt)}</span>;
 
   switch (event.type) {
     case 'user_message':
+      // Messages the Studio sends on the user's behalf (e.g. a proposal was applied).
+      if (event.data.text.startsWith('[Studio] ')) {
+        return <p className="text-center text-xs text-muted">{event.data.text.slice('[Studio] '.length)}</p>;
+      }
       return (
         <div className="ml-auto max-w-[85%] rounded-lg bg-accent/15 px-3 py-2">
           <div className="mb-1 flex justify-between gap-4 text-xs text-muted">
             <span>Você</span>
             {time}
           </div>
-          <p className="text-sm whitespace-pre-wrap">{event.data.text}</p>
+          <p className="text-sm whitespace-pre-wrap">{withoutContext(event.data.text)}</p>
         </div>
       );
     case 'assistant_text':
       return (
         <div className="max-w-[85%] rounded-lg border border-border bg-panel px-3 py-2">
           <div className="mb-1 flex justify-between gap-4 text-xs text-muted">
-            <span>Agente</span>
+            <span>{speaker}</span>
             {time}
           </div>
           <p className="text-sm whitespace-pre-wrap">{event.data.text}</p>

@@ -49,6 +49,8 @@ export interface LaunchAgentInput {
   confirmHighUsage?: boolean;
   /** Workflow run launching the agent (not accepted from the public API). */
   workflowRunId?: string;
+  /** Órbi conversation in this workspace (not accepted from the public launch API). */
+  assistantWorkspaceId?: string;
 }
 
 /** Marks agents without a repository (their work folder is ready but has no base commit). */
@@ -93,6 +95,8 @@ export async function markFailed(agentId: string, error: unknown) {
 export async function listAgents(filter: { workspaceId?: string; profileId?: string; unassigned?: boolean }) {
   const agents = await prisma.agent.findMany({
     where: {
+      // Órbi conversations are not executions: they live in the assistant panel.
+      kind: 'TASK',
       ...(filter.workspaceId && { workspaceId: filter.workspaceId }),
       ...(filter.profileId && { profileId: filter.profileId }),
       ...(filter.unassigned && { profileId: null }),
@@ -163,10 +167,11 @@ async function resolveProject(input: LaunchAgentInput, profile: AgentProfile | n
 }
 
 export async function launchAgent(input: LaunchAgentInput) {
+  const isAssistant = Boolean(input.assistantWorkspaceId);
   const profile = input.profileId ? await prisma.agentProfile.findUnique({ where: { id: input.profileId } }) : null;
   if (input.profileId && !profile) throw notFound('Agente do workspace não encontrado.');
-  const project = await resolveProject(input, profile);
-  const workspaceId = project?.workspaceId ?? profile!.workspaceId;
+  const project = isAssistant ? null : await resolveProject(input, profile);
+  const workspaceId = input.assistantWorkspaceId ?? project?.workspaceId ?? profile!.workspaceId;
   const workspace = project?.workspace ?? (await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } }));
   // Without a repository there is no code to deliver, so the agent reports a result.
   const output = project ? (profile?.output ?? 'PULL_REQUEST') : 'RESULT';
@@ -215,15 +220,17 @@ export async function launchAgent(input: LaunchAgentInput) {
       workspaceId,
       projectId: project?.id ?? null,
       profileId: profile?.id ?? null,
+      kind: isAssistant ? 'ASSISTANT' : 'TASK',
       title,
       model: input.model ?? (profile?.model as AgentModel | undefined) ?? 'sonnet',
       instructions: profile?.instructions ?? '',
       output,
-      tools: profile?.tools ?? [],
+      // Órbi reads everything and proposes changes; it only reads the board.
+      tools: isAssistant ? ['studio', 'board_read'] : (profile?.tools ?? []),
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       baseBranch,
       branch: project ? `agent/${slug ? `${slug}-` : ''}${shortId}` : '-',
-      workdir: `${workspace.name}/${project?.name ?? 'sem-repositorio'}-${shortId}`,
+      workdir: `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
     },

@@ -15,7 +15,8 @@ export interface WorkflowInput {
   maxConcurrentRuns: number;
 }
 
-async function validate(workspaceId: string, input: Pick<WorkflowInput, 'steps' | 'trigger'>) {
+/** Same checks as saving; Órbi uses them to validate a proposal before showing it. */
+export async function validateWorkflow(workspaceId: string, input: Pick<WorkflowInput, 'steps' | 'trigger'>) {
   const profileIds = input.steps.flatMap((step) => (step.kind === 'agent' ? [step.profileId] : []));
   const profiles = await prisma.agentProfile.findMany({ where: { id: { in: profileIds }, workspaceId } });
   const facts: ProfileFacts[] = profiles.map((profile) => ({
@@ -65,7 +66,7 @@ export async function listWorkflows(workspaceId: string) {
 
 export async function createWorkflow(workspaceId: string, input: WorkflowInput) {
   if (!(await prisma.workspace.findUnique({ where: { id: workspaceId } }))) throw notFound('Workspace não encontrado.');
-  await validate(workspaceId, input);
+  await validateWorkflow(workspaceId, input);
   try {
     const workflow = await prisma.workflow.create({
       data: {
@@ -85,7 +86,7 @@ export async function createWorkflow(workspaceId: string, input: WorkflowInput) 
 export async function updateWorkflow(id: string, input: Partial<WorkflowInput>) {
   const current = await findOrThrow(id);
   if (input.steps || input.trigger) {
-    await validate(current.workspaceId, { steps: input.steps ?? parseSteps(current), trigger: input.trigger ?? parseTrigger(current) });
+    await validateWorkflow(current.workspaceId, { steps: input.steps ?? parseSteps(current), trigger: input.trigger ?? parseTrigger(current) });
   }
   try {
     const workflow = await prisma.workflow.update({
@@ -111,7 +112,7 @@ export async function deleteWorkflow(id: string) {
 }
 
 /** Starts a run from a conversation in the Studio; board workflows can also be checked right away. */
-export async function startWorkflow(id: string, message: string | undefined, log: FastifyBaseLogger) {
+export async function startWorkflow(id: string, message: string | undefined, log?: FastifyBaseLogger) {
   const workflow = await findOrThrow(id);
   if (!workflow.isEnabled) throw new HttpError(409, 'Ative o workflow antes de iniciar.');
   const trigger = parseTrigger(workflow);
@@ -183,7 +184,7 @@ export async function getRun(id: string) {
   return runResponse(run);
 }
 
-export async function cancelWorkflowRun(id: string, log: FastifyBaseLogger) {
+export async function cancelWorkflowRun(id: string, log?: FastifyBaseLogger) {
   await cancelRun(id);
   await advanceRun(id, log);
   return getRun(id);

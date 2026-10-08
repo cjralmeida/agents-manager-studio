@@ -137,6 +137,14 @@ model WorkspaceGitAccount {
   @@map("workspace_git_accounts")
 }
 
+/// TASK: a coding/working agent. ASSISTANT: an Órbi conversation (hidden from dashboards and histories).
+enum AgentKind {
+  TASK
+  ASSISTANT
+
+  @@map("agent_kind")
+}
+
 /// What an agent delivers: code changes (commit + PR/MR) or a result reported through the Studio tools.
 enum AgentOutput {
   PULL_REQUEST
@@ -171,6 +179,7 @@ model Agent {
   workspaceId     String      @map("workspace_id") @db.Uuid
   /// Null for agents that do not work on a repository (they get an empty work folder).
   projectId       String?     @map("project_id") @db.Uuid
+  kind            AgentKind   @default(TASK)
   /// Workspace agent (profile) this execution belongs to, if any.
   profileId       String?     @map("profile_id") @db.Uuid
   /// Role instructions of the profile, copied at launch and added to the system prompt.
@@ -225,10 +234,12 @@ model Agent {
   events    AgentEvent[]
   inbox     AgentInbox[]
   usage     AgentUsage[]
+  proposals AssistantProposal[]
 
   @@index([workspaceId])
   @@index([projectId])
   @@index([profileId])
+  @@index([workspaceId, kind])
   @@index([status])
   @@index([taskItemId])
   @@index([workflowRunId])
@@ -508,4 +519,37 @@ model WorkflowStepRun {
   @@index([runId])
   @@index([agentId])
   @@map("workflow_step_runs")
+}
+
+enum ProposalStatus {
+  PENDING
+  APPLIED
+  DISCARDED
+  FAILED
+
+  @@map("proposal_status")
+}
+
+/// A change Órbi proposes (create a workflow, start a run...); it only happens when the user applies it.
+model AssistantProposal {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  /// The Órbi conversation that proposed it.
+  agentId     String         @map("agent_id") @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  /// create_agent, update_agent, delete_agent, create_workflow, update_workflow, delete_workflow,
+  /// start_workflow, cancel_run, create_task.
+  kind        String
+  summary     String
+  payload     Json
+  status      ProposalStatus @default(PENDING)
+  /// What applying it produced (e.g. the created workflow id) or why it failed.
+  result      Json?
+  error       String?
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt   DateTime?      @map("decided_at") @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@map("assistant_proposals")
 }

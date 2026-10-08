@@ -36,6 +36,8 @@ export interface AgentQuestion {
 
 export interface Agent {
   id: string;
+  /** ASSISTANT = an Órbi conversation. */
+  kind: 'TASK' | 'ASSISTANT';
   workspaceId: string;
   workspaceName: string | null;
   projectId: string;
@@ -80,7 +82,8 @@ export type AgentEvent =
   | { id: number; createdAt: string; type: 'turn_end'; data: { isError: boolean; text: string; durationMs?: number } }
   | { id: number; createdAt: string; type: 'status'; data: { message: string } }
   | { id: number; createdAt: string; type: 'error'; data: { message: string } }
-  | { id: number; createdAt: string; type: 'completed'; data: { prUrl: string } };
+  | { id: number; createdAt: string; type: 'completed'; data: { prUrl: string } }
+  | { id: number; createdAt: string; type: 'proposal'; data: { proposalId: string; kind: string; summary: string } };
 
 export interface DiffFile {
   path: string;

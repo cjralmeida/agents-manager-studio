@@ -102,6 +102,16 @@ Os workflows ficam na aba **Workflows** do workspace. Um workflow tem um **gatil
 - **Retomada:** tudo fica no banco, então os workflows continuam de onde pararam quando o Studio reinicia.
 - **Base das cópias:** as cópias novas partem da versão mais recente da branch base no remoto, para que cada tarefa enxergue o que as anteriores já publicaram.
 
+## Órbi (assistente)
+
+O **Órbi** é o assistente do Studio. Ele abre pelo botão no canto inferior direito, em qualquer tela, e sabe em que workspace e página você está.
+
+- **O que ele faz:** monta agentes e workflows a partir de uma descrição, explica falhas de execuções e responde sobre consumo.
+- **Leitura:** é livre.
+- **Mudanças:** toda mudança vira uma **proposta** num cartão com **Aplicar** e **Descartar**. Os tipos de proposta são: criar, alterar ou excluir agentes e workflows; iniciar workflows; cancelar execuções; e criar tarefas. O Studio valida a proposta com as mesmas regras dos formulários, antes de mostrá-la e de novo ao aplicar.
+- **Limites:** ele não vê tokens nem mexe em contas.
+- **Como funciona por dentro:** é uma conversa no mesmo runner dos agentes, com ferramentas próprias (`studio_*`). As instruções dele estão em `server/src/modules/assistant/guide.ts`. As conversas ficam por workspace e não aparecem entre as execuções.
+
 ## Deploy (Render)
 
 O deploy é configurado em **Configuração do workspace → Deploy (Render)**:

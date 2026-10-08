@@ -8,7 +8,7 @@ const asText = (value) => ({ content: [{ type: 'text', text: JSON.stringify(valu
 
 /**
  * @param {(name: string, args: object) => Promise<{ ok: boolean, data?: unknown, error?: string }>} call
- * @param {string[]} groups enabled groups: "board", "result"
+ * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "studio" (Órbi)
  */
 export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
@@ -33,7 +33,8 @@ export function createStudioTools(call, groups) {
     );
   }
 
-  if (groups.includes('board')) {
+  const boardRead = groups.includes('board') || groups.includes('board_read');
+  if (boardRead) {
     tools.push(
       tool(
         'board_list_tasks',
@@ -46,6 +47,10 @@ export function createStudioTools(call, groups) {
         run('board_list_tasks'),
       ),
       tool('board_get_task', 'Mostra uma tarefa do quadro com a descrição completa.', { id: z.string() }, run('board_get_task')),
+    );
+  }
+  if (groups.includes('board')) {
+    tools.push(
       tool(
         'board_create_task',
         'Cria uma tarefa (issue) no quadro do workspace. Use o modelo de descrição do quadro: Objetivo, Critério de conclusão e Referências.',
@@ -67,6 +72,56 @@ export function createStudioTools(call, groups) {
           fields: z.record(z.string(), z.string()).optional(),
         },
         run('board_update_task'),
+      ),
+    );
+  }
+
+  if (groups.includes('studio')) {
+    tools.push(
+      tool(
+        'studio_context',
+        'Mostra o workspace: projetos, quadro (colunas, campos e opções com ids), Render, agentes e workflows com todos os campos.',
+        {},
+        run('studio_context'),
+      ),
+      tool(
+        'studio_list_runs',
+        'Lista as execuções recentes de workflows, com o estado de cada passo, erros e resumos.',
+        { workflowId: z.string().optional(), limit: z.number().int().optional() },
+        run('studio_list_runs'),
+      ),
+      tool(
+        'studio_list_executions',
+        'Lista as execuções recentes de agentes (opcionalmente de um agente do workspace ou de um status).',
+        { agentId: z.string().optional().describe('Id do agente do workspace.'), status: z.string().optional(), limit: z.number().int().optional() },
+        run('studio_list_executions'),
+      ),
+      tool(
+        'studio_get_execution',
+        'Mostra uma execução com o resultado, o erro e o final da linha do tempo, para explicar o que aconteceu.',
+        { id: z.string() },
+        run('studio_get_execution'),
+      ),
+      tool('studio_usage', 'Mostra o consumo do Claude no workspace: limites do plano, custo estimado e tokens.', {}, run('studio_usage')),
+      tool(
+        'studio_propose',
+        'Propõe uma mudança ao usuário (ele vê um cartão e decide se aplica). O Studio valida antes; se vier erro, corrija o payload.',
+        {
+          kind: z.enum([
+            'create_agent',
+            'update_agent',
+            'delete_agent',
+            'create_workflow',
+            'update_workflow',
+            'delete_workflow',
+            'start_workflow',
+            'cancel_run',
+            'create_task',
+          ]),
+          summary: z.string().describe('Uma frase dizendo o que a proposta faz, para o cartão.'),
+          payload: z.record(z.string(), z.unknown()).describe('Dados da mudança, no formato descrito nas suas instruções.'),
+        },
+        run('studio_propose'),
       ),
     );
   }

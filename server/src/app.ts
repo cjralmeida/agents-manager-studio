@@ -4,6 +4,7 @@ import { prisma } from './db.js';
 import { HttpError } from './lib/errors.js';
 import { agentAccountRoutes } from './modules/agent-accounts/routes.js';
 import { agentProfileRoutes } from './modules/agent-profiles/routes.js';
+import { assistantRoutes } from './modules/assistant/routes.js';
 import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
 import { boardRoutes } from './modules/boards/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
@@ -61,6 +62,7 @@ export async function buildApp() {
       await api.register(boardRoutes);
       await api.register(renderRoutes);
       await api.register(workflowRoutes);
+      await api.register(assistantRoutes);
       await api.register(agentProfileRoutes);
       await api.register(agentRoutes);
       await api.register(agentRunnerRoutes);

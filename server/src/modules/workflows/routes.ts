@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
-import { stepSchema, triggerSchema } from './definition.js';
+import { workflowSchema } from './definition.js';
 import {
   cancelWorkflowRun,
   createWorkflow,
@@ -16,16 +16,7 @@ import {
 const workspaceParams = z.object({ id: z.uuid() });
 const idParams = z.object({ id: z.uuid() });
 
-const workflowBody = z
-  .object({
-    name: z.string().trim().min(1).max(80),
-    description: z.string().trim().max(500).default(''),
-    isEnabled: z.boolean().default(true),
-    trigger: triggerSchema,
-    steps: z.array(stepSchema).min(1).max(12),
-    maxConcurrentRuns: z.number().int().min(1).max(5).default(1),
-  })
-  .strict();
+const workflowBody = workflowSchema;
 
 const startBody = z.object({ message: z.string().trim().max(20_000).optional() }).strict();
 const runsQuery = z.object({ workflowId: z.uuid().optional() }).strict();
