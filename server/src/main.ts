@@ -1,8 +1,11 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
+import { startAgentMonitor } from './modules/agents/monitor.js';
 import { scanWorkspaces } from './modules/workspaces/service.js';
 
 const app = await buildApp();
+const stopAgentMonitor = startAgentMonitor(app.log);
+app.addHook('onClose', async () => stopAgentMonitor());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {

@@ -18,6 +18,19 @@ const token = z
   .transform((value) => value.replace(/\s+/g, ''))
   .pipe(z.string().min(8).max(500));
 
+// Commit author; an empty value clears it (the username is used instead).
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((value) => value || null)
+    .optional();
+const optionalEmail = z
+  .union([z.literal(''), z.email('E-mail inválido.')])
+  .transform((value) => value || null)
+  .optional();
+
 const createBody = z
   .object({
     provider: z.enum(['GITHUB', 'GITLAB']),
@@ -30,14 +43,21 @@ const createBody = z
       .regex(/^[a-z0-9.-]+(:\d+)?$/, 'Informe só o host, sem https:// nem caminho.')
       .optional(),
     token,
+    authorName: optionalText(100),
+    authorEmail: optionalEmail,
   })
   .strict()
   .transform((body) => ({ ...body, host: body.host ?? (body.provider === 'GITHUB' ? 'github.com' : 'gitlab.com') }));
 
 const updateBody = z
-  .object({ label: label.optional(), token: token.optional() })
+  .object({
+    label: label.optional(),
+    token: token.optional(),
+    authorName: optionalText(100),
+    authorEmail: optionalEmail,
+  })
   .strict()
-  .refine((body) => body.label !== undefined || body.token !== undefined, 'Informe o nome ou um novo token.');
+  .refine((body) => Object.values(body).some((value) => value !== undefined), 'Nada para atualizar.');
 
 export async function gitAccountRoutes(app: FastifyInstance) {
   app.get('/git-accounts', async () => listGitAccounts());

@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { prisma } from './db.js';
 import { HttpError } from './lib/errors.js';
 import { agentAccountRoutes } from './modules/agent-accounts/routes.js';
+import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
@@ -47,6 +48,8 @@ export async function buildApp() {
       await api.register(gitAccountRoutes);
       await api.register(agentAccountRoutes);
       await api.register(skillRoutes);
+      await api.register(agentRoutes);
+      await api.register(agentRunnerRoutes);
     },
     { prefix: '/api' },
   );

@@ -10,11 +10,15 @@ export interface CreateGitAccountInput {
   label: string;
   host: string;
   token: string;
+  authorName?: string | null;
+  authorEmail?: string | null;
 }
 
 export interface UpdateGitAccountInput {
   label?: string;
   token?: string;
+  authorName?: string | null;
+  authorEmail?: string | null;
 }
 
 const NOT_FOUND_MESSAGE = 'Conta git não encontrada.';
@@ -38,6 +42,8 @@ export async function createGitAccount(input: CreateGitAccountInput) {
       username,
       tokenEncrypted: secrets.encrypt(input.token),
       tokenHint: secretHint(input.token),
+      authorName: input.authorName ?? null,
+      authorEmail: input.authorEmail ?? null,
     },
   });
   return { ...toResponse(account), workspaceCount: 0 };
@@ -55,7 +61,7 @@ export async function updateGitAccount(id: string, input: UpdateGitAccountInput)
 
   const updated = await prisma.gitAccount.update({
     where: { id },
-    data: { label: input.label, ...tokenData },
+    data: { label: input.label, authorName: input.authorName, authorEmail: input.authorEmail, ...tokenData },
     include: { _count: { select: { workspaces: true } } },
   });
   const { _count, ...rest } = updated;
@@ -94,6 +100,8 @@ function toResponse(account: GitAccount) {
     label: account.label,
     host: account.host,
     username: account.username,
+    authorName: account.authorName,
+    authorEmail: account.authorEmail,
     tokenHint: account.tokenHint,
   };
 }

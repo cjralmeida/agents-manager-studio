@@ -9,6 +9,8 @@ export interface GitAccount {
   label: string;
   host: string;
   username: string;
+  authorName: string | null;
+  authorEmail: string | null;
   tokenHint: string;
   workspaceCount: number;
 }
@@ -31,6 +33,11 @@ export interface CreateGitAccountInput {
 export interface AccountUpdate {
   label?: string;
   token?: string;
+}
+
+export interface GitAccountUpdate extends AccountUpdate {
+  authorName?: string;
+  authorEmail?: string;
 }
 
 const gitKeys = ['git-accounts'] as const;
@@ -57,7 +64,7 @@ export function useCreateGitAccount() {
 export function useUpdateGitAccount() {
   const invalidate = useInvalidate(gitKeys);
   return useMutation({
-    mutationFn: ({ id, ...input }: AccountUpdate & { id: string }) =>
+    mutationFn: ({ id, ...input }: GitAccountUpdate & { id: string }) =>
       api.patch<GitAccount>(`/git-accounts/${id}`, input),
     onSuccess: invalidate,
   });

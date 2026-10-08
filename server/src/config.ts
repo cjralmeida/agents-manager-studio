@@ -26,6 +26,16 @@ const envSchema = z.object({
   SKILLS_DIR: z.string().min(1).default('/data/claude-skills'),
   // Image used for agent containers and account checks.
   AGENT_RUNNER_IMAGE: z.string().min(1).default('agents-manager-studio-agent-runner:latest'),
+  // Folder with one isolated clone per agent: inside this container and the same folder on the host.
+  AGENTS_DIR: z.string().min(1).default('/data/agents'),
+  AGENTS_HOST_DIR: z.string().min(1),
+  // Host path of the skills folder, mounted into agent containers.
+  CLAUDE_SKILLS_HOST_DIR: z.string().min(1),
+  // Docker network shared with the server, so agent containers can reach it.
+  AGENT_NETWORK: z.string().min(1).default('agents-manager-studio_default'),
+  SERVER_INTERNAL_URL: z.url().default('http://server:3000'),
+  // An agent container waiting for the user stops after this long without activity.
+  AGENT_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
 });
 
 function loadConfig() {
@@ -48,6 +58,13 @@ function loadConfig() {
     encryptionKey: env.ENCRYPTION_KEY,
     skillsDir: env.SKILLS_DIR,
     agentRunnerImage: env.AGENT_RUNNER_IMAGE,
+    agentsDir: env.AGENTS_DIR,
+    // Docker on Windows accepts "D:/path" binds; backslashes are normalized.
+    agentsHostDir: env.AGENTS_HOST_DIR.replaceAll('\\', '/'),
+    skillsHostDir: env.CLAUDE_SKILLS_HOST_DIR.replaceAll('\\', '/'),
+    agentNetwork: env.AGENT_NETWORK,
+    serverInternalUrl: env.SERVER_INTERNAL_URL,
+    agentIdleTimeoutMs: env.AGENT_IDLE_TIMEOUT_MS,
   };
 }
 

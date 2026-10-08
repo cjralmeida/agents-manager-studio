@@ -79,7 +79,10 @@ function GitAccountRow({ account }: { account: GitAccount }) {
           <Badge tone="info">{gitProviderLabels[account.provider]}</Badge>
           <span className="font-medium">{account.label}</span>
         </div>
-        <div className="mt-0.5 text-xs text-muted">@{account.username}</div>
+        <div className="mt-0.5 text-xs text-muted">
+          @{account.username}
+          {account.authorEmail ? ` · commits como ${account.authorName || account.username} <${account.authorEmail}>` : ''}
+        </div>
       </td>
       <td className="px-4 py-2 font-mono text-xs">{account.host}</td>
       <td className="px-4 py-2 font-mono text-xs text-muted">{account.tokenHint}</td>
@@ -106,11 +109,13 @@ function GitAccountRow({ account }: { account: GitAccount }) {
 function EditGitAccountRow({ account, onDone }: { account: GitAccount; onDone: () => void }) {
   const [label, setLabel] = useState(account.label);
   const [token, setToken] = useState('');
+  const [authorName, setAuthorName] = useState(account.authorName ?? '');
+  const [authorEmail, setAuthorEmail] = useState(account.authorEmail ?? '');
   const update = useUpdateGitAccount();
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    update.mutate({ id: account.id, label, ...(token && { token }) }, { onSuccess: onDone });
+    update.mutate({ id: account.id, label, authorName, authorEmail, ...(token && { token }) }, { onSuccess: onDone });
   };
 
   return (
@@ -127,6 +132,17 @@ function EditGitAccountRow({ account, onDone }: { account: GitAccount; onDone: (
               onChange={(event) => setToken(event.target.value)}
               placeholder="Deixe vazio para manter"
               autoComplete="off"
+            />
+          </Field>
+          <Field label="Autor dos commits">
+            <TextInput value={authorName} onChange={(event) => setAuthorName(event.target.value)} placeholder={account.username} />
+          </Field>
+          <Field label="E-mail dos commits">
+            <TextInput
+              type="email"
+              value={authorEmail}
+              onChange={(event) => setAuthorEmail(event.target.value)}
+              placeholder="seu e-mail no provedor"
             />
           </Field>
           <Button type="submit" variant="primary" disabled={update.isPending}>

@@ -58,12 +58,19 @@ services:
       ENCRYPTION_KEY: ${STUDIO_ENCRYPTION_KEY:?set STUDIO_ENCRYPTION_KEY in .env}
       SKILLS_DIR: /data/claude-skills
       AGENT_RUNNER_IMAGE: agents-manager-studio-agent-runner:latest
+      AGENTS_DIR: /data/agents
+      AGENTS_HOST_DIR: ${AGENTS_HOST_DIR:?set AGENTS_HOST_DIR in .env}
+      CLAUDE_SKILLS_HOST_DIR: ${CLAUDE_SKILLS_HOST_DIR}
+      AGENT_NETWORK: agents-manager-studio_default
+      SERVER_INTERNAL_URL: http://server:3000
       TZ: ${TZ:-America/Sao_Paulo}
     # The Docker socket is root-only; access to it is root-equivalent anyway.
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${PROJECTS_HOST_DIR}:/data/Projetos:ro
+      # One isolated clone per agent; also mounted into each agent container.
+      - ${AGENTS_HOST_DIR}:/data/agents
       - ${CLAUDE_SKILLS_HOST_DIR:?set CLAUDE_SKILLS_HOST_DIR in .env}:/data/claude-skills:ro
     depends_on:
       postgres:

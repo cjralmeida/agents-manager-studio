@@ -3,9 +3,11 @@ import { type GitProvider, type Project, useSetWorkspaceIgnored, useWorkspace } 
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Tabs, useTabParam } from '../components/Tabs';
+import { WorkspaceAgentsTab } from '../components/workspace/WorkspaceAgentsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
 const tabs = [
+  { id: 'agents', label: 'Agentes' },
   { id: 'projects', label: 'Projetos' },
   { id: 'settings', label: 'Configuração' },
 ] as const;
@@ -57,14 +59,14 @@ export function WorkspacePage() {
       </div>
 
       <div className="mt-6">
-        {activeTab === 'projects' ? (
+        {activeTab === 'agents' && <WorkspaceAgentsTab workspace={data} />}
+        {activeTab === 'projects' && (
           <>
             <p className="text-xs text-muted">Agentes só podem ser lançados em projetos com git.</p>
             <ProjectsTable projects={data.projects} />
           </>
-        ) : (
-          <WorkspaceSettingsTab workspace={data} />
         )}
+        {activeTab === 'settings' && <WorkspaceSettingsTab workspace={data} />}
       </div>
     </section>
   );

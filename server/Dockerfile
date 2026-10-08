@@ -1,6 +1,6 @@
 FROM node:24-slim AS base
-# OpenSSL is required by the Prisma migration engine.
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+# OpenSSL: Prisma migration engine. Git: agent clones, review diffs and pushes.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 

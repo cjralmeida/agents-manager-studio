@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 import { Layout } from './components/Layout';
+import { AgentPage } from './pages/AgentPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { WorkspacePage } from './pages/WorkspacePage';
@@ -12,6 +13,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'workspaces', element: <WorkspacesPage /> },
       { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
+      { path: 'agents/:agentId', element: <AgentPage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

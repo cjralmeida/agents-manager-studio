@@ -58,6 +58,12 @@ async function call<T = unknown>(method: string, path: string, body?: unknown, t
   return JSON.parse(response.body.toString('utf8')) as T;
 }
 
+/** Ignores "not found" (404) and "already in that state" (304) answers. */
+function ignoreGone(error: unknown) {
+  if (error instanceof DockerError && (error.statusCode === 404 || error.statusCode === 304)) return;
+  throw error;
+}
+
 /**
  * Splits a non-TTY log stream: each frame has an 8-byte header
  * (byte 0 = stream: 1 stdout, 2 stderr; bytes 4-7 = big-endian payload size).
@@ -86,13 +92,71 @@ export async function imageExists(image: string) {
   }
 }
 
-export interface RunOnceOptions {
+export interface ContainerSpec {
   image: string;
   cmd: string[];
+  name?: string;
   env?: Record<string, string>;
   labels?: Record<string, string>;
-  /** Volume or bind mounts, e.g. "volume-name:/home/node/.claude". */
+  /** Volume or bind mounts, e.g. "volume-name:/home/node/.claude" or "D:/path:/workspace". */
   binds?: string[];
+  network?: string;
+}
+
+export async function createContainer(spec: ContainerSpec): Promise<string> {
+  const query = spec.name ? `?name=${encodeURIComponent(spec.name)}` : '';
+  const { Id } = await call<{ Id: string }>('POST', `/containers/create${query}`, {
+    Image: spec.image,
+    Cmd: spec.cmd,
+    Env: Object.entries(spec.env ?? {}).map(([key, value]) => `${key}=${value}`),
+    Labels: spec.labels ?? {},
+    Tty: false,
+    HostConfig: { Binds: spec.binds ?? [], ...(spec.network && { NetworkMode: spec.network }) },
+  });
+  return Id;
+}
+
+export async function startContainer(id: string) {
+  await call('POST', `/containers/${id}/start`);
+}
+
+/** Sends SIGTERM and kills after the grace period. Missing or stopped containers are ignored. */
+export async function stopContainer(id: string, graceSeconds = 10) {
+  await call('POST', `/containers/${id}/stop?t=${graceSeconds}`, undefined, (graceSeconds + 10) * 1000).catch(
+    ignoreGone,
+  );
+}
+
+export async function removeContainer(id: string) {
+  await call('DELETE', `/containers/${id}?force=1`).catch(ignoreGone);
+}
+
+export interface ContainerState {
+  running: boolean;
+  exitCode: number;
+}
+
+/** Null when the container no longer exists. */
+export async function inspectContainer(id: string): Promise<ContainerState | null> {
+  try {
+    const info = await call<{ State: { Running: boolean; ExitCode: number } }>('GET', `/containers/${id}/json`);
+    return { running: info.State.Running, exitCode: info.State.ExitCode };
+  } catch (error) {
+    if (error instanceof DockerError && error.statusCode === 404) return null;
+    throw error;
+  }
+}
+
+export async function containerLogs(id: string, tail = 200) {
+  const logs = await request('GET', `/containers/${id}/logs?stdout=1&stderr=1&tail=${tail}`);
+  return demuxLogs(logs.body);
+}
+
+export async function removeVolume(name: string) {
+  await call('DELETE', `/volumes/${encodeURIComponent(name)}?force=1`).catch(ignoreGone);
+}
+
+export interface RunOnceOptions extends ContainerSpec {
   timeoutMs: number;
 }
 
@@ -105,17 +169,9 @@ export interface RunOnceResult {
 
 /** Runs a short-lived container to completion and always removes it. */
 export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
-  const { Id: id } = await call<{ Id: string }>('POST', '/containers/create', {
-    Image: options.image,
-    Cmd: options.cmd,
-    Env: Object.entries(options.env ?? {}).map(([key, value]) => `${key}=${value}`),
-    Labels: options.labels ?? {},
-    Tty: false,
-    HostConfig: { Binds: options.binds ?? [] },
-  });
-
+  const id = await createContainer(options);
   try {
-    await call('POST', `/containers/${id}/start`);
+    await startContainer(id);
 
     let timedOut = false;
     const wait = call<{ StatusCode: number }>('POST', `/containers/${id}/wait`, undefined, options.timeoutMs + 5_000);
@@ -129,6 +185,6 @@ export async function runOnce(options: RunOnceOptions): Promise<RunOnceResult> {
     const logs = await request('GET', `/containers/${id}/logs?stdout=1&stderr=1`);
     return { exitCode: result?.StatusCode ?? null, timedOut, ...demuxLogs(logs.body) };
   } finally {
-    await call('DELETE', `/containers/${id}?force=1`).catch(() => undefined);
+    await removeContainer(id).catch(() => undefined);
   }
 }

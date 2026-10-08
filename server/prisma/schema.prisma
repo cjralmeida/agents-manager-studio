@@ -30,6 +30,7 @@ model Workspace {
   projects    Project[]
   settings    WorkspaceSettings?
   gitAccounts WorkspaceGitAccount[]
+  agents      Agent[]
 
   @@map("workspaces")
 }
@@ -48,6 +49,7 @@ model Project {
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agents    Agent[]
 
   @@unique([workspaceId, name])
   @@map("projects")
@@ -69,6 +71,9 @@ model GitAccount {
   host           String
   /// Username reported by the provider when the token was verified.
   username       String
+  /// Commit author; falls back to the username when empty.
+  authorName     String?     @map("author_name")
+  authorEmail    String?     @map("author_email")
   tokenEncrypted String      @map("token_encrypted")
   /// Last characters of the token, safe to display.
   tokenHint      String      @map("token_hint")
@@ -120,4 +125,94 @@ model WorkspaceGitAccount {
   @@id([workspaceId, gitAccountId])
   @@index([gitAccountId])
   @@map("workspace_git_accounts")
+}
+
+enum AgentStatus {
+  PREPARING
+  RUNNING
+  WAITING_INPUT
+  READY_FOR_REVIEW
+  FINALIZING
+  COMPLETED
+  FAILED
+  CANCELLED
+
+  @@map("agent_status")
+}
+
+enum AgentInboxKind {
+  MESSAGE
+  ANSWER
+
+  @@map("agent_inbox_kind")
+}
+
+/// A coding agent working on an isolated clone of a project.
+model Agent {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  workspaceId     String      @map("workspace_id") @db.Uuid
+  projectId       String      @map("project_id") @db.Uuid
+  title           String
+  /// Model alias passed to Claude Code (sonnet, opus, haiku).
+  model           String
+  status          AgentStatus @default(PREPARING)
+  baseBranch      String      @map("base_branch")
+  /// Commit the agent branch started from; the review diff is computed against it.
+  baseCommit      String?     @map("base_commit")
+  branch          String
+  /// Clone folder relative to the agents root (e.g. GlobalFarm/agro-gf-01a2b3c4).
+  workdir         String
+  /// Claude Code session, used to resume after the container stops.
+  sessionId       String?     @map("session_id")
+  /// Set while a container is running for this agent.
+  containerId     String?     @map("container_id")
+  /// SHA-256 of the secret the running container uses to call the server.
+  secretHash      String?     @map("secret_hash")
+  /// Question waiting for the user (AskUserQuestion input).
+  pendingQuestion Json?       @map("pending_question")
+  prUrl           String?     @map("pr_url")
+  errorMessage    String?     @map("error_message")
+  lastActivityAt  DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+  finishedAt      DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  events    AgentEvent[]
+  inbox     AgentInbox[]
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([status])
+  @@map("agents")
+}
+
+/// Timeline of an agent: messages, tool calls, questions, status changes.
+model AgentEvent {
+  id        Int      @id @default(autoincrement())
+  agentId   String   @map("agent_id") @db.Uuid
+  type      String
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, id])
+  @@map("agent_events")
+}
+
+/// Messages and answers waiting to be delivered to the agent container.
+model AgentInbox {
+  id          Int            @id @default(autoincrement())
+  agentId     String         @map("agent_id") @db.Uuid
+  kind        AgentInboxKind
+  payload     Json
+  deliveredAt DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, deliveredAt])
+  @@map("agent_inbox")
 }

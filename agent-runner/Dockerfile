@@ -16,6 +16,7 @@ WORKDIR /opt/runner
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY spike ./spike
+COPY src ./src
 
 # Claude Code refuses to skip permissions as root, and agents should not run as root anyway.
 USER node
