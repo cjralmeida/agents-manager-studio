@@ -68,9 +68,13 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Badge tone="info">{boardProviderLabels[board.link.provider]}</Badge>
-          <a href={board.url} target="_blank" rel="noreferrer" className="truncate font-semibold hover:text-accent">
-            {board.title} ↗
-          </a>
+          {board.link.provider === 'STUDIO' ? (
+            <span className="truncate font-semibold">{board.title}</span>
+          ) : (
+            <a href={board.url} target="_blank" rel="noreferrer" className="truncate font-semibold hover:text-accent">
+              {board.title} ↗
+            </a>
+          )}
           {waitingCount > 0 && <Badge tone="warning">{waitingCount} aguardando você</Badge>}
           <SyncStatus board={board} />
         </div>

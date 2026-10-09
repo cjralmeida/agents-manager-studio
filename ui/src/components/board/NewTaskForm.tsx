@@ -33,9 +33,11 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
       >
         <h2 className="text-lg font-semibold">Nova tarefa</h2>
         <p className="mt-1 text-xs text-muted">
-          {board.link.provider === 'GITHUB'
-            ? 'Cria uma issue no repositório escolhido e a adiciona ao projeto.'
-            : 'Cria uma issue no projeto escolhido; colunas e campos viram labels.'}
+          {board.link.provider === 'STUDIO'
+            ? 'A tarefa fica só no Studio, no quadro deste workspace.'
+            : board.link.provider === 'GITHUB'
+              ? 'Cria uma issue no repositório escolhido e a adiciona ao projeto.'
+              : 'Cria uma issue no projeto escolhido; colunas e campos viram labels.'}
         </p>
 
         <div className="mt-4 space-y-3">
@@ -43,14 +45,17 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
             <TextInput value={title} onChange={(event) => setTitle(event.target.value)} required autoFocus />
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Repositório">
+            <Field label={board.link.provider === 'STUDIO' ? 'Projeto' : 'Repositório'}>
               <Select value={repository} onChange={(event) => setRepository(event.target.value)} required>
                 {board.repositories.map((repo) => (
                   <option key={repo.path} value={repo.path}>
-                    {repo.projectName} ({repo.path})
+                    {repo.projectName}
+                    {repo.path !== repo.projectName ? ` (${repo.path})` : ''}
                   </option>
                 ))}
-                {board.supportsDrafts && <option value={DRAFT}>Sem repositório (rascunho)</option>}
+                {board.supportsDrafts && (
+                  <option value={DRAFT}>{board.link.provider === 'STUDIO' ? 'Sem projeto' : 'Sem repositório (rascunho)'}</option>
+                )}
               </Select>
             </Field>
             <Field label="Status">

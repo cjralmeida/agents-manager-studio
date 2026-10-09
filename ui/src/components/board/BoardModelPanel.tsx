@@ -174,9 +174,15 @@ function BoardsList({ boards }: { boards: ModelState['boards'] }) {
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className="font-medium">{board.workspaceName}</span>
                 <Badge tone="info">{boardProviderLabels[board.provider]}</Badge>
-                <a href={board.url} target="_blank" rel="noreferrer" className="truncate text-xs text-muted hover:text-accent">
-                  {board.title} ↗
-                </a>
+                {board.provider === 'STUDIO' ? (
+                  <Link to={board.url} className="truncate text-xs text-muted hover:text-accent">
+                    {board.title}
+                  </Link>
+                ) : (
+                  <a href={board.url} target="_blank" rel="noreferrer" className="truncate text-xs text-muted hover:text-accent">
+                    {board.title} ↗
+                  </a>
+                )}
                 {statusBadges[board.modelStatus]}
               </div>
               <div className="flex items-center gap-3">

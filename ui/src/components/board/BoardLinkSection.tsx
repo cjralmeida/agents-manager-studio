@@ -49,16 +49,26 @@ export function BoardConnection({ workspaceId }: { workspaceId: string }) {
   }
   const data = link.data;
   const handleUnlink = () => {
-    if (window.confirm(`Desvincular "${data.title}" deste workspace? O quadro continua existindo no provedor.`)) unlink.mutate();
+    const message =
+      data.provider === 'STUDIO'
+        ? 'Remover o quadro do Studio deste workspace? As tarefas ficam guardadas e voltam se o quadro for criado de novo.'
+        : `Desvincular "${data.title}" deste workspace? O quadro continua existindo no provedor.`;
+    if (window.confirm(message)) unlink.mutate();
   };
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone="info">{boardProviderLabels[data.provider]}</Badge>
-        <a href={data.url} target="_blank" rel="noreferrer" className="font-medium hover:text-accent">
-          {data.title} ↗
-        </a>
-        <span className="text-xs text-muted">{data.ownerPath}</span>
+        {data.provider === 'STUDIO' ? (
+          <Link to={data.url} className="font-medium hover:text-accent">
+            {data.title}
+          </Link>
+        ) : (
+          <a href={data.url} target="_blank" rel="noreferrer" className="font-medium hover:text-accent">
+            {data.title} ↗
+          </a>
+        )}
+        {data.provider !== 'STUDIO' && <span className="text-xs text-muted">{data.ownerPath}</span>}
       </div>
       <p className="text-xs text-muted">
         {data.lastSyncError
@@ -68,7 +78,7 @@ export function BoardConnection({ workspaceId }: { workspaceId: string }) {
             : 'Ainda não lido.'}
       </p>
       <Button size="sm" variant="danger" onClick={handleUnlink} disabled={unlink.isPending}>
-        Desvincular quadro
+        {data.provider === 'STUDIO' ? 'Remover quadro' : 'Desvincular quadro'}
       </Button>
       <ErrorText error={unlink.error} />
     </div>

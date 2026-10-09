@@ -94,6 +94,12 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 - **No GitLab**, as colunas do modelo com papel "A fazer" e "Concluído" são as issues abertas sem coluna e as fechadas. A ordem dos campos segue o modelo.
 - **Um quadro só pode estar vinculado a um workspace.**
 
+**Quadro só do Studio:** na aba Quadro, **Criar quadro do Studio** cria um quadro sem GitHub nem GitLab.
+- As tarefas ficam no banco do Studio (`local_tasks`), numeradas por workspace, e seguem o modelo diretamente, por isso ele está sempre "no modelo".
+- Cada tarefa pode pertencer a um projeto do workspace, com ou sem git, ou a nenhum.
+- Agentes, workflows e o Órbi usam esse quadro como os outros.
+- Remover o quadro não apaga as tarefas: elas voltam se ele for criado de novo.
+
 Ao lançar um agente a partir de um card:
 
 1. a tarefa vai para a coluna de andamento;

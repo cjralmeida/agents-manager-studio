@@ -14,6 +14,7 @@ import {
   statusMapFrom,
   suggestMapping,
 } from './model-sync.js';
+import { applyModelToLocalTasks } from './local.js';
 import { adapterFor, findBoard, forgetSnapshot, linkResponse, loadSnapshot, refOf } from './service.js';
 import { type BoardStructure, fieldOrderOf, structureOf, validateStructure } from './structure.js';
 import type { BoardSnapshot } from './types.js';
@@ -28,6 +29,17 @@ async function modelUsage(model: BoardModel): Promise<ModelUsage> {
   const boards = await prisma.taskBoard.findMany({ where: { modelStatus: { not: 'pending' } } });
   for (const board of boards) {
     const snapshot = await loadSnapshot(board, false).catch(() => null);
+    if (snapshot && board.provider === 'STUDIO') {
+      // Studio boards use the model ids directly.
+      for (const item of snapshot.items) {
+        if (item.columnId) usage.columns[item.columnId] = (usage.columns[item.columnId] ?? 0) + 1;
+        for (const [fieldId, optionId] of Object.entries(item.fields)) {
+          usage.fields[fieldId] = (usage.fields[fieldId] ?? 0) + 1;
+          usage.options[fieldId] = { ...usage.options[fieldId], [optionId]: (usage.options[fieldId]?.[optionId] ?? 0) + 1 };
+        }
+      }
+      continue;
+    }
     const map = board.modelMap as unknown as ModelMap | null;
     if (!snapshot || !map) continue;
     const provider = board.provider as Provider;
@@ -96,6 +108,14 @@ export async function applyModel(input: ModelInput, columnMoves: Record<string, 
   const results: PropagationResult[] = [];
   for (const board of boards) {
     const base = { workspaceId: board.workspaceId, workspaceName: board.workspace.name };
+    if (board.provider === 'STUDIO') {
+      await applyModelToLocalTasks(board.workspaceId, desired, columnMoves);
+      const statusMap = Object.fromEntries(desired.columns.filter((column) => column.role).map((column) => [column.role!, column.id]));
+      await prisma.taskBoard.update({ where: { workspaceId: board.workspaceId }, data: { statusMap: statusMap as Prisma.InputJsonValue } });
+      forgetSnapshot(board.workspaceId);
+      results.push({ ...base, status: 'applied', message: 'Quadro do Studio atualizado.' });
+      continue;
+    }
     if (board.modelStatus !== 'synced' || !board.modelMap) {
       const reason = board.modelStatus === 'pending' ? 'ainda não foi convertido para o modelo' : 'está fora do modelo';
       results.push({ ...base, status: 'skipped', message: `O quadro ${reason}: sincronize na aba Quadro do workspace.` });
@@ -183,6 +203,7 @@ function counts(snapshot: BoardSnapshot) {
 /** The board next to the model, with a suggested mapping (what it had, same names, roles guessed from names). */
 export async function getConversion(workspaceId: string) {
   const board = await findBoard(workspaceId);
+  if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
   const model = await getModel();
@@ -203,6 +224,7 @@ export async function getConversion(workspaceId: string) {
 
 async function conversionContext(workspaceId: string) {
   const board = await findBoard(workspaceId);
+  if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
   return { board, snapshot, provider, model: await getModel(), current: structureOf(snapshot.columns, snapshot.fields, provider) };

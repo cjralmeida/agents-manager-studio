@@ -7,6 +7,7 @@ import {
   boardProviderLabels,
   useBoardModel,
   useCreateBoard,
+  useCreateLocalBoard,
   useDetectBoards,
   useLinkBoard,
 } from '../../api/boards';
@@ -55,6 +56,8 @@ export function BoardSetup({ workspace }: { workspace: WorkspaceDetail }) {
         <ErrorText error={link.error} />
       </section>
 
+      <LocalBoard workspaceId={workspace.id} />
+
       <LinkByUrl workspaceId={workspace.id} />
 
       {detection.data && detection.data.createOptions.length > 0 && (
@@ -85,6 +88,27 @@ function CandidateRow({ candidate, linking, onLink }: { candidate: BoardCandidat
         {linking ? 'Vinculando...' : 'Vincular'}
       </Button>
     </li>
+  );
+}
+
+function LocalBoard({ workspaceId }: { workspaceId: string }) {
+  const create = useCreateLocalBoard(workspaceId);
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-panel p-4">
+      <div className="max-w-xl">
+        <h3 className="text-sm font-medium">Usar só no Studio</h3>
+        <p className="mt-1 text-xs text-muted">
+          Um quadro sem GitHub nem GitLab: as tarefas ficam no Studio, com as colunas e campos do modelo. Agentes e workflows funcionam do
+          mesmo jeito.
+        </p>
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        <Button variant="primary" onClick={() => create.mutate()} disabled={create.isPending}>
+          {create.isPending ? 'Criando...' : 'Criar quadro do Studio'}
+        </Button>
+        <ErrorText error={create.error} />
+      </div>
+    </section>
   );
 }
 

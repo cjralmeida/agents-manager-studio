@@ -7,6 +7,7 @@ import { type WorkspaceSettings, useUpdateWorkspaceSettings, useWorkspaceSetting
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { remoteHost } from '../../lib/git';
 import { Badge } from '../Badge';
+import { Logo } from '../Logo';
 import { BoardConnection } from '../board/BoardLinkSection';
 import { type ConnectorId, ConnectorIcon } from '../connectors/ConnectorIcon';
 import { ErrorText, Select } from '../form';
@@ -148,7 +149,11 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
 
         <ConnectorCard
           icon={
-            board.data ? (
+            board.data?.provider === 'STUDIO' ? (
+              <span className="inline-flex size-10 items-center justify-center">
+                <Logo size={40} />
+              </span>
+            ) : board.data ? (
               <ConnectorIcon id={board.data.provider === 'GITHUB' ? 'github' : 'gitlab'} />
             ) : (
               <span className="inline-flex size-10 items-center justify-center rounded-xl bg-border text-lg">▦</span>

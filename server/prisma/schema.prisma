@@ -16,6 +16,15 @@ enum GitProvider {
   @@map("git_provider")
 }
 
+/// Where a workspace board lives: a provider board, or only in the Studio (tasks in local_tasks).
+enum BoardProvider {
+  GITHUB
+  GITLAB
+  STUDIO
+
+  @@map("board_provider")
+}
+
 /// A top-level folder of the projects root (e.g. D:\Projetos\GlobalFarm).
 model Workspace {
   id        String    @id @default(uuid(7)) @db.Uuid
@@ -32,6 +41,7 @@ model Workspace {
   gitAccounts WorkspaceGitAccount[]
   agents      Agent[]
   taskBoard   TaskBoard?
+  localTasks  LocalTask[]
   workflows   Workflow[]
   agentProfiles AgentProfile[]
   renderServices RenderService[]
@@ -56,6 +66,7 @@ model Project {
   workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agents         Agent[]
   renderServices RenderService[]
+  localTasks     LocalTask[]
 
   @@unique([workspaceId, name])
   @@map("projects")
@@ -281,7 +292,7 @@ model AgentInbox {
 /// Task board (GitHub Project v2 or GitLab group issue board) linked to a workspace.
 model TaskBoard {
   workspaceId String      @id @map("workspace_id") @db.Uuid
-  provider    GitProvider
+  provider    BoardProvider
   /// API host; the workspace git account for this host is used to talk to the board.
   host        String
   /// GitHub: project node id. GitLab: "<groupId>:<boardId>".
@@ -316,6 +327,32 @@ model TaskBoard {
   /// A provider board belongs to one workspace only.
   @@unique([provider, host, externalId])
   @@map("task_boards")
+}
+
+/// Task of a board that lives only in the Studio (BoardProvider STUDIO); columns and fields are the board model's.
+model LocalTask {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  /// Sequential per workspace, shown as #N.
+  number      Int
+  title       String
+  body        String   @default("")
+  /// Board model column id.
+  columnId    String   @map("column_id")
+  /// Board model field id -> option id.
+  fields      Json     @default("{}")
+  /// Workspace project the task belongs to; null = no project (like a GitHub draft).
+  projectId   String?  @map("project_id") @db.Uuid
+  assignees   String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, number])
+  @@index([workspaceId, columnId])
+  @@map("local_tasks")
 }
 
 /// Global key/value settings of the Studio (e.g. the GitHub board template).

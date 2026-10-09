@@ -4,6 +4,7 @@ import { parseInput } from '../../lib/validation.js';
 import { applyConversion, applyModel, getConversion, getModelState, previewConversion, previewModel } from './model-service.js';
 import {
   createBoard,
+  createLocalBoard,
   createTask,
   detectBoards,
   getBoard,
@@ -91,6 +92,9 @@ export async function boardRoutes(app: FastifyInstance) {
     const body = parseInput(modelApplyBody, request.body);
     return applyModel(body.model, body.columnMoves);
   });
+
+  /** A board only in the Studio (no GitHub/GitLab), following the model. */
+  app.post('/workspaces/:id/board/local', async (request, reply) => reply.code(201).send(await createLocalBoard(parseInput(workspaceParams, request.params).id)));
 
   /** The workspace board next to the model, to convert it (or sync it again after a change on the provider). */
   app.get('/workspaces/:id/board/conversion', async (request) => getConversion(parseInput(workspaceParams, request.params).id));

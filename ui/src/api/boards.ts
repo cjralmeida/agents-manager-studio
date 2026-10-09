@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
-export type BoardProvider = 'GITHUB' | 'GITLAB';
+/** STUDIO: a board only in the Studio, without GitHub/GitLab. */
+export type BoardProvider = 'GITHUB' | 'GITLAB' | 'STUDIO';
 export type StatusRole = 'todo' | 'inProgress' | 'review' | 'done' | 'blocked';
 export type StatusMap = Partial<Record<StatusRole, string>>;
 
@@ -110,7 +111,7 @@ export const statusRoleLabels: Record<StatusRole, string> = {
   blocked: 'Bloqueado para agentes',
 };
 
-export const boardProviderLabels: Record<BoardProvider, string> = { GITHUB: 'GitHub', GITLAB: 'GitLab' };
+export const boardProviderLabels: Record<BoardProvider, string> = { GITHUB: 'GitHub', GITLAB: 'GitLab', STUDIO: 'Studio' };
 
 const boardKeys = {
   all: (workspaceId: string) => ['board', workspaceId] as const,
@@ -175,6 +176,12 @@ export function useCreateBoard(workspaceId: string) {
       api.post<{ link: BoardLink; warnings: string[] }>(`${base(workspaceId)}/create`, input),
     onSuccess: invalidate,
   });
+}
+
+/** A board only in the Studio, following the board model. */
+export function useCreateLocalBoard(workspaceId: string) {
+  const invalidate = useInvalidateBoard(workspaceId);
+  return useMutation({ mutationFn: () => api.post<BoardLink>(`${base(workspaceId)}/local`), onSuccess: invalidate });
 }
 
 export function useUnlinkBoard(workspaceId: string) {

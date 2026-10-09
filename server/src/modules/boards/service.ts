@@ -8,6 +8,7 @@ import { getStudioSettings } from '../studio-settings/service.js';
 import { parseBoardUrl } from './board-url.js';
 import { createGitHubClient } from './github.js';
 import { createGitLabClient } from './gitlab.js';
+import { createLocalAdapter } from './local.js';
 import { asStructure } from './model.js';
 import { getModel } from './model-store.js';
 import { type ModelMap, followsModel, mapByName, modelAsProviderStructure, statusMapFrom } from './model-sync.js';
@@ -31,10 +32,18 @@ const recentItems = new Map<string, { at: number; item: BoardItem }[]>();
 interface WorkspaceRepo {
   projectId: string;
   projectName: string;
-  provider: BoardProvider;
+  provider: BoardProvider | 'STUDIO';
   /** Hostname (no port), as stored on git accounts. */
   host: string;
   path: string;
+}
+
+/** Projects a board's tasks can belong to: the workspace git repositories, or every project for a Studio board. */
+async function boardRepos(board: TaskBoard): Promise<WorkspaceRepo[]> {
+  if (board.provider !== 'STUDIO') return workspaceRepos(board.workspaceId);
+  const projects = await prisma.project.findMany({ where: { workspaceId: board.workspaceId, missingAt: null }, orderBy: { name: 'asc' } });
+  // A Studio task's "repository" is its project name.
+  return projects.map((project) => ({ projectId: project.id, projectName: project.name, provider: 'STUDIO', host: 'studio', path: project.name }));
 }
 
 async function workspaceRepos(workspaceId: string): Promise<WorkspaceRepo[]> {
@@ -72,6 +81,7 @@ async function clientsFor(workspaceId: string, provider: BoardProvider, host: st
 }
 
 export async function adapterFor(board: TaskBoard) {
+  if (board.provider === 'STUDIO') return createLocalAdapter(board.workspaceId, await getModel());
   const clients = await clientsFor(board.workspaceId, board.provider as BoardProvider, board.host);
   return (clients.github ?? clients.gitlab)!.adapter;
 }
@@ -239,6 +249,33 @@ export async function createBoard(workspaceId: string, input: CreateOption & { t
   return { link: await saveLink(workspaceId, 'GITLAB', input.host, candidate, readme), warnings: [] };
 }
 
+/**
+ * A board only in the Studio: it follows the model directly (same ids), so it is always in sync. Tasks stay in the
+ * Studio database, also if the board is removed and created again.
+ */
+export async function createLocalBoard(workspaceId: string) {
+  const workspace = await ensureWorkspace(workspaceId);
+  if (await prisma.taskBoard.findUnique({ where: { workspaceId } })) throw new HttpError(409, 'Este workspace já tem um quadro. Desvincule-o antes.');
+  const model = await getModel();
+  const statusMap = Object.fromEntries(model.columns.filter((column) => column.role).map((column) => [column.role!, column.id]));
+  const board = await prisma.taskBoard.create({
+    data: {
+      workspaceId,
+      provider: 'STUDIO',
+      host: 'studio',
+      externalId: workspaceId,
+      ownerPath: workspace.name,
+      title: 'Quadro do Studio',
+      url: `/workspaces/${workspaceId}?tab=board`,
+      readme: BOARD_TEMPLATE.readme,
+      statusMap: statusMap as Prisma.InputJsonValue,
+      modelStatus: 'synced',
+    },
+  });
+  cache.delete(workspaceId);
+  return linkResponse(board);
+}
+
 export async function unlinkBoard(workspaceId: string) {
   await prisma.taskBoard.deleteMany({ where: { workspaceId } });
   cache.delete(workspaceId);
@@ -291,6 +328,7 @@ export async function syncBoard(board: TaskBoard) {
 
 /** A converted board is "drift" when someone changed it on the provider; it is never reverted on its own. */
 async function modelStatusOf(board: TaskBoard, snapshot: BoardSnapshot) {
+  if (board.provider === 'STUDIO') return 'synced';
   if (board.modelStatus === 'pending') return 'pending';
   const provider = board.provider as BoardProvider;
   const model = await getModel();
@@ -301,7 +339,7 @@ async function modelStatusOf(board: TaskBoard, snapshot: BoardSnapshot) {
 /** Board, its cached contents and how to find the workspace project of an item (used by the workflows). */
 export async function boardContext(workspaceId: string) {
   const board = await findBoard(workspaceId);
-  const [snapshot, repos] = await Promise.all([loadSnapshot(board, false), workspaceRepos(workspaceId)]);
+  const [snapshot, repos] = await Promise.all([loadSnapshot(board, false), boardRepos(board)]);
   const projectOf = (item: BoardItem) =>
     item.repository
       ? (repos.find((repo) => repo.provider === board.provider && repo.host === board.host && sameRepo(repo.path, item.repository!))
@@ -367,7 +405,7 @@ export async function createTask(workspaceId: string, task: NewTask) {
   const board = await findBoard(workspaceId);
   const snapshot = await loadSnapshot(board, false);
   if (task.repository) {
-    const repos = await workspaceRepos(workspaceId);
+    const repos = await boardRepos(board);
     if (!repos.some((repo) => repo.provider === board.provider && sameRepo(repo.path, task.repository!))) {
       throw new HttpError(422, 'O repositório escolhido não pertence a este workspace.');
     }
