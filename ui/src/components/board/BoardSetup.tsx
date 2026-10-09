@@ -1,20 +1,19 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router';
 import {
   type BoardCandidate,
-  type BoardStructure,
   type CreateOption,
   boardColors,
   boardProviderLabels,
+  useBoardModel,
   useCreateBoard,
   useDetectBoards,
   useLinkBoard,
-  useTemplateStructure,
 } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Field, Select, TextInput } from '../form';
-import { BoardStructureEditor } from './BoardStructureEditor';
 
 /** Shown while the workspace has no board: detected boards, link by URL, or create one from the template. */
 export function BoardSetup({ workspace }: { workspace: WorkspaceDetail }) {
@@ -134,30 +133,28 @@ function CreateBoardForm({
 }) {
   const [selected, setSelected] = useState(optionKey(options[0]!));
   const [title, setTitle] = useState(defaultTitle);
-  /** Null keeps the Studio template; set when the user customizes it. */
-  const [structure, setStructure] = useState<BoardStructure | null>(null);
   const create = useCreateBoard(workspaceId);
   const option = options.find((entry) => optionKey(entry) === selected) ?? options[0]!;
-  const template = useTemplateStructure(option.provider);
-
-  // GitHub and GitLab templates differ (GitLab has fixed columns), so switching provider starts over.
-  useEffect(() => setStructure(null), [option.provider]);
+  const model = useBoardModel();
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const where = `${option.owner} no ${boardProviderLabels[option.provider]}`;
     if (window.confirm(`Criar o quadro "${title}" em ${where}? Ele ficará visível para quem tem acesso a ${option.owner}.`)) {
-      create.mutate({ ...option, title, structure });
+      create.mutate({ ...option, title });
     }
   };
-  const shown = structure ?? template.data?.structure;
 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-panel p-4">
-      <h3 className="text-sm font-medium">Criar um quadro</h3>
+      <h3 className="text-sm font-medium">Criar um quadro no modelo do Studio</h3>
       <p className="mt-1 text-xs text-muted">
-        Por padrão segue o modelo do Studio. No GitHub, usa o projeto-modelo das Configurações quando houver (e aplica a
-        estrutura personalizada por cima); no GitLab, cria os labels e o board no grupo.
+        O quadro nasce com as colunas e campos do{' '}
+        <Link to="/board?tab=model" className="text-accent hover:underline">
+          modelo
+        </Link>
+        . No GitHub, usa o projeto-modelo de Conectores quando houver (pelas visões) e aplica o modelo por cima; no GitLab, cria os labels e o
+        board no grupo.
       </p>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
         <Field label="Onde criar">
@@ -180,46 +177,20 @@ function CreateBoardForm({
         <ErrorText error={create.error} />
       </div>
 
-      <div className="mt-4 border-t border-border pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-medium text-muted">
-            Estrutura: {structure ? 'personalizada' : 'modelo padrão do Studio'}
-          </span>
-          {structure ? (
-            <Button size="sm" onClick={() => setStructure(null)}>
-              Voltar ao modelo padrão
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => template.data && setStructure(template.data.structure)} disabled={!template.data}>
-              Personalizar
-            </Button>
-          )}
+      {model.data && (
+        <div className="mt-4 space-y-1 border-t border-border pt-4 text-xs text-muted">
+          <p className="flex flex-wrap items-center gap-1.5">
+            Colunas:
+            {model.data.model.columns.map((column) => (
+              <span key={column.id} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5">
+                <span className="size-2 rounded-full" style={{ backgroundColor: boardColors[column.color] }} />
+                {column.name}
+              </span>
+            ))}
+          </p>
+          <p>Campos: {model.data.model.fields.map((field) => `${field.name} (${field.options.length})`).join(', ')}</p>
         </div>
-        {!structure && shown && (
-          <div className="mt-2 space-y-1 text-xs text-muted">
-            <p className="flex flex-wrap items-center gap-1.5">
-              Colunas:
-              {[...(template.data?.fixedColumns ? ['A fazer'] : []), ...shown.columns.map((column) => column.name), ...(template.data?.fixedColumns ? ['Concluído'] : [])].map(
-                (name) => {
-                  const column = shown.columns.find((entry) => entry.name === name);
-                  return (
-                    <span key={name} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5">
-                      <span className="size-2 rounded-full" style={{ backgroundColor: boardColors[column?.color ?? 'GRAY'] }} />
-                      {name}
-                    </span>
-                  );
-                },
-              )}
-            </p>
-            <p>Campos: {shown.fields.map((field) => `${field.name} (${field.options.length})`).join(', ')}</p>
-          </div>
-        )}
-        {structure && (
-          <div className="mt-3">
-            <BoardStructureEditor value={structure} onChange={setStructure} fixedColumns={template.data?.fixedColumns ?? false} />
-          </div>
-        )}
-      </div>
+      )}
     </form>
   );
 }

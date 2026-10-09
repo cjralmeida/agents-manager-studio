@@ -16,6 +16,9 @@ export interface BoardLink {
   refreshIntervalSec: number;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  /** "synced" follows the Studio model; "drift" was changed on the provider; "pending" was never converted. */
+  modelStatus: 'synced' | 'drift' | 'pending';
+  modelSyncError: string | null;
 }
 
 export interface BoardOption {
@@ -168,7 +171,7 @@ export function useLinkBoard(workspaceId: string) {
 export function useCreateBoard(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
-    mutationFn: (input: CreateOption & { title: string; structure: BoardStructure | null }) =>
+    mutationFn: (input: CreateOption & { title: string }) =>
       api.post<{ link: BoardLink; warnings: string[] }>(`${base(workspaceId)}/create`, input),
     onSuccess: invalidate,
   });
@@ -186,14 +189,6 @@ export function useUpdateBoardSettings(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
     mutationFn: (input: { refreshIntervalSec: number }) => api.put<BoardLink>(`${base(workspaceId)}/settings`, input),
-    onSuccess: invalidate,
-  });
-}
-
-export function useUpdateStatusMap(workspaceId: string) {
-  const invalidate = useInvalidateBoard(workspaceId);
-  return useMutation({
-    mutationFn: (map: StatusMap) => api.put<BoardLink>(`${base(workspaceId)}/status-map`, map),
     onSuccess: invalidate,
   });
 }
@@ -305,14 +300,31 @@ export interface BoardStructure {
   fields: StructureField[];
 }
 
-export interface BoardStructureState {
+export interface ModelColumn extends StructureOption {
+  role: StatusRole | null;
+}
+
+/** The Studio board model: every workspace board follows it. New entries (editor) have id null. */
+export interface BoardModel {
+  columns: ModelColumn[];
+  fields: StructureField[];
+}
+
+export interface ModelBoardSummary {
+  workspaceId: string;
+  workspaceName: string;
   provider: BoardProvider;
-  /** GitLab: "A fazer" and "Concluído" always exist around the editable columns. */
-  fixedColumns: boolean;
-  structure: BoardStructure;
-  allColumns: { id: string; name: string }[];
-  columnItems: Record<string, number>;
-  optionItems: Record<string, Record<string, number>>;
+  title: string;
+  url: string;
+  modelStatus: BoardLink['modelStatus'];
+  modelSyncError: string | null;
+}
+
+export interface ModelState {
+  model: BoardModel;
+  /** Cards per model column, field and option over the boards that follow it. */
+  usage: { columns: Record<string, number>; options: Record<string, Record<string, number>>; fields: Record<string, number> };
+  boards: ModelBoardSummary[];
 }
 
 export interface StructurePlan {
@@ -321,36 +333,79 @@ export interface StructurePlan {
   lostValues: { field: string; option: string | null; items: number }[];
 }
 
-export function useTemplateStructure(provider: BoardProvider) {
-  return useQuery({
-    queryKey: ['board-template', provider] as const,
-    queryFn: () =>
-      api.get<{ provider: BoardProvider; fixedColumns: boolean; structure: BoardStructure }>(`/board-template/structure?provider=${provider}`),
-    staleTime: Number.POSITIVE_INFINITY,
+export interface PropagationResult {
+  workspaceId: string;
+  workspaceName: string;
+  status: 'applied' | 'skipped' | 'failed';
+  message: string;
+}
+
+const modelKey = ['board-model'] as const;
+
+export function useBoardModel() {
+  return useQuery({ queryKey: modelKey, queryFn: () => api.get<ModelState>('/board-model'), refetchOnWindowFocus: false });
+}
+
+export function usePreviewModel() {
+  return useMutation({ mutationFn: (model: BoardModel) => api.post<StructurePlan>('/board-model/preview', { model }) });
+}
+
+export function useApplyModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { model: BoardModel; columnMoves: Record<string, string> }) =>
+      api.put<{ model: BoardModel; results: PropagationResult[] }>('/board-model', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: modelKey });
+      void queryClient.invalidateQueries({ queryKey: ['board'] });
+    },
   });
 }
 
-/** Read fresh from the provider each time the editor opens. */
-export function useBoardStructure(workspaceId: string) {
+// ---------------------------------------------------------------- converting a workspace board to the model
+
+/** Provider id -> model id; fields and options may go to null (removed). */
+export interface ConversionMapping {
+  columns: Record<string, string>;
+  fields: Record<string, string | null>;
+  options: Record<string, Record<string, string | null>>;
+}
+
+export interface ConversionState {
+  link: BoardLink;
+  provider: BoardProvider;
+  model: { columns: (ModelColumn & { id: string; fixed: boolean })[]; fields: StructureField[] };
+  /** The board as it is on the provider (GitLab's fixed columns left out). */
+  current: BoardStructure;
+  suggestion: ConversionMapping;
+  columnItems: Record<string, number>;
+  optionItems: Record<string, Record<string, number>>;
+}
+
+export function useBoardConversion(workspaceId: string) {
   return useQuery({
-    queryKey: [...boardKeys.all(workspaceId), 'structure'] as const,
-    queryFn: () => api.get<BoardStructureState>(`${base(workspaceId)}/structure`),
+    queryKey: [...boardKeys.all(workspaceId), 'conversion'] as const,
+    queryFn: () => api.get<ConversionState>(`${base(workspaceId)}/conversion`),
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
 }
 
-export function usePreviewBoardStructure(workspaceId: string) {
+export function usePreviewConversion(workspaceId: string) {
   return useMutation({
-    mutationFn: (structure: BoardStructure) => api.post<StructurePlan>(`${base(workspaceId)}/structure/preview`, { structure }),
+    mutationFn: (mapping: ConversionMapping) =>
+      api.post<{ changes: string[]; lostValues: StructurePlan['lostValues']; movedCards: number }>(`${base(workspaceId)}/conversion/preview`, { mapping }),
   });
 }
 
-export function useApplyBoardStructure(workspaceId: string) {
+export function useApplyConversion(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { structure: BoardStructure; columnMoves: Record<string, string> }) =>
-      api.put<{ applied: number; link: BoardLink }>(`${base(workspaceId)}/structure`, input),
-    onSuccess: invalidate,
+    mutationFn: (mapping: ConversionMapping) => api.put<{ applied: number; link: BoardLink }>(`${base(workspaceId)}/conversion`, { mapping }),
+    onSuccess: () => {
+      void invalidate();
+      void queryClient.invalidateQueries({ queryKey: modelKey });
+    },
   });
 }

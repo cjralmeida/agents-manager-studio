@@ -82,14 +82,17 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 - **GitHub:** um GitHub Project (v2). O token fine-grained da conta precisa de *Projects: leitura e escrita* na organização e *Issues: leitura e escrita* nos repositórios.
 - **GitLab:** um board de grupo. As colunas são labels `Status: …` e os campos são labels `Campo: valor`. "A fazer" corresponde às issues abertas sem coluna, e "Concluído" às fechadas.
 
-Se o Studio não encontrar um quadro, ele pode criar um. O padrão é o modelo do Studio (`server/src/modules/boards/template.ts`), e **Personalizar** abre o editor para mudar colunas e campos antes de criar. No GitHub, ele copia o projeto-modelo da página Conectores, quando houver, e aplica a estrutura personalizada por cima.
+**Modelo de quadro:** em **Quadro de tarefas → Modelo** fica a estrutura que vale para todos os workspaces: colunas, com o papel de cada uma para os agentes, e campos de escolha com suas opções. O primeiro modelo é o template do Studio (`server/src/modules/boards/template.ts`).
+- O editor é visual: as colunas ficam lado a lado e se arrastam pelo ⠿, e cada coluna ou opção tem cor e descrição. Os papéis "A fazer" e "Concluído" são obrigatórios.
+- **Revisar mudanças** mostra o que vai mudar e pede para onde vão os cards das colunas removidas. Ao salvar, a mudança é aplicada em todos os quadros que estão no modelo, e o resultado de cada um aparece na tela.
+- Renomear mantém os cards na coluna ou opção. No GitHub, o ID da opção é preservado; no GitLab, o label é renomeado.
 
-**Estrutura do quadro:** o botão **Estrutura**, na aba Quadro, abre um editor visual.
-- Colunas lado a lado, que se arrastam pelo ⠿; campos de escolha única com suas opções; cor e descrição em cada um.
-- **Revisar mudanças** mostra o que vai mudar no GitHub/GitLab. Antes de remover uma coluna com cards, pede para onde eles vão, e avisa quais cards perdem um valor de campo.
-- Renomear mantém os cards na coluna ou opção: o ID é preservado no GitHub, e no GitLab o label é renomeado.
-- As tarefas continuam no provedor. O Studio só edita a estrutura. No GitLab, "A fazer" e "Concluído" são fixas, e a ordem dos campos fica guardada no Studio, porque o GitLab ordena labels por nome.
-- Depois de aplicar, os papéis dos agentes continuam nas suas colunas. Um papel que perdeu a coluna é deduzido de novo pelo nome.
+**Quadros dos workspaces:**
+- **Criar um quadro:** ele já nasce no modelo. No GitHub, usa o projeto-modelo de Conectores, quando houver, pelas visões, e aplica o modelo por cima.
+- **Vincular um quadro existente:** ele aparece como "não convertido". **Converter para o modelo** mostra a que coluna, campo e opção do modelo corresponde cada parte do quadro, com sugestões pelo nome. O que corresponde é renomeado, o que falta é criado e o resto é removido no provedor, depois de mover os cards.
+- **Mudanças feitas direto no GitHub/GitLab:** a leitura periódica marca o quadro como "fora do modelo". Nada é desfeito sozinho; **Sincronizar com o modelo** abre a mesma tela de conversão.
+- **No GitLab**, as colunas do modelo com papel "A fazer" e "Concluído" são as issues abertas sem coluna e as fechadas. A ordem dos campos segue o modelo.
+- **Um quadro só pode estar vinculado a um workspace.**
 
 Ao lançar um agente a partir de um card:
 

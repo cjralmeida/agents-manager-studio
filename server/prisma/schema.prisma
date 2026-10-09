@@ -297,6 +297,13 @@ model TaskBoard {
   /// GitLab lists labels alphabetically: order of the fields and their options set in the Studio editor
   /// ({ fields: string[], options: { [field]: string[] } }); null keeps the template order.
   fieldOrder  Json?       @map("field_order")
+  /// How the provider board matches the Studio board model (provider id -> model id for columns, fields
+  /// and options); null until the board is converted to the model.
+  modelMap    Json?       @map("model_map")
+  /// "synced" (follows the model), "drift" (changed on the provider) or "pending" (never converted).
+  modelStatus String      @default("pending") @map("model_status")
+  /// Why the last sync with the model failed.
+  modelSyncError String?  @map("model_sync_error")
   /// The server reads the board from the provider this often (and then runs the sentinels).
   refreshIntervalSec Int       @default(120) @map("refresh_interval_sec")
   lastSyncedAt       DateTime? @map("last_synced_at") @db.Timestamptz(3)
@@ -306,6 +313,8 @@ model TaskBoard {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  /// A provider board belongs to one workspace only.
+  @@unique([provider, host, externalId])
   @@map("task_boards")
 }
 

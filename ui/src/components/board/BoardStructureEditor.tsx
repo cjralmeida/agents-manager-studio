@@ -1,11 +1,14 @@
 import { type DragEvent, useEffect, useRef, useState } from 'react';
 import {
   type BoardColor,
-  type BoardStructure,
+  type BoardModel,
+  type ModelColumn,
+  type StatusRole,
   type StructureField,
   type StructureOption,
   boardColorLabels,
   boardColors,
+  statusRoleLabels,
 } from '../../api/boards';
 import { Button } from '../Button';
 
@@ -119,36 +122,36 @@ function CountBadge({ count, noun }: { count: number | undefined; noun: string }
   );
 }
 
-function FixedColumn({ name, hint }: { name: string; hint: string }) {
-  return (
-    <div className="flex w-52 shrink-0 flex-col rounded-lg border border-dashed border-border p-3 text-sm text-muted" title={hint}>
-      <span className="font-medium">🔒 {name}</span>
-      <span className="mt-1 text-xs">{hint}</span>
-    </div>
-  );
-}
+const ROLE_HINTS: Record<StatusRole, string> = {
+  todo: 'Tarefas novas. No GitLab, as issues abertas sem coluna.',
+  inProgress: 'Para onde a tarefa vai quando um agente é lançado.',
+  review: 'Para onde a tarefa vai quando o PR/MR é aberto.',
+  done: 'Concluídas. No GitLab, as issues fechadas.',
+  blocked: 'Agentes não são lançados nestas tarefas.',
+};
 
 /**
- * Visual editor of a board structure: columns side by side (drag to reorder), then the fields and their options.
- * Counts show how many cards use each column/option, so removals are not a surprise.
+ * Visual editor of the Studio board model: columns side by side (drag to reorder) with their agent role, then the
+ * fields and their options. Counts show how many cards use each column/option, so removals are not a surprise.
  */
 export function BoardStructureEditor({
   value,
   onChange,
-  fixedColumns,
   columnItems = {},
   optionItems = {},
 }: {
-  value: BoardStructure;
-  onChange: (next: BoardStructure) => void;
-  fixedColumns: boolean;
+  value: BoardModel;
+  onChange: (next: BoardModel) => void;
   columnItems?: Record<string, number>;
   optionItems?: Record<string, Record<string, number>>;
 }) {
-  const setColumns = (columns: StructureOption[]) => onChange({ ...value, columns });
+  const setColumns = (columns: ModelColumn[]) => onChange({ ...value, columns });
   const setFields = (fields: StructureField[]) => onChange({ ...value, fields });
-  const updateColumn = (index: number, patch: Partial<StructureOption>) =>
+  const updateColumn = (index: number, patch: Partial<ModelColumn>) =>
     setColumns(value.columns.map((column, position) => (position === index ? { ...column, ...patch } : column)));
+  /** A role belongs to one column: giving it to another takes it from the first. */
+  const setRole = (index: number, role: StatusRole | null) =>
+    setColumns(value.columns.map((column, position) => (position === index ? { ...column, role } : role && column.role === role ? { ...column, role: null } : column)));
   const columnDrag = useReorder('columns', (from, to) => setColumns(move(value.columns, from, to)));
   const fieldDrag = useReorder('fields', (from, to) => setFields(move(value.fields, from, to)));
 
@@ -156,9 +159,10 @@ export function BoardStructureEditor({
     <div className="space-y-6">
       <section>
         <h3 className="text-xs font-medium tracking-wider text-muted uppercase">Colunas</h3>
-        <p className="mt-1 text-xs text-muted">Arraste para reordenar. Clique na bolinha para trocar a cor.</p>
+        <p className="mt-1 text-xs text-muted">
+          Arraste para reordenar e clique na bolinha para trocar a cor. Os papéis "A fazer" e "Concluído" são obrigatórios.
+        </p>
         <div className="mt-3 flex items-stretch gap-3 overflow-x-auto pb-2">
-          {fixedColumns && <FixedColumn name="A fazer" hint="Issues abertas sem coluna (fixa no GitLab)." />}
           {value.columns.map((column, index) => (
             <div
               key={column.id ?? `new-${index}`}
@@ -187,6 +191,19 @@ export function BoardStructureEditor({
                 rows={2}
                 className={`${inputClasses} resize-none text-xs`}
               />
+              <select
+                value={column.role ?? ''}
+                onChange={(event) => setRole(index, (event.target.value || null) as StatusRole | null)}
+                title={column.role ? ROLE_HINTS[column.role] : 'Papel da coluna para os agentes'}
+                className={`${inputClasses} text-xs ${column.role ? 'text-white' : 'text-muted'}`}
+              >
+                <option value="">Sem papel</option>
+                {(Object.keys(statusRoleLabels) as StatusRole[]).map((role) => (
+                  <option key={role} value={role}>
+                    Papel: {statusRoleLabels[role]}
+                  </option>
+                ))}
+              </select>
               <div className="mt-auto flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <button
@@ -225,12 +242,11 @@ export function BoardStructureEditor({
           ))}
           <button
             type="button"
-            onClick={() => setColumns([...value.columns, { id: null, name: '', color: nextColor(value.columns), description: '' }])}
+            onClick={() => setColumns([...value.columns, { id: null, name: '', color: nextColor(value.columns), description: '', role: null }])}
             className="flex w-40 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted hover:border-accent hover:text-white"
           >
             + Nova coluna
           </button>
-          {fixedColumns && <FixedColumn name="Concluído" hint="Issues fechadas (fixa no GitLab)." />}
         </div>
       </section>
 

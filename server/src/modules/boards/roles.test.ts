@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { detectStatusMap, sanitizeStatusMap } from './roles.js';
+import { detectStatusMap, roleFromName } from './roles.js';
 
 const option = (id: string, name: string) => ({ id, name, color: '#000000', description: null });
 
@@ -27,10 +27,10 @@ describe('detectStatusMap', () => {
   });
 });
 
-describe('sanitizeStatusMap', () => {
-  it('drops unknown roles and missing columns', () => {
-    const columns = [option('a', 'A fazer')];
-    assert.deepEqual(sanitizeStatusMap({ todo: 'a', done: 'gone', other: 'a' }, columns), { todo: 'a' });
-    assert.deepEqual(sanitizeStatusMap(null, columns), {});
+describe('roleFromName', () => {
+  it('suggests a role only when the name says so', () => {
+    assert.equal(roleFromName('Doing'), 'inProgress');
+    assert.equal(roleFromName('Aguardando aprovação'), 'blocked');
+    assert.equal(roleFromName('WIP'), null);
   });
 });

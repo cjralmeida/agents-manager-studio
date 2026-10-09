@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { useAgents } from '../../api/agents';
 import { type Board, boardProviderLabels, useBoard, useBoardLink, useMoveTask, useRefreshBoard } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
@@ -8,7 +9,7 @@ import { Button } from '../Button';
 import { ErrorText, TextInput } from '../form';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { BoardSetup } from './BoardSetup';
-import { BoardStructurePanel } from './BoardStructurePanel';
+import { BoardConversionPanel } from './BoardConversionPanel';
 import { agentsByItem, matchesSearch } from './boardUtils';
 import { KanbanView } from './KanbanView';
 import { NewTaskForm } from './NewTaskForm';
@@ -50,7 +51,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const [search, setSearch] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [editingStructure, setEditingStructure] = useState(false);
+  const [converting, setConverting] = useState(false);
   const agents = useAgents(workspace.id);
   const refresh = useRefreshBoard(workspace.id);
   const move = useMoveTask(workspace.id);
@@ -60,7 +61,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
 
-  if (editingStructure) return <BoardStructurePanel workspaceId={workspace.id} onClose={() => setEditingStructure(false)} />;
+  if (converting) return <BoardConversionPanel workspaceId={workspace.id} onClose={() => setConverting(false)} />;
 
   return (
     <div className="space-y-4">
@@ -81,9 +82,9 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
             className="w-60"
           />
           <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
-          <Button onClick={() => setEditingStructure(true)} title="Colunas, campos e opções do quadro">
-            Estrutura
-          </Button>
+          <Link to="/board?tab=model" className="text-xs text-muted hover:text-accent" title="Colunas e campos valem para todos os workspaces">
+            Modelo do quadro
+          </Link>
           <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Lê o quadro do provedor agora">
             {refresh.isPending ? 'Atualizando...' : 'Atualizar'}
           </Button>
@@ -93,6 +94,19 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
         </div>
       </header>
       <ErrorText error={refresh.error ?? move.error} />
+      {board.link.modelStatus !== 'synced' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+          <span className="text-amber-200">
+            {board.link.modelStatus === 'pending'
+              ? 'Este quadro ainda não segue o modelo do Studio.'
+              : 'Este quadro foi alterado fora do Studio e não está mais igual ao modelo.'}
+            {board.link.modelSyncError && <span className="ml-1 text-xs text-red-300">({board.link.modelSyncError})</span>}
+          </span>
+          <Button size="sm" variant="primary" onClick={() => setConverting(true)}>
+            {board.link.modelStatus === 'pending' ? 'Converter para o modelo' : 'Sincronizar com o modelo'}
+          </Button>
+        </div>
+      )}
 
       {view === 'cards' ? (
         <KanbanView

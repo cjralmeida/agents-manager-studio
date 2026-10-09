@@ -1,22 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
+import { applyConversion, applyModel, getConversion, getModelState, previewConversion, previewModel } from './model-service.js';
 import {
-  applyBoardStructure,
   createBoard,
   createTask,
   detectBoards,
   getBoard,
   getBoardLink,
-  getBoardStructure,
-  getTemplateStructure,
   linkBoard,
   moveItem,
-  previewBoardStructure,
   setItemField,
   unlinkBoard,
   updateBoardSettings,
-  updateStatusMap,
 } from './service.js';
 import { STATUS_ROLES } from './types.js';
 
@@ -28,14 +24,14 @@ const boardQuery = z.object({ refresh: z.stringbool().default(false) }).strict()
 const linkBody = z.object({ url: z.url().max(500) }).strict();
 
 const color = z.enum(['GRAY', 'BLUE', 'GREEN', 'YELLOW', 'ORANGE', 'RED', 'PINK', 'PURPLE']);
-const structureOption = z
+const modelOption = z
   .object({ id: z.string().min(1).max(200).nullable(), name: z.string().max(200), color, description: z.string().max(500).default('') })
   .strict();
-const structure = z
+const model = z
   .object({
-    columns: z.array(structureOption).max(60),
+    columns: z.array(modelOption.extend({ role: z.enum(STATUS_ROLES).nullable().default(null) }).strict()).max(60),
     fields: z
-      .array(z.object({ id: z.string().min(1).max(200).nullable(), name: z.string().max(200), options: z.array(structureOption).max(60) }).strict())
+      .array(z.object({ id: z.string().min(1).max(200).nullable(), name: z.string().max(200), options: z.array(modelOption).max(60) }).strict())
       .max(30),
   })
   .strict();
@@ -46,17 +42,26 @@ const createBody = z
     host: z.string().trim().min(1).max(200),
     owner: z.string().trim().min(1).max(300),
     title: z.string().trim().min(1).max(100),
-    /** Null follows the Studio template. */
-    structure: structure.nullable().default(null),
   })
   .strict();
 
-const templateQuery = z.object({ provider: z.enum(['GITHUB', 'GITLAB']) }).strict();
-const previewBody = z.object({ structure }).strict();
-/** For each removed column holding cards, the column they move to. */
-const applyBody = z.object({ structure, columnMoves: z.record(z.string(), z.string()).default({}) }).strict();
+const modelPreviewBody = z.object({ model }).strict();
+/** For each removed model column, the model column its cards move to. */
+const modelApplyBody = z.object({ model, columnMoves: z.record(z.string(), z.string()).default({}) }).strict();
 
-const statusMapBody = z.object(Object.fromEntries(STATUS_ROLES.map((role) => [role, z.string().min(1).optional()]))).strict();
+const id = z.string().min(1).max(200);
+const conversionBody = z
+  .object({
+    mapping: z
+      .object({
+        columns: z.record(id, id),
+        fields: z.record(id, id.nullable()),
+        options: z.record(id, z.record(id, id.nullable())),
+      })
+      .strict(),
+  })
+  .strict();
+
 
 /** 1 to 15 minutes between automatic reads of the board. */
 const settingsBody = z.object({ refreshIntervalSec: z.number().int().min(60).max(900) }).strict();
@@ -76,20 +81,28 @@ const moveBody = z.object({ columnId: z.string().min(1) }).strict();
 const fieldBody = z.object({ fieldId: z.string().min(1), optionId: z.string().min(1).nullable() }).strict();
 
 export async function boardRoutes(app: FastifyInstance) {
-  app.get('/board-template/structure', async (request) => getTemplateStructure(parseInput(templateQuery, request.query).provider));
+  /** The Studio board model, the boards that follow it and how many cards use each part. */
+  app.get('/board-model', async () => getModelState());
 
-  /** Columns and fields of the linked board, to edit them in the Studio. */
-  app.get('/workspaces/:id/board/structure', async (request) => getBoardStructure(parseInput(workspaceParams, request.params).id));
+  app.post('/board-model/preview', async (request) => previewModel(parseInput(modelPreviewBody, request.body).model));
 
-  app.post('/workspaces/:id/board/structure/preview', async (request) => {
-    const { id } = parseInput(workspaceParams, request.params);
-    return previewBoardStructure(id, parseInput(previewBody, request.body).structure);
+  /** Saves the model and applies it to every board that follows it. */
+  app.put('/board-model', async (request) => {
+    const body = parseInput(modelApplyBody, request.body);
+    return applyModel(body.model, body.columnMoves);
   });
 
-  app.put('/workspaces/:id/board/structure', async (request) => {
-    const { id } = parseInput(workspaceParams, request.params);
-    const body = parseInput(applyBody, request.body);
-    return applyBoardStructure(id, body.structure, body.columnMoves);
+  /** The workspace board next to the model, to convert it (or sync it again after a change on the provider). */
+  app.get('/workspaces/:id/board/conversion', async (request) => getConversion(parseInput(workspaceParams, request.params).id));
+
+  app.post('/workspaces/:id/board/conversion/preview', async (request) => {
+    const { id: workspaceId } = parseInput(workspaceParams, request.params);
+    return previewConversion(workspaceId, parseInput(conversionBody, request.body).mapping);
+  });
+
+  app.put('/workspaces/:id/board/conversion', async (request) => {
+    const { id: workspaceId } = parseInput(workspaceParams, request.params);
+    return applyConversion(workspaceId, parseInput(conversionBody, request.body).mapping);
   });
 
   app.get('/workspaces/:id/board-link', async (request) => getBoardLink(parseInput(workspaceParams, request.params).id));
@@ -109,11 +122,6 @@ export async function boardRoutes(app: FastifyInstance) {
   app.delete('/workspaces/:id/board/link', async (request, reply) => {
     await unlinkBoard(parseInput(workspaceParams, request.params).id);
     return reply.code(204).send();
-  });
-
-  app.put('/workspaces/:id/board/status-map', async (request) => {
-    const { id } = parseInput(workspaceParams, request.params);
-    return updateStatusMap(id, parseInput(statusMapBody, request.body));
   });
 
   app.put('/workspaces/:id/board/settings', async (request) => {

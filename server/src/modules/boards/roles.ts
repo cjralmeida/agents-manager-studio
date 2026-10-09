@@ -1,4 +1,4 @@
-import { type BoardOption, STATUS_ROLES, type StatusMap, type StatusRole } from './types.js';
+import type { BoardOption, StatusMap, StatusRole } from './types.js';
 
 /** Checked in this order, so "Aguardando aprovação" is not taken as "A fazer" and "Em revisão" not as "Em andamento". */
 const ROLE_PATTERNS: [StatusRole, RegExp][] = [
@@ -14,6 +14,11 @@ function normalize(text: string) {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase();
+}
+
+/** Role suggested by a column name alone (no fallback), or null. */
+export function roleFromName(name: string): StatusRole | null {
+  return ROLE_PATTERNS.find(([, pattern]) => pattern.test(normalize(name)))?.[0] ?? null;
 }
 
 /** Guesses which column plays each role from the column names; first and last columns are the fallback for todo/done. */
@@ -32,18 +37,5 @@ export function detectStatusMap(columns: BoardOption[]): StatusMap {
   const free = columns.filter((option) => !taken.has(option.id));
   if (!map.todo && free[0]) map.todo = free.shift()!.id;
   if (!map.done && free.at(-1)) map.done = free.pop()!.id;
-  return map;
-}
-
-/** Keeps only roles pointing to existing columns. */
-export function sanitizeStatusMap(value: unknown, columns: BoardOption[]): StatusMap {
-  const ids = new Set(columns.map((column) => column.id));
-  const map: StatusMap = {};
-  if (value && typeof value === 'object') {
-    for (const role of STATUS_ROLES) {
-      const id = (value as Record<string, unknown>)[role];
-      if (typeof id === 'string' && ids.has(id)) map[role] = id;
-    }
-  }
   return map;
 }

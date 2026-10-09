@@ -1,16 +1,11 @@
 import { useState } from 'react';
 import {
   type BoardLink,
-  type BoardOption,
-  type StatusMap,
-  type StatusRole,
   boardProviderLabels,
-  statusRoleLabels,
   useBoard,
   useBoardLink,
   useUnlinkBoard,
   useUpdateBoardSettings,
-  useUpdateStatusMap,
 } from '../../api/boards';
 import { Link } from 'react-router';
 import { timeAgo } from '../../lib/time';
@@ -18,13 +13,6 @@ import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Field, Select } from '../form';
 
-const ROLE_HINTS: Record<StatusRole, string> = {
-  todo: 'Onde ficam as tarefas novas.',
-  inProgress: 'A tarefa vai para cá quando um agente é lançado.',
-  review: 'A tarefa vai para cá quando o PR/MR é aberto.',
-  done: 'Concluídas; o Studio não move para cá.',
-  blocked: 'Agentes não podem ser lançados nestas tarefas.',
-};
 
 /** Board behavior in the workspace configuration: refresh interval and column roles. */
 export function BoardBehaviorSection({ workspaceId }: { workspaceId: string }) {
@@ -37,7 +25,7 @@ export function BoardBehaviorSection({ workspaceId }: { workspaceId: string }) {
       <ErrorText error={link.error ?? board.error} />
       {link.data === null && <p className="mt-2 text-sm text-muted">Nenhum quadro vinculado. Vincule ou crie um na aba Quadro.</p>}
       {link.data && board.data && (
-        <BoardBehavior key={JSON.stringify(link.data.statusMap)} workspaceId={workspaceId} link={link.data} columns={board.data.columns} />
+        <BoardBehavior workspaceId={workspaceId} link={link.data} />
       )}
     </section>
   );
@@ -112,46 +100,20 @@ function RefreshInterval({ workspaceId, link }: { workspaceId: string; link: Boa
   );
 }
 
-function BoardBehavior({ workspaceId, link, columns }: { workspaceId: string; link: BoardLink; columns: BoardOption[] }) {
-  const [map, setMap] = useState<StatusMap>(link.statusMap);
-  const update = useUpdateStatusMap(workspaceId);
-  const isDirty = JSON.stringify(map) !== JSON.stringify(link.statusMap);
-
+function BoardBehavior({ workspaceId, link }: { workspaceId: string; link: BoardLink }) {
   return (
     <>
       <p className="mt-1 text-xs text-muted">Quadro "{link.title}". O vínculo fica na aba Conectores; aqui, como o Studio trabalha com ele.</p>
 
       <RefreshInterval workspaceId={workspaceId} link={link} />
 
-      <h3 className="mt-5 text-sm font-medium">Papel das colunas</h3>
-      <p className="mt-1 text-xs text-muted">Usado para mover as tarefas automaticamente conforme o agente avança.</p>
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {(Object.keys(statusRoleLabels) as StatusRole[]).map((role) => (
-          <Field key={role} label={statusRoleLabels[role]} hint={ROLE_HINTS[role]}>
-            <Select
-              value={map[role] ?? ''}
-              onChange={(event) => {
-                const { [role]: _removed, ...rest } = map;
-                setMap(event.target.value ? { ...rest, [role]: event.target.value } : rest);
-              }}
-            >
-              <option value="">Nenhuma</option>
-              {columns.map((column) => (
-                <option key={column.id} value={column.id}>
-                  {column.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button variant="primary" onClick={() => update.mutate(map)} disabled={!isDirty || update.isPending}>
-          {update.isPending ? 'Salvando...' : 'Salvar papéis'}
-        </Button>
-        <ErrorText error={update.error} />
-      </div>
+      <p className="mt-4 text-xs text-muted">
+        Colunas, campos e o papel de cada coluna para os agentes vêm do{' '}
+        <Link to="/board?tab=model" className="text-accent hover:underline">
+          modelo de quadro
+        </Link>
+        , que vale para todos os workspaces.
+      </p>
     </>
   );
 }
