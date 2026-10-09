@@ -21,6 +21,13 @@ export const agentStateLabels: Record<AgentState, { label: string; tone: Tone }>
   idle: { label: 'Livre', tone: 'neutral' },
 };
 
+const ACTIVE_STATUSES = ['PREPARING', 'RUNNING', 'FINALIZING'];
+
+/** Whether the latest execution's status says the same as the card state. */
+function repeatsCardState(state: string, status: string) {
+  return (state === 'working' && ACTIVE_STATUSES.includes(status)) || (state === 'waiting' && status === 'WAITING_INPUT');
+}
+
 interface AgentsOverviewProps {
   profiles: AgentProfile[];
   executions: Agent[];
@@ -133,7 +140,8 @@ function AgentCard({ summary, showWorkspace, onRun }: { summary: AgentSummary; s
             <span className="text-muted">Última: </span>
             {summary.latest.title}
           </span>
-          <AgentStatusBadge status={summary.latest.status} />
+          {/* The card badge already says "Trabalhando"/"Aguardando"; the latest execution's badge only adds something new. */}
+          {!repeatsCardState(summary.state, summary.latest.status) && <AgentStatusBadge status={summary.latest.status} />}
         </Link>
       ) : (
         <p className="mt-3 text-xs text-muted">Ainda não executou.</p>

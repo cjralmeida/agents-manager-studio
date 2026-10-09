@@ -144,7 +144,12 @@ body {
   box-shadow: 0 0 14px rgb(168 85 247 / 0.18);
 }
 
-.glow-working::before {
+.glow-working-row {
+  position: relative;
+}
+
+.glow-working::before,
+.glow-working-row::before {
   content: '';
   position: absolute;
   inset: -1px;
@@ -169,7 +174,14 @@ body {
   pointer-events: none;
 }
 
+/* Rows of a list (clipped by the list's own border): the light runs just inside the row. */
+.glow-working-row::before {
+  inset: 2px;
+  border-radius: 0.375rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .glow-working-row::before,
   .glow-working::before {
     animation: none;
     background: rgb(168 85 247 / 0.8);

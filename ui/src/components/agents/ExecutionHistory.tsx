@@ -96,7 +96,16 @@ export function ExecutionHistory({ executions }: { executions: Agent[] }) {
           <h3 className="mb-1 text-xs font-medium tracking-wider text-muted uppercase first-letter:uppercase">{group.day}</h3>
           <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {group.items.map((agent) => (
-              <li key={agent.id} className={agent.status === 'WAITING_INPUT' ? 'bg-amber-400/5' : ''}>
+              <li
+                key={agent.id}
+                className={
+                  agent.status === 'WAITING_INPUT'
+                    ? 'bg-amber-400/5'
+                    : ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)
+                      ? 'glow-working-row bg-purple-500/5'
+                      : ''
+                }
+              >
                 <Link to={`/agents/${agent.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-border/30">
                   <span className="w-36 shrink-0">
                     <AgentStatusBadge status={agent.status} />
