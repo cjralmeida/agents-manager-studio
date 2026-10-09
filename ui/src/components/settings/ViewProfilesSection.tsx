@@ -35,7 +35,7 @@ export function ViewProfilesSection() {
         <h2 className="text-base font-semibold">Perfis de visualização</h2>
         <p className="mt-1 max-w-3xl text-sm text-muted">
           Cada perfil mostra só alguns workspaces no menu, no dashboard, no quadro de tarefas geral, nas execuções e no consumo. Troque de
-          perfil no topo do menu. A <strong>Visão geral</strong> sempre mostra todos. Agentes e workflows dos workspaces escondidos continuam
+          perfil no card do seu usuário, no fim do menu. A <strong>Visão geral</strong> sempre mostra todos. Agentes e workflows dos workspaces escondidos continuam
           rodando, e o menu avisa quando algum deles espera uma resposta sua.
         </p>
       </div>

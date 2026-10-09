@@ -3,6 +3,7 @@ import { type AuthUser, type Theme, useChangePassword, useLogout, useUpdateProfi
 import { applyTheme, themeLabels } from '../../lib/theme';
 import { Button } from '../Button';
 import { ErrorText, Field, TextInput } from '../form';
+import { HiddenWaitingNotice, ViewProfileOptions, useActiveViewProfileName } from '../ViewProfileSwitcher';
 
 const initials = (name: string) =>
   name
@@ -12,13 +13,14 @@ const initials = (name: string) =>
     .map((part) => part[0]!.toUpperCase())
     .join('');
 
-/** Bottom of the sidebar: who is signed in, theme, password and sign out. */
+/** Bottom of the sidebar: who is signed in, the view profile, theme, password and sign out. */
 export function UserMenu({ user }: { user: AuthUser }) {
   const [open, setOpen] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const logout = useLogout();
   const profile = useUpdateProfile();
+  const viewProfile = useActiveViewProfileName();
 
   useEffect(() => {
     if (!open) return;
@@ -52,12 +54,17 @@ export function UserMenu({ user }: { user: AuthUser }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{user.name}</span>
           <span className="block truncate text-xs text-muted">{user.email}</span>
+          <span className="block truncate text-xs text-accent" title="Perfil de visualização: quais workspaces aparecem">
+            {viewProfile}
+          </span>
         </span>
       </button>
+      <HiddenWaitingNotice />
 
       {open && (
         <div className="absolute right-0 bottom-full left-0 z-40 mb-2 rounded-lg border border-border bg-panel p-2 shadow-xl">
-          <p className="px-2 pt-1 pb-1.5 text-[11px] font-medium tracking-wider text-muted uppercase">Tema</p>
+          <ViewProfileOptions onPicked={() => setOpen(false)} />
+          <p className="mt-2 border-t border-border px-2 pt-2 pb-1.5 text-[11px] font-medium tracking-wider text-muted uppercase">Tema</p>
           <div className="flex rounded-md border border-border p-0.5">
             {(Object.keys(themeLabels) as Theme[]).map((theme) => (
               <button

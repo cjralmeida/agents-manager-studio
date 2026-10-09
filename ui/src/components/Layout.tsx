@@ -6,7 +6,6 @@ import { useAgentNotifications, useNotificationSettings } from '../lib/notificat
 import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
 import { OrbiPanel } from './orbi/OrbiPanel';
-import { ViewProfileSwitcher } from './ViewProfileSwitcher';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -36,9 +35,6 @@ export function Layout() {
           <Logo size={28} alert={waiting > 0} />
           <span className="leading-tight">Agents Manager Studio</span>
         </NavLink>
-        <div className="px-3 pb-3">
-          <ViewProfileSwitcher />
-        </div>
         <nav className="flex flex-col gap-1 px-2">
           {items.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
