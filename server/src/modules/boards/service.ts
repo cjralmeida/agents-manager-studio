@@ -12,6 +12,7 @@ import { createLocalAdapter } from './local.js';
 import { asStructure } from './model.js';
 import { getWorkspaceModel } from './model-store.js';
 import { type ModelMap, followsModel, mapByName, modelAsProviderStructure, statusMapFrom } from './model-sync.js';
+import { itemRef, releasableItems } from './dependencies.js';
 import { detectStatusMap } from './roles.js';
 import { type FieldOrder, GITLAB_FIXED_COLUMNS, fieldOrderOf, structureOf } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, TASK_BODY_TEMPLATE } from './template.js';
@@ -324,6 +325,7 @@ export async function syncBoard(board: TaskBoard) {
       where: { workspaceId: board.workspaceId },
       data: { lastSyncedAt: new Date(), lastSyncError: null, modelStatus: await modelStatusOf(board, snapshot) },
     });
+    await releaseDependents(board, snapshot);
     return snapshot;
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
@@ -395,6 +397,29 @@ export async function moveItem(workspaceId: string, itemId: string, columnId: st
   await (await adapterFor(board)).moveItem(refOf(board), snapshot, itemId, columnId);
   item.columnId = columnId;
   if (board.provider === 'GITLAB') item.isClosed = columnId === 'closed';
+  if (columnId === (board.statusMap as StatusMap).done) await releaseDependents(board, snapshot);
+}
+
+/** New title and/or description of a task (the task agent keeps tasks that did not start up to date). */
+export async function editItem(workspaceId: string, itemId: string, changes: { title?: string; body?: string }) {
+  const { board, snapshot, item } = await withItem(workspaceId, itemId);
+  await (await adapterFor(board)).editItem(refOf(board), snapshot, itemId, changes);
+  Object.assign(item, changes);
+}
+
+/**
+ * Blocked tasks ("Depende de: org/repo#12") go to "todo" once all their dependencies are done. Runs after every read
+ * of the board and whenever the Studio moves a task to "done", so it does not matter who finished the dependency.
+ */
+export async function releaseDependents(board: TaskBoard, snapshot: BoardSnapshot) {
+  const statusMap = board.statusMap as StatusMap;
+  const released: string[] = [];
+  for (const item of releasableItems(snapshot.items, statusMap)) {
+    await (await adapterFor(board)).moveItem(refOf(board), snapshot, item.id, statusMap.todo!);
+    item.columnId = statusMap.todo!;
+    released.push(itemRef(item) ?? item.title);
+  }
+  return released;
 }
 
 export async function setItemField(workspaceId: string, itemId: string, fieldId: string, optionId: string | null) {

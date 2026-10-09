@@ -111,6 +111,11 @@ export function createLocalAdapter(workspaceId: string, model: BoardModel): Boar
       throw new HttpError(500, 'Não foi possível numerar a tarefa.');
     },
 
+    async editItem(_board, _snapshot, itemId, changes) {
+      await findTask(itemId);
+      await prisma.localTask.update({ where: { id: itemId }, data: changes });
+    },
+
     async assignSelf() {
       // Agents are tracked by the Studio itself; there is no provider user to assign.
     },

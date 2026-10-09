@@ -211,6 +211,10 @@ export function createGitLabClient(host: string, token: string) {
       return issueToItem(issue, snapshot.columns, snapshot.fields);
     },
 
+    async editItem(_board, _snapshot, id, changes) {
+      await updateIssue(id, { ...(changes.title !== undefined && { title: changes.title }), ...(changes.body !== undefined && { description: changes.body }) });
+    },
+
     async assignSelf(_board, id) {
       const user = await request<{ id: number }>('GET', '/user');
       await updateIssue(id, { assignee_ids: [user.id] });

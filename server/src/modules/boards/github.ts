@@ -121,6 +121,29 @@ export function createGitHubClient(host: string, token: string) {
       return toItem(created.node, snapshot.statusFieldId ?? undefined);
     },
 
+    async editItem(_board, _snapshot, itemId, changes) {
+      const data = await gql(
+        `query($i: ID!) { node(id: $i) { ... on ProjectV2Item { content { __typename ... on Issue { id } ... on DraftIssue { id } ... on PullRequest { id } } } } }`,
+        { i: itemId },
+      );
+      const content = data.node?.content as { __typename: string; id: string } | undefined;
+      if (!content) throw new HttpError(404, 'Tarefa não encontrada no projeto.');
+      if (content.__typename === 'DraftIssue') {
+        await gql(
+          `mutation($d: ID!, $t: String, $b: String) { updateProjectV2DraftIssue(input: { draftIssueId: $d, title: $t, body: $b }) { clientMutationId } }`,
+          { d: content.id, t: changes.title ?? null, b: changes.body ?? null },
+        );
+      } else if (content.__typename === 'Issue') {
+        await gql(`mutation($i: ID!, $t: String, $b: String) { updateIssue(input: { id: $i, title: $t, body: $b }) { clientMutationId } }`, {
+          i: content.id,
+          t: changes.title ?? null,
+          b: changes.body ?? null,
+        });
+      } else {
+        throw new HttpError(422, 'Pull requests do quadro não são editados pelo Studio.');
+      }
+    },
+
     async assignSelf(_board, itemId) {
       const data = await gql(
         `query($i: ID!) { viewer { id } node(id: $i) { ... on ProjectV2Item { content { ... on Issue { id } ... on PullRequest { id } } } } }`,

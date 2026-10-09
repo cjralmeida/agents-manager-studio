@@ -1,7 +1,7 @@
 import { prisma } from '../../db.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
-import { boardContext, createTask, moveItem, setItemField } from '../boards/service.js';
+import { boardContext, createTask, editItem, moveItem, setItemField } from '../boards/service.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
 import { runStudioTool } from './studio.js';
@@ -146,6 +146,12 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     case 'board_update_task': {
       if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
       const item = findItem(args.id);
+      const title = text(args.title, 250)?.trim();
+      const body = text(args.body);
+      if (title !== undefined || body !== undefined) {
+        if (title === '') throw new HttpError(400, 'O título não pode ficar vazio.');
+        await editItem(agent.workspaceId, item.id, { ...(title !== undefined && { title }), ...(body !== undefined && { body }) });
+      }
       if (text(args.column)) await moveItem(agent.workspaceId, item.id, resolveColumn(snapshot.columns, text(args.column)!).id);
       const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
       if (errors.length > 0) throw new HttpError(422, errors.join(' '));

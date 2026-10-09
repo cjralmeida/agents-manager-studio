@@ -65,9 +65,11 @@ export function createStudioTools(call, groups) {
       ),
       tool(
         'board_update_task',
-        'Move uma tarefa de coluna e/ou altera seus campos.',
+        'Move uma tarefa de coluna, altera seus campos e/ou reescreve título e descrição.',
         {
           id: z.string(),
+          title: z.string().optional().describe('Novo título (vazio mantém o atual).'),
+          body: z.string().optional().describe('Nova descrição completa, em Markdown (substitui a atual).'),
           column: z.string().optional(),
           fields: z.record(z.string(), z.string()).optional(),
         },

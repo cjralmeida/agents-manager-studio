@@ -150,7 +150,9 @@ Os agentes fixos ficam na aba **Agentes** do workspace. Cada um tem:
 - acesso opcional ao quadro de tarefas;
 - a opção de concluir sozinho.
 
-Pelo quadro, os agentes usam ferramentas do Studio via MCP: `board_list_tasks`, `board_get_task`, `board_create_task`, `board_update_task` e `report_result`. Quem executa essas ferramentas é o server, então os tokens nunca entram nos containers.
+Pelo quadro, os agentes usam ferramentas do Studio via MCP: `board_list_tasks`, `board_get_task`, `board_create_task`, `board_update_task` (move, altera campos e reescreve título e descrição) e `report_result`.
+
+**Dependências entre tarefas:** uma tarefa em "Aguardando aprovação" com a linha `Depende de: org/repo#12, org/repo#15` vai sozinha para "A fazer" quando todas as dependências estiverem concluídas. A verificação roda a cada leitura do quadro e quando o Studio conclui uma tarefa, sem gastar tokens. Quem executa essas ferramentas é o server, então os tokens nunca entram nos containers.
 
 ## Workflows
 

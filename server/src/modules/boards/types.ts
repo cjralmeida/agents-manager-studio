@@ -89,6 +89,8 @@ export interface BoardAdapter {
   moveItem(board: BoardRef, snapshot: BoardSnapshot, itemId: string, columnId: string): Promise<void>;
   setItemField(board: BoardRef, snapshot: BoardSnapshot, itemId: string, fieldId: string, optionId: string | null): Promise<void>;
   createTask(board: BoardRef, snapshot: BoardSnapshot, task: NewTask): Promise<BoardItem>;
+  /** Changes the title and/or description of the item's issue (or draft). */
+  editItem(board: BoardRef, snapshot: BoardSnapshot, itemId: string, changes: { title?: string; body?: string }): Promise<void>;
   /** Assigns the token's user to the item's issue (no-op for drafts). */
   assignSelf(board: BoardRef, itemId: string): Promise<void>;
   /** Makes the board columns and fields match `desired` (ids from `current` are kept; cards were already moved). */
