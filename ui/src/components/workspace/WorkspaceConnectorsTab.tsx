@@ -171,6 +171,30 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
 
         <div className="lg:col-span-2">
           <ConnectorCard
+            icon={<ConnectorIcon id="clickup" />}
+            name="ClickUp"
+            purpose="Conta de onde os agentes leem tarefas (somente leitura), com a ferramenta 'ClickUp (leitura)'."
+            connected={Boolean(current.clickupAccountId)}
+          >
+            {(clickupAccounts.data?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted">{noAccountsLink}.</p>
+            ) : (
+              <div className="max-w-md">
+                <Select value={current.clickupAccountId ?? ''} onChange={(event) => save({ clickupAccountId: event.target.value || null })} disabled={update.isPending}>
+                  <option value="">Nenhuma</option>
+                  {clickupAccounts.data!.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.label} ({account.username})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+          </ConnectorCard>
+        </div>
+
+        <div className="lg:col-span-2">
+          <ConnectorCard
             icon={<ConnectorIcon id="render" />}
             name="Render"
             purpose="Deploy em homologação e produção a partir dos workflows."
@@ -195,26 +219,6 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
             )}
           </ConnectorCard>
         </div>
-
-        <ConnectorCard
-          icon={<ConnectorIcon id="clickup" />}
-          name="ClickUp"
-          purpose="Conta de onde os agentes leem tarefas (somente leitura), com a ferramenta 'ClickUp (leitura)'."
-          connected={Boolean(current.clickupAccountId)}
-        >
-          {(clickupAccounts.data?.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted">{noAccountsLink}.</p>
-          ) : (
-            <Select value={current.clickupAccountId ?? ''} onChange={(event) => save({ clickupAccountId: event.target.value || null })} disabled={update.isPending}>
-              <option value="">Nenhuma</option>
-              {clickupAccounts.data!.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.label} ({account.username})
-                </option>
-              ))}
-            </Select>
-          )}
-        </ConnectorCard>
 
         <div className="lg:col-span-2">
           <ConnectorCard

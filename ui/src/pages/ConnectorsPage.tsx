@@ -57,18 +57,18 @@ export function ConnectorsPage() {
     { id: 'github', name: 'GitHub', purpose: 'Clone, push e pull requests; quadros do GitHub Projects.', ...gitStatus('GITHUB') },
     { id: 'gitlab', name: 'GitLab', purpose: 'Clone, push e merge requests; boards de grupo do GitLab.', ...gitStatus('GITLAB') },
     {
-      id: 'render',
-      name: 'Render',
-      purpose: 'Deploy em homologação e produção a partir dos workflows.',
-      connected: renderCount > 0,
-      status: renderCount > 0 ? `${plural(renderCount, 'conta', 'contas')} · em ${plural(renderWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
-    },
-    {
       id: 'clickup',
       name: 'ClickUp',
       purpose: 'Leitura de tarefas do ClickUp pelos agentes (ex.: migrar um backlog para o quadro). Nada é alterado lá.',
       connected: clickupCount > 0,
       status: clickupCount > 0 ? `${plural(clickupCount, 'conta', 'contas')} · em ${plural(clickupWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
+    },
+    {
+      id: 'render',
+      name: 'Render',
+      purpose: 'Deploy em homologação e produção a partir dos workflows.',
+      connected: renderCount > 0,
+      status: renderCount > 0 ? `${plural(renderCount, 'conta', 'contas')} · em ${plural(renderWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
     },
   ];
   const select = (id: ConnectorId) => setParams(id === selected ? {} : { c: id });
