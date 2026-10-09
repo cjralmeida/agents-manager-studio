@@ -10,6 +10,7 @@ import { Badge } from '../Badge';
 import { BoardConnection } from '../board/BoardLinkSection';
 import { type ConnectorId, ConnectorIcon } from '../connectors/ConnectorIcon';
 import { ErrorText, Select } from '../form';
+import { MultiSelect } from '../MultiSelect';
 import { RenderSection } from '../render/RenderSection';
 
 function ConnectorCard({
@@ -78,31 +79,20 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
     const accounts = gitAccounts.data!.filter((account) => account.provider === provider);
     const selected = accounts.filter((account) => current.gitAccountIds.includes(account.id));
     const hosts = projectHosts(provider);
-    const toggle = (accountId: string) =>
-      save({
-        gitAccountIds: current.gitAccountIds.includes(accountId)
-          ? current.gitAccountIds.filter((entry) => entry !== accountId)
-          : [...current.gitAccountIds, accountId],
-      });
+    const otherProviders = current.gitAccountIds.filter((id) => !accounts.some((account) => account.id === id));
 
     return (
       <ConnectorCard icon={<ConnectorIcon id={id} />} name={name} purpose={purpose} connected={selected.length > 0}>
         {accounts.length === 0 ? (
           <p className="text-sm text-muted">{noAccountsLink}.</p>
         ) : (
-          <ul className="space-y-1">
-            {accounts.map((account) => (
-              <li key={account.id}>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={current.gitAccountIds.includes(account.id)} onChange={() => toggle(account.id)} disabled={update.isPending} />
-                  <span>{account.label}</span>
-                  <span className="text-xs text-muted">
-                    @{account.username} · {account.host}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
+          <MultiSelect
+            options={accounts.map((account) => ({ value: account.id, label: account.label, detail: `@${account.username} · ${account.host}` }))}
+            selected={selected.map((account) => account.id)}
+            onChange={(ids) => save({ gitAccountIds: [...otherProviders, ...ids] })}
+            placeholder="Nenhuma (sem acesso)"
+            disabled={update.isPending}
+          />
         )}
         {hosts.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
