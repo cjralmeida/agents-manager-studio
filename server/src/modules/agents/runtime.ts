@@ -104,7 +104,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   }
   if (variableNames) {
     lines.push(
-      `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Conectores → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
+      `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Configuração → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
     );
   }
   if (agent.instructions.trim()) lines.push('', 'Seu papel neste workspace:', agent.instructions.trim());

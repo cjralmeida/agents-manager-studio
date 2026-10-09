@@ -6,6 +6,7 @@ import { ErrorText, TextInput } from '../form';
 import { MultiSelect } from '../MultiSelect';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { matchesSearch } from './boardUtils';
+import { useInActiveWorkflow } from '../../api/workflows';
 import { KanbanView } from './KanbanView';
 import { TaskTable } from './TaskTable';
 
@@ -23,6 +24,7 @@ function agentsByOverviewItem(agents: Agent[]) {
 
 /** Tasks of every workspace on the model's columns; a card opens on its workspace board. */
 export function AllTasksPanel() {
+  const inActiveWorkflow = useInActiveWorkflow();
   const overview = useAllTasks();
   const agents = useAgents();
   const move = useMoveOverviewTask();
@@ -85,9 +87,17 @@ export function AllTasksPanel() {
           onOpen={open}
           onMove={(item, columnId) => move.mutate({ item, columnId })}
           label={label}
+          inWorkflow={(item) => inActiveWorkflow(item.workspaceId, item.itemId)}
         />
       ) : (
-        <TaskTable board={layout} items={items} agents={agentMap} onOpen={open} label={{ title: 'Workspace', value: label }} />
+        <TaskTable
+          board={layout}
+          items={items}
+          agents={agentMap}
+          onOpen={open}
+          label={{ title: 'Workspace', value: label }}
+          inWorkflow={(item) => inActiveWorkflow(item.workspaceId, item.itemId)}
+        />
       )}
     </div>
   );

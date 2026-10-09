@@ -91,6 +91,8 @@ export interface WorkflowRun {
   startedAt: string;
   finishedAt: string | null;
   definition: { id: string; name: string; kind: 'agent' | 'deploy' }[];
+  /** Board tasks the run works on. */
+  taskItemIds: string[];
   steps: StepRun[];
 }
 
@@ -157,4 +159,20 @@ export function useStartWorkflow(workspaceId: string) {
 export function useCancelRun(workspaceId: string) {
   const invalidate = useInvalidate(workspaceId);
   return useMutation({ mutationFn: (id: string) => api.post<WorkflowRun>(`/workflow-runs/${id}/cancel`), onSuccess: invalidate });
+}
+
+/** Board tasks running workflows are working on, in every workspace the user sees (to light their cards up). */
+export function useActiveWorkflowTasks() {
+  return useQuery({
+    queryKey: ['workflow-runs', 'active-tasks'] as const,
+    queryFn: () => api.get<{ workspaceId: string; taskItemId: string; runId: string }[]>('/workflow-runs/active-tasks'),
+    refetchInterval: 10_000,
+  });
+}
+
+/** "Is a running workflow working on this task?" for a workspace board, or for the board of all workspaces. */
+export function useInActiveWorkflow() {
+  const active = useActiveWorkflowTasks();
+  const keys = new Set((active.data ?? []).map((entry) => `${entry.workspaceId}|${entry.taskItemId}`));
+  return (workspaceId: string, taskItemId: string) => keys.has(`${workspaceId}|${taskItemId}`);
 }

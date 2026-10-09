@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { prisma } from '../../db.js';
 import { type Prisma, Prisma as PrismaNamespace, type Workflow } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
@@ -135,6 +136,22 @@ const runInclude = {
 
 type RunWithDetails = Prisma.WorkflowRunGetPayload<{ include: typeof runInclude }>;
 
+/** Board tasks a run works on: the task that started it, the tasks of a feature test and the per-task lanes. */
+export function runTaskIds(run: Pick<RunWithDetails, 'taskItemId' | 'trigger' | 'steps'>) {
+  const trigger = (run.trigger ?? {}) as { taskItemIds?: string[] };
+  const ids = [run.taskItemId, ...(trigger.taskItemIds ?? []), ...run.steps.map((step) => step.lane).filter((lane) => lane !== 'main')];
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))];
+}
+
+/** Tasks that active runs are working on, over the workspaces the user sees (to light their cards up). */
+export async function activeRunTasks(userId: string) {
+  const runs = await prisma.workflowRun.findMany({
+    where: { status: 'RUNNING', workspace: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) } },
+    include: { steps: { select: { lane: true } } },
+  });
+  return runs.flatMap((run) => runTaskIds(run as never).map((taskItemId) => ({ workspaceId: run.workspaceId, taskItemId, runId: run.id })));
+}
+
 async function runResponse(run: RunWithDetails) {
   const agentIds = run.steps.flatMap((step) => (step.agentId ? [step.agentId] : []));
   const agents = await prisma.agent.findMany({ where: { id: { in: agentIds } }, select: { id: true, status: true, title: true } });
@@ -149,6 +166,7 @@ async function runResponse(run: RunWithDetails) {
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     definition: parseSteps(run.workflow).map((step) => ({ id: step.id, name: step.name, kind: step.kind })),
+    taskItemIds: runTaskIds(run),
     steps: run.steps.map((step) => ({
       id: step.id,
       stepId: step.stepId,

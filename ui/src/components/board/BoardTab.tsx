@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAgents } from '../../api/agents';
-import { type WorkflowRun, useWorkflowRuns } from '../../api/workflows';
+import { useInActiveWorkflow } from '../../api/workflows';
 import { type Board, type BoardSource, boardProviderLabels, useBoard, useBoardSources, useMoveTask, useRefreshBoard } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { timeAgo } from '../../lib/time';
@@ -72,21 +72,6 @@ function SourceChip({ source }: { source: BoardSource }) {
   );
 }
 
-/**
- * Tasks an active workflow run is processing, in any of its steps: a board-triggered run is titled after its task,
- * per-task lanes carry the task id, and a feature test run names the feature ("FUNC-012 — ...").
- */
-function activeRunMatcher(runs: WorkflowRun[]) {
-  const active = runs.filter((run) => run.status === 'RUNNING');
-  const titles = new Set(active.map((run) => run.title));
-  const lanes = new Set(active.flatMap((run) => run.steps.filter((step) => step.status === 'RUNNING').map((step) => step.lane)));
-  const features = new Set(active.map((run) => /^(FUNC-\d+) — /.exec(run.title)?.[1]).filter((id): id is string => Boolean(id)));
-  return (item: { id: string; title: string }) => {
-    const feature = /\[(FUNC-\d+)\]/i.exec(item.title)?.[1]?.toUpperCase();
-    return lanes.has(item.id) || titles.has(item.title.slice(0, 120)) || (feature !== undefined && features.has(feature));
-  };
-}
-
 function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Board }) {
   const [view, setView] = usePersistedView('board');
   const [search, setSearch] = useState('');
@@ -108,8 +93,8 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const move = useMoveTask(workspace.id);
 
   const agentMap = useMemo(() => agentsByItem(agents.data ?? []), [agents.data]);
-  const runs = useWorkflowRuns(workspace.id);
-  const inWorkflow = useMemo(() => activeRunMatcher(runs.data ?? []), [runs.data]);
+  const inActiveWorkflow = useInActiveWorkflow();
+  const inWorkflow = (item: { id: string }) => inActiveWorkflow(workspace.id, item.id);
   const items = board.items.filter((item) => matchesSearch(item, search));
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
