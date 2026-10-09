@@ -1,4 +1,5 @@
 import { prisma } from '../../db.js';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { mergeTotals, normalizePlanUsage, type PlanUsage, type RateLimitInfo, type UsageTotals, usageDeltas } from './calc.js';
 
@@ -75,7 +76,10 @@ function toTotals(sum: Sum | undefined) {
 export async function getUsageSummary(ownerId: string, workspaceId?: string) {
   const since30 = new Date(Date.now() - 30 * DAY_MS);
   const since14 = new Date(startOfToday().getTime() - 13 * DAY_MS);
-  const workspaceIds = workspaceId ? [workspaceId] : (await prisma.workspace.findMany({ where: { ownerId }, select: { id: true } })).map((entry) => entry.id);
+  // Without a workspace: the workspaces the active view profile shows.
+  const workspaceIds = workspaceId
+    ? [workspaceId]
+    : (await prisma.workspace.findMany({ where: { ownerId, ...(await visibleWorkspaceFilter(ownerId)) }, select: { id: true } })).map((entry) => entry.id);
   const scope = { workspaceId: { in: workspaceIds } };
   const periodTotals = async (since: Date) =>
     toTotals((await prisma.agentUsage.aggregate({ where: { ...scope, createdAt: { gte: since } }, _sum: usageSum }))._sum);

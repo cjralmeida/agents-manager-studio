@@ -15,6 +15,7 @@ import { mergePullRequest, openPullRequest, pullRequestState } from './pull-requ
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
 import {
   NO_CHANGES_MESSAGE,
@@ -101,12 +102,13 @@ export async function markFailed(agentId: string, error: unknown) {
 
 // ---------------------------------------------------------------- queries
 
+/** Executions of the user's agents; without a workspace, only those of the workspaces the active view profile shows. */
 export async function listAgents(ownerId: string, filter: { workspaceId?: string; profileId?: string; unassigned?: boolean }) {
   const agents = await prisma.agent.findMany({
     where: {
       // Órbi conversations are not executions: they live in the assistant panel.
       kind: 'TASK',
-      workspace: { ownerId },
+      workspace: { ownerId, ...(!filter.workspaceId && (await visibleWorkspaceFilter(ownerId))) },
       ...(filter.workspaceId && { workspaceId: filter.workspaceId }),
       ...(filter.profileId && { profileId: filter.profileId }),
       ...(filter.unassigned && { profileId: null }),

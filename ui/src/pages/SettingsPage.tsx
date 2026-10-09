@@ -2,11 +2,13 @@ import { Link } from 'react-router';
 import { useMe } from '../api/auth';
 import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
+import { ViewProfilesSection } from '../components/settings/ViewProfilesSection';
 import { Tabs, useTabParam } from '../components/Tabs';
 
 const tabs = [
   { id: 'general', label: 'Geral' },
   { id: 'skills', label: 'Skills' },
+  { id: 'profiles', label: 'Perfis de visualização' },
 ] as const;
 
 export function SettingsPage() {
@@ -30,6 +32,8 @@ export function SettingsPage() {
       <div className="mt-6 space-y-10">
         {activeTab === 'skills' ? (
           <SkillsSection />
+        ) : activeTab === 'profiles' ? (
+          <ViewProfilesSection />
         ) : isAdmin ? (
           <ProjectsRootSection />
         ) : (

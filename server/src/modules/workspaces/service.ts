@@ -1,4 +1,5 @@
 import { config } from '../../config.js';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { prisma } from '../../db.js';
 import type { Project, Workspace } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
@@ -104,9 +105,10 @@ export async function scanWorkspaces(ownerId?: string): Promise<ScanSummary> {
   });
 }
 
-export async function listWorkspaces(ownerId: string, options: { includeIgnored: boolean }) {
+/** The user's workspaces that the active view profile shows (all of them with `ignoreProfile`). */
+export async function listWorkspaces(ownerId: string, options: { includeIgnored: boolean; ignoreProfile?: boolean }) {
   const workspaces = await prisma.workspace.findMany({
-    where: { ownerId, ...(!options.includeIgnored && { isIgnored: false }) },
+    where: { ownerId, ...(!options.ignoreProfile && (await visibleWorkspaceFilter(ownerId))), ...(!options.includeIgnored && { isIgnored: false }) },
     orderBy: [{ missingAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
     include: { projects: { where: { missingAt: null }, select: { isGitRepo: true } } },
   });

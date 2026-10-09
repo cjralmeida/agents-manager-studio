@@ -14,9 +14,9 @@ import {
 } from './service.js';
 
 const listQuery = z
-  .object({ includeIgnored: z.enum(['true', 'false']).default('false') })
+  .object({ includeIgnored: z.enum(['true', 'false']).default('false'), all: z.enum(['true', 'false']).default('false') })
   .strict()
-  .transform((query) => ({ includeIgnored: query.includeIgnored === 'true' }));
+  .transform((query) => ({ includeIgnored: query.includeIgnored === 'true', ignoreProfile: query.all === 'true' }));
 
 const repositoriesQuery = z.object({ search: z.string().max(100).default('') }).strict();
 

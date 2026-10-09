@@ -40,14 +40,15 @@ export interface ScanSummary {
 
 const workspaceKeys = {
   all: ['workspaces'] as const,
-  list: (includeIgnored: boolean) => [...workspaceKeys.all, 'list', includeIgnored] as const,
+  list: (includeIgnored: boolean, all = false) => [...workspaceKeys.all, 'list', includeIgnored, all] as const,
   detail: (id: string) => [...workspaceKeys.all, 'detail', id] as const,
 };
 
-export function useWorkspaces(includeIgnored = false) {
+/** Workspaces the active view profile shows; `all` lists every workspace of the user (e.g. to edit profiles). */
+export function useWorkspaces(includeIgnored = false, all = false) {
   return useQuery({
-    queryKey: workspaceKeys.list(includeIgnored),
-    queryFn: () => api.get<WorkspaceSummary[]>(`/workspaces?includeIgnored=${includeIgnored}`),
+    queryKey: workspaceKeys.list(includeIgnored, all),
+    queryFn: () => api.get<WorkspaceSummary[]>(`/workspaces?includeIgnored=${includeIgnored}&all=${all}`),
     // Workspaces also change outside this screen (another tab, Órbi, the scan), so the menu keeps up.
     refetchInterval: 30_000,
   });

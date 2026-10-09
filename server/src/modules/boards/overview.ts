@@ -1,4 +1,5 @@
 import { prisma } from '../../db.js';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { getModel } from './model-store.js';
 import { boardContext, moveItem } from './service.js';
 import type { BoardItem } from './types.js';
@@ -24,7 +25,7 @@ export interface OverviewItem extends BoardItem {
 export async function listAllTasks(userId: string) {
   const model = await getModel(userId);
   const workspaces = await prisma.workspace.findMany({
-    where: { ownerId: userId, isIgnored: false, missingAt: null, taskBoards: { some: {} } },
+    where: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)), isIgnored: false, missingAt: null, taskBoards: { some: {} } },
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
   });

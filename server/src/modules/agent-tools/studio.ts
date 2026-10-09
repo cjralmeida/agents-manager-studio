@@ -174,8 +174,10 @@ export async function runStudioTool(agentId: string, workspaceId: string, name: 
       };
     }
 
-    case 'studio_usage':
-      return getUsageSummary(workspaceId);
+    case 'studio_usage': {
+      const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+      return getUsageSummary(ownerId, workspaceId);
+    }
 
     case 'studio_board_options': {
       const found = await detectBoards(workspaceId);
