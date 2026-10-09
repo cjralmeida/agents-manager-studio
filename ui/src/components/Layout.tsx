@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAgent } from '../api/agents';
 import { NavLink, Outlet } from 'react-router';
 import { useMe } from '../api/auth';
 import { useWorkspaces } from '../api/workspaces';
@@ -27,6 +28,7 @@ export function Layout() {
   const notifications = useNotificationSettings();
   const waiting = useAgentNotifications(notifications.enabled);
   const [orbiOpen, setOrbiOpen] = useState(false);
+  const [orbiConversation, setOrbiConversation] = useState<string | null>(null);
 
   return (
     <div className="flex h-full">
@@ -76,19 +78,36 @@ export function Layout() {
       </main>
 
       {orbiOpen ? (
-        <OrbiPanel onClose={() => setOrbiOpen(false)} />
+        <OrbiPanel onClose={() => setOrbiOpen(false)} onConversation={setOrbiConversation} />
+      ) : orbiConversation ? (
+        <OrbiFollowedButton conversationId={orbiConversation} onOpen={() => setOrbiOpen(true)} />
       ) : (
-        <button
-          type="button"
-          onClick={() => setOrbiOpen(true)}
-          className="fixed right-5 bottom-5 z-30 flex items-center gap-2 rounded-full border border-border bg-panel py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-lg transition-colors hover:border-accent/60"
-          title="Abrir o Órbi, o assistente do Studio"
-        >
-          <Logo size={30} />
-          Órbi
-        </button>
+        <OrbiButton answering={false} onOpen={() => setOrbiOpen(true)} />
       )}
     </div>
+  );
+}
+
+/** The Órbi button, lit while the last open conversation is still answering. */
+function OrbiFollowedButton({ conversationId, onOpen }: { conversationId: string; onOpen: () => void }) {
+  const conversation = useAgent(conversationId);
+  const status = conversation.data?.status;
+  return <OrbiButton answering={status === 'RUNNING' || status === 'PREPARING'} onOpen={onOpen} />;
+}
+
+function OrbiButton({ answering, onOpen }: { answering: boolean; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`fixed right-5 bottom-5 z-30 flex items-center gap-2 rounded-full border bg-panel py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-lg transition-colors hover:border-accent/60 ${
+        answering ? 'glow-working' : 'border-border'
+      }`}
+      title={answering ? 'O Órbi está respondendo' : 'Abrir o Órbi, o assistente do Studio'}
+    >
+      <Logo size={30} />
+      Órbi
+    </button>
   );
 }
 

@@ -34,7 +34,7 @@ function usePageContext() {
 }
 
 /** Órbi: the assistant panel, available from any screen. */
-export function OrbiPanel({ onClose }: { onClose: () => void }) {
+export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; onConversation?: (id: string | null) => void }) {
   const workspaces = useWorkspaces();
   const routeWorkspace = useMatch('/workspaces/:workspaceId/*')?.params.workspaceId ?? null;
   const available = workspaces.data?.filter((workspace) => !workspace.isMissing && !workspace.isIgnored) ?? [];
@@ -44,6 +44,8 @@ export function OrbiPanel({ onClose }: { onClose: () => void }) {
   /** null = most recent conversation; "new" = a fresh one. */
   const [conversationId, setConversationId] = useState<string | 'new' | null>(null);
   const current = conversationId === 'new' ? null : (conversationId ?? conversations.data?.[0]?.id ?? null);
+  // The layout follows the open conversation, so the Órbi button can light up while the panel is closed.
+  useEffect(() => onConversation?.(current), [current, onConversation]);
   /** Órbi is answering: the panel gets the purple light, like working agents. */
   const [answering, setAnswering] = useState(false);
 
