@@ -111,7 +111,9 @@ function ColorPicker({ value, onChange }: { value: BoardColor; onChange: (color:
   );
 }
 
-const inputClasses = 'w-full rounded-md border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-accent';
+/** Without a width, for inputs that share a row; inputClasses fill their container. */
+const controlClasses = 'rounded-md border border-border bg-surface px-2 py-1 text-sm outline-none focus:border-accent';
+const inputClasses = `w-full ${controlClasses}`;
 
 function CountBadge({ count, noun }: { count: number | undefined; noun: string }) {
   if (!count) return null;
@@ -258,7 +260,7 @@ export function BoardStructureEditor({
             <div
               key={field.id ?? `new-${index}`}
               {...fieldDrag.target(index)}
-              className={`rounded-lg border bg-panel p-3 ${fieldDrag.over === index && fieldDrag.dragging !== index ? 'border-accent' : 'border-border'} ${
+              className={`min-w-0 rounded-lg border bg-panel p-3 ${fieldDrag.over === index && fieldDrag.dragging !== index ? 'border-accent' : 'border-border'} ${
                 fieldDrag.dragging === index ? 'opacity-50' : ''
               }`}
             >
@@ -317,7 +319,7 @@ function FieldEditor({
           className={`${inputClasses} font-medium`}
         />
         {field.id === null && <span className="text-xs text-emerald-300">novo</span>}
-        <Button size="sm" variant="danger" onClick={onRemove}>
+        <Button size="sm" variant="danger" onClick={onRemove} className="shrink-0 whitespace-nowrap">
           Remover campo
         </Button>
       </div>
@@ -338,13 +340,13 @@ function FieldEditor({
               value={option.name}
               onChange={(event) => updateOption(index, { name: event.target.value })}
               placeholder="Opção"
-              className={`${inputClasses} w-40 shrink-0`}
+              className={`${controlClasses} min-w-0 flex-[2]`}
             />
             <input
               value={option.description}
               onChange={(event) => updateOption(index, { description: event.target.value })}
               placeholder="Descrição (opcional)"
-              className={`${inputClasses} min-w-0 flex-1 text-xs`}
+              className={`${controlClasses} min-w-0 flex-[3] text-xs`}
             />
             {option.id === null ? <span className="text-xs text-emerald-300">nova</span> : <CountBadge count={optionItems[option.id]} noun="cards" />}
             <button
