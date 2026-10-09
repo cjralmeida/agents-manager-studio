@@ -17,6 +17,27 @@ export interface RenderDeploy {
   commitId: string | null;
 }
 
+export interface RenderServiceDetails {
+  id: string;
+  name: string;
+  ownerId: string;
+  type: string;
+  branch: string | null;
+  rootDir: string | null;
+  autoDeploy: boolean;
+  suspended: boolean;
+  url: string | null;
+  runtime: string | null;
+  plan: string | null;
+  region: string | null;
+  healthCheckPath: string | null;
+  buildCommand: string | null;
+  startCommand: string | null;
+  preDeployCommand: string | null;
+  dockerfilePath: string | null;
+  dockerCommand: string | null;
+}
+
 type Json = any; // Render responses are narrowed where they are read.
 
 export function createRenderClient(apiKey: string) {
@@ -80,6 +101,62 @@ export function createRenderClient(apiKey: string) {
 
     async getDeploy(serviceId: string, deployId: string): Promise<RenderDeploy> {
       return toDeploy(await call('GET', `/services/${serviceId}/deploys/${deployId}`));
+    },
+
+    /** How the service builds and runs (what an agent checks before deploying). */
+    async serviceDetails(serviceId: string): Promise<RenderServiceDetails> {
+      const service = await call('GET', `/services/${serviceId}`);
+      const details = service.serviceDetails ?? {};
+      const commands = details.envSpecificDetails ?? {};
+      return {
+        id: service.id,
+        name: service.name,
+        ownerId: service.ownerId,
+        type: service.type,
+        branch: service.branch ?? null,
+        rootDir: service.rootDir || null,
+        autoDeploy: service.autoDeploy === 'yes',
+        suspended: service.suspended === 'suspended',
+        url: details.url ?? null,
+        runtime: details.runtime ?? details.env ?? null,
+        plan: details.plan ?? null,
+        region: details.region ?? null,
+        healthCheckPath: details.healthCheckPath || null,
+        buildCommand: commands.buildCommand ?? null,
+        startCommand: commands.startCommand ?? null,
+        preDeployCommand: details.preDeployCommand ?? commands.preDeployCommand ?? null,
+        dockerfilePath: commands.dockerfilePath ?? null,
+        dockerCommand: commands.dockerCommand ?? null,
+      };
+    },
+
+    /** Names of the service's environment variables (values are never read back). */
+    async envVarKeys(serviceId: string): Promise<string[]> {
+      const rows = await call<Json[]>('GET', `/services/${serviceId}/env-vars?limit=100`);
+      return rows.map((row) => row.envVar?.key as string).filter(Boolean);
+    },
+
+    /** Creates or replaces a variable with a value, or one Render generates (a random secret nobody sees). */
+    async setEnvVar(serviceId: string, key: string, value: { value: string } | { generateValue: true }) {
+      await call('PUT', `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, value);
+    },
+
+    /** Most recent log lines of a service (build, app or request logs), newest last. */
+    async logs(input: { ownerId: string; serviceId: string; type: 'build' | 'app' | 'request'; limit: number; text?: string }) {
+      const query = new URLSearchParams({
+        ownerId: input.ownerId,
+        resource: input.serviceId,
+        type: input.type,
+        limit: String(input.limit),
+        direction: 'backward',
+        ...(input.text && { text: input.text }),
+      });
+      const data = await call<Json>('GET', `/logs?${query}`);
+      const lines: { timestamp: string; message: string }[] = (data?.logs ?? []).map((log: Json) => ({
+        timestamp: log.timestamp,
+        message: log.message,
+      }));
+      return lines.reverse();
     },
   };
 }

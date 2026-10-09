@@ -145,3 +145,27 @@ async function mergeGitLab(input: MergeInput) {
   // 405/406/422: still checking mergeability, or a conflict; worth a few retries.
   return { merged: false, commit: null, reason, retry: [405, 406, 422].includes(response.status) };
 }
+
+export type PullRequestState = 'open' | 'merged' | 'closed';
+
+/** Whether a PR/MR is still open, merged or closed without merging. */
+export async function pullRequestState(input: MergeInput): Promise<PullRequestState> {
+  if (input.provider === 'GITHUB') {
+    const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
+    const [owner, repo] = input.remote.path.split('/');
+    const response = await api<{ state?: string; merged?: boolean; message?: string }>(
+      `${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`,
+      { headers: { Authorization: `Bearer ${input.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agents-manager-studio' } },
+    );
+    if (response.status !== 200) throw new HttpError(502, `GitHub: ${response.body.message ?? `erro ${response.status}`}`);
+    if (response.body.merged) return 'merged';
+    return response.body.state === 'open' ? 'open' : 'closed';
+  }
+  const projectUrl = `https://${input.remote.host}/api/v4/projects/${encodeURIComponent(input.remote.path)}`;
+  const response = await api<{ state?: string; message?: unknown }>(`${projectUrl}/merge_requests/${input.number}`, {
+    headers: { 'PRIVATE-TOKEN': input.token },
+  });
+  if (response.status !== 200) throw new HttpError(502, `GitLab: ${JSON.stringify(response.body.message ?? `erro ${response.status}`)}`);
+  if (response.body.state === 'merged') return 'merged';
+  return response.body.state === 'opened' ? 'open' : 'closed';
+}

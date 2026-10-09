@@ -11,7 +11,7 @@ import { pullRequestNumber } from '../render/status.js';
 import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
-import { mergePullRequest, openPullRequest } from './pull-requests.js';
+import { mergePullRequest, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
@@ -19,6 +19,8 @@ import {
   NO_CHANGES_MESSAGE,
   commitAndPush,
   currentBranch,
+  isMergedInto,
+  returnToAgent,
   prepareEmptyWorkdir,
   prepareWorkdir,
   removeWorkdir,
@@ -456,14 +458,7 @@ async function finalizeInBackground(id: string) {
     const token = secrets.decrypt(account.tokenEncrypted);
     const provider = account.provider as 'GITHUB' | 'GITLAB';
 
-    const firstMessage = await prisma.agentEvent.findFirst({
-      where: { agentId: id, type: 'user_message' },
-      orderBy: { id: 'asc' },
-    });
-    const firstText = (firstMessage?.data as { text?: string } | null)?.text ?? agent.title;
-    const task = firstText.split(BOARD_RULES_SEPARATOR)[0]!;
-    const closes = closingReference(agent.taskRef, remote.path);
-    const body = `${task}${closes ? `\n\n${closes}` : ''}\n\n---\nGerado pelo Agents Manager Studio.`;
+    const body = await pullRequestBody(agent, remote);
 
     await commitAndPush({
       workdir: agent.workdir,
@@ -479,17 +474,7 @@ async function finalizeInBackground(id: string) {
     });
     await addEvent(id, 'status', { message: `Branch ${agent.branch} enviada.` });
 
-    const prUrl =
-      agent.prUrl ??
-      (await openPullRequest({
-        provider,
-        remote,
-        token,
-        branch: agent.branch,
-        baseBranch: agent.baseBranch,
-        title: agent.title,
-        body,
-      }));
+    const prUrl = await openOrReusePullRequest(agent, { provider, remote, token, body });
 
     if (agent.autoMerge) {
       await mergeOwnPullRequest(agent, { provider, remote, token, prUrl });
@@ -526,6 +511,71 @@ async function finalizeInBackground(id: string) {
     });
     await addEvent(id, 'error', { message });
   }
+}
+
+/** PR/MR description: the task the agent was given, plus "Closes #N" when the issue lives in the same repository. */
+async function pullRequestBody(agent: Agent, remote: RemoteInfo) {
+  const firstMessage = await prisma.agentEvent.findFirst({
+    where: { agentId: agent.id, type: 'user_message' },
+    orderBy: { id: 'asc' },
+  });
+  const firstText = (firstMessage?.data as { text?: string } | null)?.text ?? agent.title;
+  const task = firstText.split(BOARD_RULES_SEPARATOR)[0]!;
+  const closes = closingReference(agent.taskRef, remote.path);
+  return `${task}${closes ? `\n\n${closes}` : ''}\n\n---\nGerado pelo Agents Manager Studio.`;
+}
+
+/** The agent's PR/MR while it is open; once merged (or closed), new commits on the branch go to a new one. */
+async function openOrReusePullRequest(
+  agent: Agent,
+  input: { provider: 'GITHUB' | 'GITLAB'; remote: RemoteInfo; token: string; body: string },
+) {
+  const number = agent.prUrl ? pullRequestNumber(agent.prUrl) : null;
+  if (agent.prUrl && number) {
+    const state = await pullRequestState({ ...input, number }).catch(() => 'open' as const);
+    if (state === 'open') return agent.prUrl;
+  }
+  return openPullRequest({ ...input, branch: agent.branch, baseBranch: agent.baseBranch, title: agent.title });
+}
+
+/**
+ * Publishes an agent's copy while it keeps working (e.g. before a deploy it asked for): commits its changes,
+ * pushes the branch and makes sure an open PR/MR carries what is not in the base branch yet.
+ * `toMerge` is false when the base already has everything (nothing to merge before deploying).
+ */
+export async function publishAgentWork(agentId: string) {
+  const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, include: { project: true } });
+  const remote = agent.project?.gitRemoteUrl ? parseRemote(agent.project.gitRemoteUrl) : null;
+  if (!remote || !agent.baseCommit) throw new HttpError(422, 'O projeto não tem remote para enviar.');
+  const account = await findGitAccount(agent.workspaceId, remote);
+  const token = secrets.decrypt(account.tokenEncrypted);
+  const provider = account.provider as 'GITHUB' | 'GITLAB';
+  const pushUrl = authenticatedPushUrl(remote, provider, token);
+  const body = await pullRequestBody(agent, remote);
+
+  await commitAndPush({
+    workdir: agent.workdir,
+    baseCommit: agent.baseCommit,
+    branch: agent.branch,
+    message: { title: agent.title, body },
+    author: {
+      name: account.authorName || account.username,
+      email: account.authorEmail || defaultAuthorEmail(provider, account.username, remoteHostname(remote)),
+    },
+    pushUrl,
+    token,
+    allowUnchanged: true,
+  }).finally(() => returnToAgent(agent.workdir));
+  const merged = await isMergedInto({ workdir: agent.workdir, baseBranch: agent.baseBranch, fetchUrl: pushUrl, token }).finally(() =>
+    returnToAgent(agent.workdir),
+  );
+  if (merged) {
+    return { toMerge: false, prUrl: agent.prUrl };
+  }
+  const prUrl = await openOrReusePullRequest(agent, { provider, remote, token, body });
+  if (prUrl !== agent.prUrl) await prisma.agent.update({ where: { id: agentId }, data: { prUrl } });
+  await addEvent(agentId, 'status', { message: `Branch ${agent.branch} enviada para o deploy (${prUrl}).` });
+  return { toMerge: true, prUrl };
 }
 
 /**

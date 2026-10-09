@@ -126,6 +126,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         {projectNames.length === 0 ? <Badge>sem repositório</Badge> : projectNames.map((name) => <Badge key={name}>{name}</Badge>)}
         <Badge>{profile.output === 'RESULT' ? 'entrega resultado' : 'entrega PR/MR'}</Badge>
         {profile.tools.includes('board') && <Badge>quadro</Badge>}
+        {profile.tools.includes('render') && <Badge>Render</Badge>}
         {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
         {profile.autoMerge && <Badge tone="success">merge automático</Badge>}
       </div>

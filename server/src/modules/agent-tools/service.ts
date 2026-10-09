@@ -4,6 +4,7 @@ import { HttpError } from '../../lib/errors.js';
 import { boardContext, createTask, editItem, moveItem, setItemField } from '../boards/service.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
+import { RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
 import { runStudioTool } from './studio.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -19,6 +20,7 @@ export const AGENT_TOOL_NAMES = [
   'studio_get_execution',
   'studio_usage',
   'studio_propose',
+  ...RENDER_TOOL_NAMES,
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -96,6 +98,11 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     const summary = text(args.summary, 20_000) ?? '';
     await mergeResult(agentId, { status, summary, details: text(args.details) });
     return { ok: true, message: 'Resultado registrado. Encerre com um resumo curto.' };
+  }
+
+  if (name.startsWith('render_')) {
+    if (!agent.tools.includes('render')) throw new HttpError(403, 'Este agente não tem acesso ao Render.');
+    return runRenderTool(agent, name as RenderToolName, args);
   }
 
   if (name.startsWith('studio_')) {

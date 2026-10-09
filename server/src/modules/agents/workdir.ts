@@ -165,6 +165,8 @@ export async function commitAndPush(input: {
   author: { name: string; email: string };
   pushUrl: string;
   token: string;
+  /** Pushes even when the copy has nothing new since the base (e.g. publishing a branch other agents built). */
+  allowUnchanged?: boolean;
 }) {
   const dir = workdirPath(input.workdir);
   const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
@@ -188,9 +190,30 @@ export async function commitAndPush(input: {
     }
 
     const head = (await git(dir, ['rev-parse', 'HEAD'])).trim();
-    if (head === input.baseCommit) throw new HttpError(422, NO_CHANGES_MESSAGE);
+    if (head === input.baseCommit && !input.allowUnchanged) throw new HttpError(422, NO_CHANGES_MESSAGE);
 
     await git(dir, ['push', '--quiet', input.pushUrl, `HEAD:refs/heads/${input.branch}`], { timeoutMs: 300_000 });
+  } catch (error) {
+    if (error instanceof GitError) throw new HttpError(502, redact(error.message));
+    throw error;
+  }
+}
+
+/** Gives the copy back to the agent container's user after the server ran git in it (e.g. a mid-run commit). */
+export async function returnToAgent(workdir: string) {
+  await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, workdirPath(workdir)], () => resolve()));
+}
+
+/** Whether everything in the copy is already in the base branch on the remote (nothing left to merge). */
+export async function isMergedInto(input: { workdir: string; baseBranch: string; fetchUrl: string; token: string }) {
+  const dir = workdirPath(input.workdir);
+  const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
+  try {
+    await git(dir, ['fetch', '--quiet', '--depth', CLONE_DEPTH, input.fetchUrl, input.baseBranch], { timeoutMs: 300_000 });
+    return await git(dir, ['merge-base', '--is-ancestor', 'HEAD', 'FETCH_HEAD']).then(
+      () => true,
+      () => false,
+    );
   } catch (error) {
     if (error instanceof GitError) throw new HttpError(502, redact(error.message));
     throw error;

@@ -8,7 +8,7 @@ const asText = (value) => ({ content: [{ type: 'text', text: JSON.stringify(valu
 
 /**
  * @param {(name: string, args: object) => Promise<{ ok: boolean, data?: unknown, error?: string }>} call
- * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "studio" (Órbi)
+ * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "studio" (Órbi)
  */
 export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
@@ -74,6 +74,58 @@ export function createStudioTools(call, groups) {
           fields: z.record(z.string(), z.string()).optional(),
         },
         run('board_update_task'),
+      ),
+    );
+  }
+
+  if (groups.includes('render')) {
+    tools.push(
+      tool(
+        'render_service',
+        'Mostra o serviço do Render de HOMOLOGAÇÃO do seu projeto: URL, branch publicada, comandos de build/start/pré-deploy, health check, nomes das variáveis de ambiente (sem valores) e os últimos deploys.',
+        {},
+        run('render_service'),
+      ),
+      tool(
+        'render_set_env_vars',
+        'Cria ou altera variáveis de ambiente do serviço de homologação. Use "generate": true para segredos próprios de HOM (o Render gera um valor aleatório que ninguém vê). Nunca invente credenciais de terceiros: pergunte ao usuário. Valem a partir do próximo deploy.',
+        {
+          vars: z
+            .array(
+              z.object({
+                key: z.string().describe('Nome da variável, ex.: JWT_SECRET.'),
+                value: z.string().optional().describe('Valor; omita quando usar generate.'),
+                generate: z.boolean().optional().describe('true para o Render gerar um segredo aleatório.'),
+              }),
+            )
+            .describe('Variáveis a gravar.'),
+        },
+        run('render_set_env_vars'),
+      ),
+      tool(
+        'render_deploy',
+        'Publica em homologação: o Studio faz o commit das suas alterações, envia a branch, faz o merge do PR/MR na branch do serviço e pede o deploy ao Render. Devolve o deploymentId.',
+        {},
+        run('render_deploy'),
+      ),
+      tool(
+        'render_deploy_status',
+        'Estado de um deploy de homologação; espera até ele terminar (no máximo waitSeconds, padrão 180, até 240). Chame de novo enquanto finished for false.',
+        {
+          deploymentId: z.string(),
+          waitSeconds: z.number().int().optional(),
+        },
+        run('render_deploy_status'),
+      ),
+      tool(
+        'render_logs',
+        'Últimas linhas de log do serviço de homologação: "build" (compilação e pré-deploy), "app" (aplicação rodando) ou "request" (requisições HTTP).',
+        {
+          type: z.enum(['build', 'app', 'request']),
+          limit: z.number().int().optional().describe('Quantidade de linhas (padrão 100, até 300).'),
+          text: z.string().optional().describe('Filtra as linhas que contêm este texto.'),
+        },
+        run('render_logs'),
       ),
     );
   }

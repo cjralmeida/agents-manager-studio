@@ -65,6 +65,11 @@ function systemPromptAppend(agent: RuntimeAgent) {
   if (tools.includes('board')) {
     lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
   }
+  if (tools.includes('render')) {
+    lines.push(
+      '- Use as ferramentas studio_render_* para o serviço de HOMOLOGAÇÃO do projeto no Render. Alterações que você fizer na cópia são publicadas por studio_render_deploy (o Studio faz commit, PR/MR e merge); depois do último deploy, não deixe alterações sem publicar.',
+    );
+  }
   lines.push(
     '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven, psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
     '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
