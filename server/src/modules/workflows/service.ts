@@ -136,6 +136,12 @@ const runInclude = {
 
 type RunWithDetails = Prisma.WorkflowRunGetPayload<{ include: typeof runInclude }>;
 
+/** Ids of the user's workspaces that the active view profile shows (runs only carry the workspace id). */
+async function visibleWorkspaceIdsOf(userId: string) {
+  const workspaces = await prisma.workspace.findMany({ where: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) }, select: { id: true } });
+  return workspaces.map((workspace) => workspace.id);
+}
+
 /** Board tasks a run works on: the task that started it, the tasks of a feature test and the per-task lanes. */
 export function runTaskIds(run: Pick<RunWithDetails, 'taskItemId' | 'trigger' | 'steps'>) {
   const trigger = (run.trigger ?? {}) as { taskItemIds?: string[] };
@@ -146,7 +152,7 @@ export function runTaskIds(run: Pick<RunWithDetails, 'taskItemId' | 'trigger' | 
 /** Tasks that active runs are working on, over the workspaces the user sees (to light their cards up). */
 export async function activeRunTasks(userId: string) {
   const runs = await prisma.workflowRun.findMany({
-    where: { status: 'RUNNING', workspace: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) } },
+    where: { status: 'RUNNING', workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
     include: { steps: { select: { lane: true } } },
   });
   return runs.flatMap((run) => runTaskIds(run as never).map((taskItemId) => ({ workspaceId: run.workspaceId, taskItemId, runId: run.id })));
@@ -198,7 +204,7 @@ export async function listRuns(workspaceId: string, workflowId?: string) {
 /** Running workflow runs over the workspaces the user sees (general dashboard), with the workspace name. */
 export async function listActiveRuns(userId: string) {
   const runs = await prisma.workflowRun.findMany({
-    where: { status: 'RUNNING', workspace: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) } },
+    where: { status: 'RUNNING', workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
     include: runInclude,
     orderBy: { startedAt: 'desc' },
     take: 50,
