@@ -205,9 +205,10 @@ export async function launchAgent(input: LaunchAgentInput) {
     throw new HttpError(422, 'Só é possível continuar o trabalho de um agente do mesmo projeto.');
   }
   const cloneFrom = project ? (source ? workdirPath(source.workdir) : toContainerPath(workspace.name, project.name)) : null;
+  // Continuing another agent: same branch and PR (its base stays the PR base).
   const baseBranch = !project
     ? '-'
-    : (source?.branch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
+    : (source?.baseBranch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
   if (!baseBranch) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
@@ -234,7 +235,8 @@ export async function launchAgent(input: LaunchAgentInput) {
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       autoMerge: input.autoMerge ?? profile?.autoMerge ?? false,
       baseBranch,
-      branch: project ? `agent/${slug ? `${slug}-` : ''}${shortId}` : '-',
+      branch: project ? (source?.branch ?? `agent/${slug ? `${slug}-` : ''}${shortId}`) : '-',
+      ...(source?.prUrl && { prUrl: source.prUrl }),
       workdir: `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
@@ -245,7 +247,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
   // A copy continuing another agent keeps that agent's branch; fresh copies follow the remote base.
-  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source);
+  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch);
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -255,7 +257,7 @@ async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review' | 'don
   if (message) await addEvent(agent.id, 'status', { message });
 }
 
-async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null, followRemoteBase: boolean) {
+async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null, followRemoteBase: boolean, cloneBranch?: string) {
   try {
     const agent = await findOrThrow(agentId);
     if (!projectDir) {
@@ -271,6 +273,7 @@ async function prepareAndStart(agentId: string, projectDir: string | null, remot
       baseBranch: agent.baseBranch,
       branch: agent.branch,
       remoteUrl,
+      cloneBranch,
     });
     if (followRemoteBase && remoteUrl) {
       const updated = await updateFromRemote(agent, remoteUrl).catch(async (error: unknown) => {
@@ -508,7 +511,7 @@ async function finalizeInBackground(id: string) {
         where: { id },
         data: {
           status: 'COMPLETED',
-          result: { status: 'success', summary: 'Concluído sem alterações de código.' },
+          result: (agent.result as Prisma.JsonObject | null) ?? { status: 'success', summary: 'Concluído sem alterações de código.' },
           finishedAt: new Date(),
           lastActivityAt: new Date(),
         },

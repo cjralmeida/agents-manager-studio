@@ -39,7 +39,10 @@ export async function prepareWorkdir(input: {
   baseBranch: string;
   branch: string;
   remoteUrl: string | null;
+  /** Branch to clone when it is not the base (continuing another agent: its branch). */
+  cloneBranch?: string;
 }) {
+  const cloneBranch = input.cloneBranch ?? input.baseBranch;
   const dest = workdirPath(input.workdir);
   await mkdir(path.posix.dirname(dest), { recursive: true });
 
@@ -50,21 +53,22 @@ export async function prepareWorkdir(input: {
       CLONE_DEPTH,
       '--single-branch',
       '--branch',
-      input.baseBranch,
+      cloneBranch,
       '--no-tags',
       `file://${input.projectDir}`,
       dest,
     ], { timeoutMs: 600_000 });
   } catch (error) {
     if (error instanceof GitError && /not found in upstream|Remote branch .* not found/i.test(error.stderr)) {
-      throw new HttpError(422, `A branch "${input.baseBranch}" não existe no projeto.`);
+      throw new HttpError(422, `A branch "${cloneBranch}" não existe no projeto.`);
     }
     throw error;
   }
 
   if (input.remoteUrl) await git(dest, ['remote', 'set-url', 'origin', input.remoteUrl]);
   else await git(dest, ['remote', 'remove', 'origin']);
-  await git(dest, ['checkout', '-q', '-b', input.branch]);
+  // Continuing another agent keeps its branch; a new copy gets its own.
+  if (input.branch !== cloneBranch) await git(dest, ['checkout', '-q', '-b', input.branch]);
   const baseCommit = (await git(dest, ['rev-parse', 'HEAD'])).trim();
 
   // The clone is created by this (root) process; the agent container runs as "node".
@@ -191,6 +195,17 @@ export async function commitAndPush(input: {
     if (error instanceof GitError) throw new HttpError(502, redact(error.message));
     throw error;
   }
+}
+
+/**
+ * Brings into an agent's copy the commits another agent made on the same branch (fast-forward only), e.g. the
+ * tests a review step wrote before sending the work back.
+ */
+export async function fastForwardFrom(input: { workdir: string; fromWorkdir: string; branch: string }) {
+  const dir = workdirPath(input.workdir);
+  await git(dir, ['fetch', '--quiet', `file://${workdirPath(input.fromWorkdir)}`, input.branch]);
+  await git(dir, ['merge', '--quiet', '--ff-only', 'FETCH_HEAD']);
+  await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
 }
 
 export async function removeWorkdir(workdir: string) {

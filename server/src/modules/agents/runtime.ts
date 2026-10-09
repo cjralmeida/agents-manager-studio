@@ -31,8 +31,8 @@ export interface RuntimeAgent {
 }
 
 /** Studio tools the runner exposes: the enabled groups, plus result reporting for agents that deliver a result. */
-export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output'>) {
-  return [...new Set([...agent.tools, ...(agent.output === 'RESULT' ? ['result'] : [])])];
+export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind'>) {
+  return [...new Set([...agent.tools, ...(agent.output === 'RESULT' || agent.kind === 'TASK' ? ['result'] : [])])];
 }
 
 function systemPromptAppend(agent: RuntimeAgent) {
@@ -51,20 +51,31 @@ function systemPromptAppend(agent: RuntimeAgent) {
   if (agent.output === 'RESULT') {
     lines.push('- Sua entrega não é código. Ao terminar, chame a ferramenta studio_report_result com o status (success ou failure) e um resumo claro do resultado.');
   } else if (agent.autoConclude) {
-    lines.push('- Quando você terminar, o Studio faz o commit e abre o PR/MR automaticamente com as suas alterações.');
+    lines.push('- Quando você terminar, o Studio faz o commit e abre o PR/MR automaticamente com as suas alterações (ou atualiza o PR/MR que já existe nesta branch).');
   } else {
     lines.push('- O usuário revisa o diff no Studio e conclui por lá.');
+  }
+
+  if (agent.output !== 'RESULT' && tools.includes('result')) {
+    lines.push(
+      '- Antes de terminar, você pode chamar studio_report_result: o resumo e os detalhes vão para o próximo passo do workflow. Use status "failure" para reprovar o trabalho (o workflow devolve a quem fez) e "success" no caso contrário.',
+    );
   }
 
   if (tools.includes('board')) {
     lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
   }
   lines.push(
-    '- O ambiente tem Node.js 24, Python 3 (pip e venv) e git, sem sudo. Instale dependências no projeto (npm install, ou python -m venv .venv) e rode os testes antes de terminar. Não versione a pasta .venv.',
+    '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven, psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
     '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
     '- Ao terminar, resuma o que foi feito.',
     '- Responda em português.',
   );
+  if (agent.projectId) {
+    lines.push(
+      '- Para testes que precisam de banco, use SOMENTE TEST_DATABASE_URL (PostgreSQL vazio e exclusivo desta execução) e, se precisar de Redis, TEST_REDIS_URL. Nunca use outro banco ou serviço real nos testes.',
+    );
+  }
   if (agent.instructions.trim()) lines.push('', 'Seu papel neste workspace:', agent.instructions.trim());
   return lines.join('\n');
 }

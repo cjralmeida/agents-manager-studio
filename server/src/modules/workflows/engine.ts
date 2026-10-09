@@ -5,6 +5,7 @@ import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../gener
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, cancelAgent, launchAgent, sendMessage } from '../agents/service.js';
+import { fastForwardFrom } from '../agents/workdir.js';
 import { boardContext } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
@@ -338,10 +339,12 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
   if (!target?.agentId || target.attempt >= step.onFailure.maxAttempts) return false;
 
   const output = outputOf(failed);
+  const synced = await syncReviewerCommits(target.agentId, failed.agentId);
   const report = [
     `O passo "${step.name}" encontrou problemas no seu trabalho (tentativa ${target.attempt} de ${step.onFailure.maxAttempts}):`,
     output.summary ?? failed.error ?? '',
     output.details ?? '',
+    ...(synced ? ['', synced] : []),
     '',
     'Corrija na mesma cópia e termine novamente; o Studio envia as novas alterações para o mesmo PR/MR.',
   ].join('\n');
@@ -367,6 +370,25 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
     },
   });
   return true;
+}
+
+/**
+ * A reviewer that continued the target's copy works on the same branch; its commits (e.g. failing adversarial tests)
+ * are brought into the target's copy so it fixes the code against them. Returns a line for the report, if any.
+ */
+async function syncReviewerCommits(targetAgentId: string, reviewerAgentId: string | null) {
+  if (!reviewerAgentId) return null;
+  const [target, reviewer] = await Promise.all([
+    prisma.agent.findUnique({ where: { id: targetAgentId } }),
+    prisma.agent.findUnique({ where: { id: reviewerAgentId } }),
+  ]);
+  if (!target || !reviewer || reviewer.branch !== target.branch || reviewer.projectId !== target.projectId || !target.projectId) return null;
+  try {
+    await fastForwardFrom({ workdir: target.workdir, fromWorkdir: reviewer.workdir, branch: target.branch });
+    return `Os commits do passo de revisão (testes e ajustes) já estão na sua cópia (branch ${target.branch}): rode a suíte e corrija o código até tudo passar, sem alterar esses testes.`;
+  } catch (error) {
+    return `Não foi possível trazer os commits do passo de revisão para a sua cópia (${errorText(error)}); peça a lista de testes no relatório acima.`;
+  }
 }
 
 /** Moves a run forward: syncs running steps, handles send-backs, starts what is ready, and finishes the run. */
