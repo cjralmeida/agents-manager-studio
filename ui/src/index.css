@@ -148,6 +148,11 @@ body {
   position: relative;
 }
 
+/* Panels that are already positioned (e.g. Órbi, fixed) keep their position. */
+.fixed.glow-working {
+  position: fixed;
+}
+
 .glow-working::before,
 .glow-working-row::before {
   content: '';

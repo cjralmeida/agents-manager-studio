@@ -44,6 +44,8 @@ export function OrbiPanel({ onClose }: { onClose: () => void }) {
   /** null = most recent conversation; "new" = a fresh one. */
   const [conversationId, setConversationId] = useState<string | 'new' | null>(null);
   const current = conversationId === 'new' ? null : (conversationId ?? conversations.data?.[0]?.id ?? null);
+  /** Órbi is answering: the panel gets the purple light, like working agents. */
+  const [answering, setAnswering] = useState(false);
 
   // Follows the workspace the user navigates to.
   useEffect(() => {
@@ -58,7 +60,11 @@ export function OrbiPanel({ onClose }: { onClose: () => void }) {
   }, [effectiveWorkspace]);
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-2xl">
+    <aside
+      className={`fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l bg-surface shadow-2xl ${
+        answering && current ? 'glow-working' : 'border-border'
+      }`}
+    >
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <Logo size={26} />
         <div className="min-w-0 flex-1">
@@ -105,7 +111,7 @@ export function OrbiPanel({ onClose }: { onClose: () => void }) {
         {!effectiveWorkspace ? (
           <p className="text-sm text-muted">Nenhum workspace disponível.</p>
         ) : current ? (
-          <OrbiConversation key={current} agentId={current} workspaceId={effectiveWorkspace} />
+          <OrbiConversation key={current} agentId={current} workspaceId={effectiveWorkspace} onAnswering={setAnswering} />
         ) : (
           <NewConversation workspaceId={effectiveWorkspace} onStarted={setConversationId} />
         )}
@@ -188,8 +194,13 @@ function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onSt
   );
 }
 
-function OrbiConversation({ agentId, workspaceId }: { agentId: string; workspaceId: string }) {
+function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentId: string; workspaceId: string; onAnswering: (answering: boolean) => void }) {
   const agent = useAgent(agentId);
+  const answering = agent.data?.status === 'RUNNING' || agent.data?.status === 'PREPARING';
+  useEffect(() => {
+    onAnswering(answering);
+    return () => onAnswering(false);
+  }, [answering, onAnswering]);
   const proposals = useProposals(agentId);
   const sendMessage = useSendToConversation(agentId);
   const context = usePageContext();
