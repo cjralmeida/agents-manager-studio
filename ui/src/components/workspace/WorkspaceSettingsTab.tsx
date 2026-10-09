@@ -8,6 +8,7 @@ import {
   useWorkspaceSettings,
 } from '../../api/workspaceSettings';
 import { BoardBehaviorSection } from '../board/BoardLinkSection';
+import { AgentVariablesSection } from './AgentVariablesSection';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { MultiSelect } from '../MultiSelect';
@@ -31,6 +32,13 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
         initial={settings.data}
         skills={skills.data}
       />
+      <section className="rounded-lg border border-border bg-panel p-4">
+        <h2 className="text-base font-semibold">Variáveis dos agentes</h2>
+        <p className="mt-1 mb-3 text-xs text-muted">
+          Valores que os agentes usam no container, como o login de teste em homologação. Ficam criptografados e não são mostrados de novo.
+        </p>
+        <AgentVariablesSection workspaceId={workspace.id} />
+      </section>
       <BoardBehaviorSection workspaceId={workspace.id} />
       <CopySettingsPanel workspaceId={workspace.id} disabled={false} />
     </div>
