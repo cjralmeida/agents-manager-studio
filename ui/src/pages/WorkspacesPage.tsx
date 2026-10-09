@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { type Agent, useAgents } from '../api/agents';
 import {
   type ScanSummary,
   type WorkspaceSummary,
@@ -32,6 +33,7 @@ function describeScan(summary: ScanSummary) {
 export function WorkspacesPage() {
   const [includeIgnored, setIncludeIgnored] = useState(false);
   const workspaces = useWorkspaces(includeIgnored);
+  const agents = useAgents();
   const scan = useScanWorkspaces();
   const [creating, setCreating] = useState(false);
 
@@ -74,14 +76,23 @@ export function WorkspacesPage() {
           <p className="text-sm text-muted">Nenhum workspace encontrado. Use “Reler diretório”.</p>
         )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4">
-          {workspaces.data?.map((workspace) => <WorkspaceCard key={workspace.id} workspace={workspace} />)}
+          {workspaces.data?.map((workspace) => <WorkspaceCard key={workspace.id} workspace={workspace} activity={activityOf(agents.data, workspace.id)} />)}
         </div>
       </div>
     </section>
   );
 }
 
-function WorkspaceCard({ workspace }: { workspace: WorkspaceSummary }) {
+/** How many of the workspace's executions are working or waiting for the user. */
+function activityOf(agents: Agent[] | undefined, workspaceId: string) {
+  const own = agents?.filter((agent) => agent.workspaceId === workspaceId) ?? [];
+  return {
+    working: own.filter((agent) => ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)).length,
+    waiting: own.filter((agent) => agent.status === 'WAITING_INPUT').length,
+  };
+}
+
+function WorkspaceCard({ workspace, activity }: { workspace: WorkspaceSummary; activity: { working: number; waiting: number } }) {
   const setIgnored = useSetWorkspaceIgnored();
   const remove = useDeleteWorkspace();
 
@@ -93,7 +104,9 @@ function WorkspaceCard({ workspace }: { workspace: WorkspaceSummary }) {
 
   return (
     <article
-      className={`flex flex-col rounded-lg border border-border bg-panel ${workspace.isIgnored || workspace.isMissing ? 'opacity-60' : ''}`}
+      className={`flex flex-col rounded-lg border bg-panel ${
+        activity.waiting > 0 ? 'glow-question border-amber-400/70' : activity.working > 0 ? 'glow-working' : 'border-border'
+      } ${workspace.isIgnored || workspace.isMissing ? 'opacity-60' : ''}`}
     >
       <Link to={`/workspaces/${workspace.id}`} className="flex-1 p-4 hover:bg-border/30">
         <div className="flex items-center gap-2">
@@ -105,6 +118,13 @@ function WorkspaceCard({ workspace }: { workspace: WorkspaceSummary }) {
         <p className="mt-3 text-sm text-muted">
           {plural(workspace.projectCount, 'projeto', 'projetos')} · {workspace.gitProjectCount} com git
         </p>
+        {(activity.working > 0 || activity.waiting > 0) && (
+          <p className="mt-1 text-xs">
+            {activity.working > 0 && <span className="text-purple-300">{activity.working} trabalhando</span>}
+            {activity.working > 0 && activity.waiting > 0 && <span className="text-muted"> · </span>}
+            {activity.waiting > 0 && <span className="text-amber-300">{activity.waiting} aguardando você</span>}
+          </p>
+        )}
       </Link>
       <footer className="flex justify-end gap-2 border-t border-border px-4 py-2">
         {workspace.isMissing ? (
