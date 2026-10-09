@@ -79,6 +79,7 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
       'agentAccountId' in payload ? (payload.agentAccountId ? 'conta Claude' : 'sem conta Claude') : null,
       Array.isArray(payload.gitAccountIds) ? `${payload.gitAccountIds.length} conta(s) git` : null,
       'renderAccountId' in payload ? (payload.renderAccountId ? 'conta do Render' : 'sem Render') : null,
+      'clickupAccountId' in payload ? (payload.clickupAccountId ? 'conta do ClickUp' : 'sem ClickUp') : null,
       Array.isArray(payload.enabledSkillIds) ? `skills: ${(payload.enabledSkillIds as string[]).join(', ') || 'nenhuma'}` : null,
     ].filter(Boolean);
     return <p className="text-xs text-muted">{parts.join(' · ')}</p>;

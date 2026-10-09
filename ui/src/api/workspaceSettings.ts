@@ -4,6 +4,7 @@ import { api } from './client';
 export interface WorkspaceSettings {
   agentAccountId: string | null;
   renderAccountId: string | null;
+  clickupAccountId: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }

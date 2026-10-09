@@ -3,7 +3,7 @@ import type { AgentModel } from './agents';
 import { api } from './client';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
-export type ProfileTool = 'board' | 'render' | 'render_read';
+export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read';
 
 /** A fixed agent of the workspace; each run of it is an Agent (execution). */
 export interface AgentProfile {
@@ -43,6 +43,7 @@ export const toolLabels: Record<ProfileTool, string> = {
   board: 'Quadro de tarefas (consultar, criar e mover tarefas)',
   render: 'Render em homologação (variáveis, deploy e logs)',
   render_read: 'Homologação, só leitura (URLs e logs dos projetos)',
+  clickup_read: 'ClickUp, só leitura (tarefas da conta do workspace)',
 };
 
 const key = (workspaceId: string) => ['agent-profiles', workspaceId] as const;

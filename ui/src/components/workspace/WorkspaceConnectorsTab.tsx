@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { type AccountGitProvider, useAgentAccounts, useGitAccounts } from '../../api/accounts';
 import { useBoardSources } from '../../api/boards';
+import { useClickupAccounts } from '../../api/clickup';
 import { useRenderAccounts } from '../../api/render';
 import { type WorkspaceSettings, useUpdateWorkspaceSettings, useWorkspaceSettings } from '../../api/workspaceSettings';
 import type { WorkspaceDetail } from '../../api/workspaces';
@@ -58,6 +59,7 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
   const gitAccounts = useGitAccounts();
   const boardSources = useBoardSources(workspace.id);
   const renderAccounts = useRenderAccounts();
+  const clickupAccounts = useClickupAccounts();
   const update = useUpdateWorkspaceSettings(workspace.id);
 
   const error = settings.error ?? agentAccounts.error ?? gitAccounts.error ?? renderAccounts.error;
@@ -193,6 +195,26 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
             )}
           </ConnectorCard>
         </div>
+
+        <ConnectorCard
+          icon={<ConnectorIcon id="clickup" />}
+          name="ClickUp"
+          purpose="Conta de onde os agentes leem tarefas (somente leitura), com a ferramenta 'ClickUp (leitura)'."
+          connected={Boolean(current.clickupAccountId)}
+        >
+          {(clickupAccounts.data?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted">{noAccountsLink}.</p>
+          ) : (
+            <Select value={current.clickupAccountId ?? ''} onChange={(event) => save({ clickupAccountId: event.target.value || null })} disabled={update.isPending}>
+              <option value="">Nenhuma</option>
+              {clickupAccounts.data!.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.label} ({account.username})
+                </option>
+              ))}
+            </Select>
+          )}
+        </ConnectorCard>
 
         <div className="lg:col-span-2">
           <ConnectorCard

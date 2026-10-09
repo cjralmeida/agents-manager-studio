@@ -1,10 +1,12 @@
 import { useSearchParams } from 'react-router';
 import { useAgentAccounts, useGitAccounts } from '../api/accounts';
+import { useClickupAccounts } from '../api/clickup';
 import { useRenderAccounts } from '../api/render';
 import { Button } from '../components/Button';
 import { type ConnectorId, ConnectorIcon } from '../components/connectors/ConnectorIcon';
 import { RenderAccountsSection } from '../components/render/RenderAccountsSection';
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
+import { ClickupAccountsSection } from '../components/settings/ClickupAccountsSection';
 import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
 import { GitAccountsSection } from '../components/settings/GitAccountsSection';
 import { plural } from '../lib/time';
@@ -25,6 +27,7 @@ export function ConnectorsPage() {
   const agentAccounts = useAgentAccounts();
   const gitAccounts = useGitAccounts();
   const renderAccounts = useRenderAccounts();
+  const clickupAccounts = useClickupAccounts();
 
   const gitStatus = (provider: 'GITHUB' | 'GITLAB') => {
     const accounts = gitAccounts.data?.filter((account) => account.provider === provider) ?? [];
@@ -37,6 +40,8 @@ export function ConnectorsPage() {
   const claudeWorkspaces = agentAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
   const renderCount = renderAccounts.data?.length ?? 0;
   const renderWorkspaces = renderAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
+  const clickupCount = clickupAccounts.data?.length ?? 0;
+  const clickupWorkspaces = clickupAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
 
   const cards: ConnectorCardInfo[] = [
     {
@@ -57,6 +62,13 @@ export function ConnectorsPage() {
       purpose: 'Deploy em homologação e produção a partir dos workflows.',
       connected: renderCount > 0,
       status: renderCount > 0 ? `${plural(renderCount, 'conta', 'contas')} · em ${plural(renderWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
+    },
+    {
+      id: 'clickup',
+      name: 'ClickUp',
+      purpose: 'Leitura de tarefas do ClickUp pelos agentes (ex.: migrar um backlog para o quadro). Nada é alterado lá.',
+      connected: clickupCount > 0,
+      status: clickupCount > 0 ? `${plural(clickupCount, 'conta', 'contas')} · em ${plural(clickupWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
     },
   ];
   const select = (id: ConnectorId) => setParams(id === selected ? {} : { c: id });
@@ -116,6 +128,7 @@ export function ConnectorsPage() {
           )}
           {current.id === 'gitlab' && <GitAccountsSection provider="GITLAB" />}
           {current.id === 'render' && <RenderAccountsSection />}
+          {current.id === 'clickup' && <ClickupAccountsSection />}
         </div>
       )}
     </section>
