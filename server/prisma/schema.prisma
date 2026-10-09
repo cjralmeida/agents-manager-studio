@@ -294,6 +294,9 @@ model TaskBoard {
   readme      String?
   /// Column id for each role (todo, inProgress, review, done, blocked) used by agent automation.
   statusMap   Json        @default("{}") @map("status_map")
+  /// GitLab lists labels alphabetically: order of the fields and their options set in the Studio editor
+  /// ({ fields: string[], options: { [field]: string[] } }); null keeps the template order.
+  fieldOrder  Json?       @map("field_order")
   /// The server reads the board from the provider this often (and then runs the sentinels).
   refreshIntervalSec Int       @default(120) @map("refresh_interval_sec")
   lastSyncedAt       DateTime? @map("last_synced_at") @db.Timestamptz(3)

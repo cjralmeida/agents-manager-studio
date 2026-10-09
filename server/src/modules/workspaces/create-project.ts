@@ -156,17 +156,6 @@ const exists = (target: string) =>
     () => false,
   );
 
-/**
- * Removes a folder the Studio just created. On the Windows mount a fresh file can be held for a moment (antivirus,
- * indexer) and the removal then reports success while leaving it, so it is checked and retried.
- */
-async function removeFolder(target: string) {
-  for (let attempt = 0; attempt < 5 && (await exists(target)); attempt++) {
-    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1_000));
-    await rm(target, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
-
 /** Commit author: the chosen account, else any account of the workspace with an author set, else the Studio. */
 async function authorFor(
   workspaceId: string,
@@ -235,7 +224,7 @@ export async function createProject(workspaceId: string, input: CreateProjectInp
     }
   } catch (error) {
     // The folder was created here, so a failure removes it; the remote repository is kept (never deleted by the Studio).
-    await removeFolder(dest);
+    await rm(dest, { recursive: true, force: true }).catch(() => undefined);
     const raw = error instanceof GitError ? error.stderr || error.message : error instanceof Error ? error.message : String(error);
     const message = redact(raw).trim().split('\n').slice(-2).join(' ');
     const created = remote ? ` O repositório ${remote.webUrl} já foi criado; apague-o lá ou clone-o pelo Studio.` : '';

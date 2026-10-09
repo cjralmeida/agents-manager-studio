@@ -1,5 +1,7 @@
 /** Provider-neutral shapes shared by the GitHub and GitLab board adapters. */
 
+import type { BoardStructure, FieldOrder } from './structure.js';
+
 export const STATUS_ROLES = ['todo', 'inProgress', 'review', 'done', 'blocked'] as const;
 export type StatusRole = (typeof STATUS_ROLES)[number];
 /** Column id for each role; a role may be unmapped. */
@@ -83,10 +85,12 @@ export interface NewTask {
 }
 
 export interface BoardAdapter {
-  load(board: BoardRef & { readme: string | null }): Promise<BoardSnapshot>;
+  load(board: BoardRef & { readme: string | null; fieldOrder: FieldOrder | null }): Promise<BoardSnapshot>;
   moveItem(board: BoardRef, snapshot: BoardSnapshot, itemId: string, columnId: string): Promise<void>;
   setItemField(board: BoardRef, snapshot: BoardSnapshot, itemId: string, fieldId: string, optionId: string | null): Promise<void>;
   createTask(board: BoardRef, snapshot: BoardSnapshot, task: NewTask): Promise<BoardItem>;
   /** Assigns the token's user to the item's issue (no-op for drafts). */
   assignSelf(board: BoardRef, itemId: string): Promise<void>;
+  /** Makes the board columns and fields match `desired` (ids from `current` are kept; cards were already moved). */
+  applyStructure(board: BoardRef, current: BoardStructure, desired: BoardStructure): Promise<void>;
 }

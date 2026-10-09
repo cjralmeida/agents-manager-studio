@@ -1,5 +1,5 @@
 import { prisma } from '../../db.js';
-import type { Prisma, TaskBoard } from '../../generated/prisma/client.js';
+import { Prisma, type TaskBoard } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
@@ -9,6 +9,16 @@ import { parseBoardUrl } from './board-url.js';
 import { createGitHubClient } from './github.js';
 import { createGitLabClient } from './gitlab.js';
 import { detectStatusMap, sanitizeStatusMap } from './roles.js';
+import {
+  type BoardStructure,
+  type FieldOrder,
+  GITLAB_FIXED_COLUMNS,
+  fieldOrderOf,
+  planStructure,
+  structureOf,
+  templateStructure,
+  validateStructure,
+} from './structure.js';
 import { BOARD_TEMPLATE, TASK_BODY_TEMPLATE } from './template.js';
 import type { BoardCandidate, BoardItem, BoardRef, BoardSnapshot, NewTask, StatusMap, StatusRole } from './types.js';
 
@@ -70,8 +80,14 @@ async function adapterFor(board: TaskBoard) {
   return (clients.github ?? clients.gitlab)!.adapter;
 }
 
-function refOf(board: TaskBoard): BoardRef & { readme: string | null } {
-  return { host: board.host, externalId: board.externalId, ownerPath: board.ownerPath, readme: board.readme };
+function refOf(board: TaskBoard): BoardRef & { readme: string | null; fieldOrder: FieldOrder | null } {
+  return {
+    host: board.host,
+    externalId: board.externalId,
+    ownerPath: board.ownerPath,
+    readme: board.readme,
+    fieldOrder: (board.fieldOrder as FieldOrder | null) ?? null,
+  };
 }
 
 async function findBoard(workspaceId: string) {
@@ -152,6 +168,7 @@ async function saveLink(
   host: string,
   candidate: BoardCandidate,
   readme: string | null,
+  fieldOrder: FieldOrder | null = null,
 ) {
   const data = {
     provider,
@@ -162,6 +179,7 @@ async function saveLink(
     url: candidate.url,
     readme,
     statusMap: {},
+    fieldOrder: fieldOrder ? (fieldOrder as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
   };
   const board = await prisma.taskBoard.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
   cache.delete(workspaceId);
@@ -190,7 +208,11 @@ export async function linkBoard(workspaceId: string, url: string) {
   return saveLink(workspaceId, 'GITLAB', parsed.host, candidate, candidate.matchesTemplate ? BOARD_TEMPLATE.readme : null);
 }
 
-export async function createBoard(workspaceId: string, input: CreateOption & { title: string }) {
+/**
+ * Creates the board in the provider. Without `structure` it follows the Studio template (on GitHub, the template
+ * project of the Settings when there is one); with it, the board gets those columns and fields.
+ */
+export async function createBoard(workspaceId: string, input: CreateOption & { title: string; structure: BoardStructure | null }) {
   await ensureWorkspace(workspaceId);
   const clients = await clientsFor(workspaceId, input.provider, input.host);
 
@@ -201,12 +223,14 @@ export async function createBoard(workspaceId: string, input: CreateOption & { t
     const repositories = (await workspaceRepos(workspaceId))
       .filter((repo) => repo.provider === 'GITHUB' && repo.host === input.host && sameRepo(repo.path.split('/')[0]!, input.owner))
       .map((repo) => repo.path);
-    const { candidate, warnings } = await clients.github.create({ owner: input.owner, title: input.title, template, repositories });
+    const structure = input.structure && validateStructure(input.structure, { columns: [], fields: [] }, 'GITHUB');
+    const { candidate, warnings } = await clients.github.create({ owner: input.owner, title: input.title, template, repositories, structure });
     return { link: await saveLink(workspaceId, 'GITHUB', input.host, candidate, null), warnings };
   }
 
-  const { candidate, readme } = await clients.gitlab!.create({ groupPath: input.owner, title: input.title });
-  return { link: await saveLink(workspaceId, 'GITLAB', input.host, candidate, readme), warnings: [] };
+  const structure = input.structure ? validateStructure(input.structure, { columns: [], fields: [] }, 'GITLAB') : templateStructure('GITLAB');
+  const { candidate, readme } = await clients.gitlab!.create({ groupPath: input.owner, title: input.title, structure });
+  return { link: await saveLink(workspaceId, 'GITLAB', input.host, candidate, readme, fieldOrderOf(structure)), warnings: [] };
 }
 
 export async function unlinkBoard(workspaceId: string) {
@@ -220,6 +244,97 @@ export async function updateStatusMap(workspaceId: string, map: StatusMap) {
   const statusMap = sanitizeStatusMap(map, snapshot.columns);
   const saved = await prisma.taskBoard.update({ where: { workspaceId }, data: { statusMap: statusMap as Prisma.InputJsonValue } });
   return linkResponse(saved);
+}
+
+// ---------------------------------------------------------------- structure
+
+/** The Studio template as a starting point for a new board's structure. */
+export function getTemplateStructure(provider: BoardProvider) {
+  return { provider, fixedColumns: provider === 'GITLAB', structure: templateStructure(provider) };
+}
+
+/** Columns and fields of the linked board, read fresh from the provider, with how many cards use each. */
+export async function getBoardStructure(workspaceId: string) {
+  const board = await findBoard(workspaceId);
+  const snapshot = await loadSnapshot(board, true);
+  const provider = board.provider as BoardProvider;
+  const columnItems: Record<string, number> = {};
+  const optionItems: Record<string, Record<string, number>> = {};
+  for (const item of snapshot.items) {
+    if (item.columnId) columnItems[item.columnId] = (columnItems[item.columnId] ?? 0) + 1;
+    for (const [fieldId, optionId] of Object.entries(item.fields)) {
+      optionItems[fieldId] = { ...optionItems[fieldId], [optionId]: (optionItems[fieldId]?.[optionId] ?? 0) + 1 };
+    }
+  }
+  return {
+    provider,
+    /** GitLab: "A fazer" (open issues) and "Concluído" (closed) always exist and cannot be edited. */
+    fixedColumns: provider === 'GITLAB',
+    structure: structureOf(snapshot.columns, snapshot.fields, provider),
+    /** Columns a removed column's cards can move to (GitLab's fixed ones included). */
+    allColumns: snapshot.columns.map(({ id, name }) => ({ id, name })),
+    columnItems,
+    optionItems,
+  };
+}
+
+async function structureContext(workspaceId: string, desired: BoardStructure) {
+  const board = await findBoard(workspaceId);
+  const snapshot = await loadSnapshot(board, true);
+  const provider = board.provider as BoardProvider;
+  const current = structureOf(snapshot.columns, snapshot.fields, provider);
+  return { board, snapshot, provider, current, desired: validateStructure(desired, current, provider) };
+}
+
+/** What applying the structure would change, before anything is sent to the provider. */
+export async function previewBoardStructure(workspaceId: string, desired: BoardStructure) {
+  const { snapshot, current, desired: valid } = await structureContext(workspaceId, desired);
+  return planStructure(current, valid, snapshot.items);
+}
+
+/**
+ * Applies the structure: cards of removed columns move first (to the column chosen for each), then the provider
+ * gets the new columns and fields. The agent roles keep their columns; roles left without one are guessed again.
+ */
+export async function applyBoardStructure(workspaceId: string, desired: BoardStructure, columnMoves: Record<string, string>) {
+  const { board, snapshot, provider, current, desired: valid } = await structureContext(workspaceId, desired);
+  const plan = planStructure(current, valid, snapshot.items);
+  if (plan.changes.length === 0) return { applied: 0, link: linkResponse(board) };
+
+  const remaining = new Set([
+    ...valid.columns.map((column) => column.id).filter((id): id is string => id !== null),
+    ...(provider === 'GITLAB' ? [GITLAB_FIXED_COLUMNS.first, GITLAB_FIXED_COLUMNS.last] : []),
+  ]);
+  for (const removed of plan.removedColumns) {
+    const target = columnMoves[removed.id];
+    if (!target || !remaining.has(target)) throw new HttpError(422, `Escolha para onde vão os cards da coluna "${removed.name}".`);
+  }
+
+  const adapter = await adapterFor(board);
+  for (const removed of plan.removedColumns) {
+    for (const item of snapshot.items.filter((entry) => entry.columnId === removed.id)) {
+      await adapter.moveItem(refOf(board), snapshot, item.id, columnMoves[removed.id]!);
+      item.columnId = columnMoves[removed.id]!;
+    }
+  }
+  await adapter.applyStructure(refOf(board), current, valid);
+
+  const saved = await prisma.taskBoard.update({
+    where: { workspaceId },
+    data: { fieldOrder: provider === 'GITLAB' ? (fieldOrderOf(valid) as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
+  });
+  const fresh = await loadSnapshot(saved, true);
+  const statusMap = sanitizeStatusMap(board.statusMap, fresh.columns);
+  const guessed = detectStatusMap(fresh.columns);
+  const used = new Set(Object.values(statusMap));
+  for (const [role, columnId] of Object.entries(guessed) as [StatusRole, string][]) {
+    if (!statusMap[role] && !used.has(columnId)) {
+      statusMap[role] = columnId;
+      used.add(columnId);
+    }
+  }
+  const updated = await prisma.taskBoard.update({ where: { workspaceId }, data: { statusMap: statusMap as Prisma.InputJsonValue } });
+  return { applied: plan.changes.length, link: linkResponse(updated) };
 }
 
 // ---------------------------------------------------------------- board contents

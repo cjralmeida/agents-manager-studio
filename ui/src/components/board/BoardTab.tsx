@@ -8,6 +8,7 @@ import { Button } from '../Button';
 import { ErrorText, TextInput } from '../form';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { BoardSetup } from './BoardSetup';
+import { BoardStructurePanel } from './BoardStructurePanel';
 import { agentsByItem, matchesSearch } from './boardUtils';
 import { KanbanView } from './KanbanView';
 import { NewTaskForm } from './NewTaskForm';
@@ -49,6 +50,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const [search, setSearch] = useState('');
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingStructure, setEditingStructure] = useState(false);
   const agents = useAgents(workspace.id);
   const refresh = useRefreshBoard(workspace.id);
   const move = useMoveTask(workspace.id);
@@ -57,6 +59,8 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const items = board.items.filter((item) => matchesSearch(item, search));
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
+
+  if (editingStructure) return <BoardStructurePanel workspaceId={workspace.id} onClose={() => setEditingStructure(false)} />;
 
   return (
     <div className="space-y-4">
@@ -77,6 +81,9 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
             className="w-60"
           />
           <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
+          <Button onClick={() => setEditingStructure(true)} title="Colunas, campos e opções do quadro">
+            Estrutura
+          </Button>
           <Button onClick={() => refresh.mutate()} disabled={refresh.isPending} title="Lê o quadro do provedor agora">
             {refresh.isPending ? 'Atualizando...' : 'Atualizar'}
           </Button>

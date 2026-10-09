@@ -82,7 +82,14 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 - **GitHub:** um GitHub Project (v2). O token fine-grained da conta precisa de *Projects: leitura e escrita* na organização e *Issues: leitura e escrita* nos repositórios.
 - **GitLab:** um board de grupo. As colunas são labels `Status: …` e os campos são labels `Campo: valor`. "A fazer" corresponde às issues abertas sem coluna, e "Concluído" às fechadas.
 
-Se o Studio não encontrar um quadro, ele pode criar um no estilo do template (`server/src/modules/boards/template.ts`). No GitHub, ele copia o projeto-modelo definido em Configurações → Git, quando houver.
+Se o Studio não encontrar um quadro, ele pode criar um. O padrão é o modelo do Studio (`server/src/modules/boards/template.ts`), e **Personalizar** abre o editor para mudar colunas e campos antes de criar. No GitHub, ele copia o projeto-modelo da página Conectores, quando houver, e aplica a estrutura personalizada por cima.
+
+**Estrutura do quadro:** o botão **Estrutura**, na aba Quadro, abre um editor visual.
+- Colunas lado a lado, que se arrastam pelo ⠿; campos de escolha única com suas opções; cor e descrição em cada um.
+- **Revisar mudanças** mostra o que vai mudar no GitHub/GitLab. Antes de remover uma coluna com cards, pede para onde eles vão, e avisa quais cards perdem um valor de campo.
+- Renomear mantém os cards na coluna ou opção: o ID é preservado no GitHub, e no GitLab o label é renomeado.
+- As tarefas continuam no provedor. O Studio só edita a estrutura. No GitLab, "A fazer" e "Concluído" são fixas, e a ordem dos campos fica guardada no Studio, porque o GitLab ordena labels por nome.
+- Depois de aplicar, os papéis dos agentes continuam nas suas colunas. Um papel que perdeu a coluna é deduzido de novo pelo nome.
 
 Ao lançar um agente a partir de um card:
 

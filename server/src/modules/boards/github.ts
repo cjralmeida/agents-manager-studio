@@ -1,5 +1,6 @@
 import { HttpError } from '../../lib/errors.js';
 import type { ParsedBoardUrl } from './board-url.js';
+import { type BoardStructure, type StructureOption, matchIdsByName, structureOf, templateStructure } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, type GitHubColor } from './template.js';
 import type {
   BoardAdapter,
@@ -132,6 +133,10 @@ export function createGitHubClient(host: string, token: string) {
         { a: contentId, u: [data.viewer.id] },
       );
     },
+
+    async applyStructure(board, current, desired) {
+      await applyProjectStructure(gql, board.externalId, current, desired);
+    },
   };
 
   return {
@@ -178,14 +183,23 @@ export function createGitHubClient(host: string, token: string) {
     },
 
     /** Creates a project by copying the template project, or from the built-in template when there is none. */
-    async create(input: { owner: string; title: string; template: BoardCandidate | null; repositories: string[] }) {
+    async create(input: { owner: string; title: string; template: BoardCandidate | null; repositories: string[]; structure: BoardStructure | null }) {
       const ownerData = await gql(`query($login: String!) { repositoryOwner(login: $login) { id } }`, { login: input.owner });
       const ownerId = ownerData.repositoryOwner?.id as string | undefined;
       if (!ownerId) throw new HttpError(404, `Organização ou usuário ${input.owner} não encontrado no GitHub.`);
 
-      const projectId = input.template
-        ? await copyTemplate(gql, input.template.externalId, ownerId, input.title)
-        : await createFromBuiltInTemplate(gql, ownerId, input.title);
+      let projectId: string;
+      if (input.template) {
+        // The copy brings the template views and workflows; a customized structure is applied over it.
+        projectId = await copyTemplate(gql, input.template.externalId, ownerId, input.title);
+        if (input.structure) {
+          const copy = await loadProject(gql, projectId);
+          const current = structureOf(copy.columns, copy.fields, 'GITHUB');
+          await applyProjectStructure(gql, projectId, current, matchIdsByName(input.structure, current));
+        }
+      } else {
+        projectId = await createFromStructure(gql, ownerId, input.title, input.structure ?? templateStructure('GITHUB'));
+      }
 
       const warnings: string[] = [];
       for (const path of input.repositories) {
@@ -239,10 +253,61 @@ async function copyTemplate(gql: Gql, templateId: string, ownerId: string, title
   return projectId;
 }
 
-const toGitHubOptions = (options: { name: string; color: GitHubColor; description: string }[]) =>
-  options.map(({ name, color, description }) => ({ name, color, description }));
+/** Option input; passing the id of an existing option keeps it, so cards stay on it after a rename. */
+const toGitHubOptions = (options: (Pick<StructureOption, 'name' | 'color' | 'description'> & { id?: string | null })[]) =>
+  options.map(({ id, name, color, description }) => ({ ...(id && { id }), name, color, description }));
 
-async function createFromBuiltInTemplate(gql: Gql, ownerId: string, title: string) {
+const sameOptions = (a: StructureOption[], b: StructureOption[]) => JSON.stringify(toGitHubOptions(a)) === JSON.stringify(toGitHubOptions(b));
+
+async function updateField(gql: Gql, fieldId: string, options: StructureOption[], name?: string) {
+  await gql(
+    `mutation($f: ID!, $n: String, $o: [ProjectV2SingleSelectFieldOptionInput!]) {
+      updateProjectV2Field(input: { fieldId: $f, name: $n, singleSelectOptions: $o }) { clientMutationId }
+    }`,
+    { f: fieldId, n: name ?? null, o: toGitHubOptions(options) },
+  );
+}
+
+async function createField(gql: Gql, projectId: string, name: string, options: StructureOption[]) {
+  await gql(
+    `mutation($p: ID!, $n: String!, $o: [ProjectV2SingleSelectFieldOptionInput!]) {
+      createProjectV2Field(input: { projectId: $p, dataType: SINGLE_SELECT, name: $n, singleSelectOptions: $o }) { clientMutationId }
+    }`,
+    { p: projectId, n: name, o: toGitHubOptions(options.map((option) => ({ ...option, id: null }))) },
+  );
+}
+
+/** Status options and single-select fields of the project made equal to `desired`. */
+async function applyProjectStructure(gql: Gql, projectId: string, current: BoardStructure, desired: BoardStructure) {
+  if (!sameOptions(current.columns, desired.columns)) {
+    const head = await gql(
+      `query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id } } } } }`,
+      { id: projectId },
+    );
+    const statusId = head.node?.field?.id as string | undefined;
+    if (!statusId) throw new HttpError(422, 'O projeto não tem um campo "Status".');
+    await updateField(gql, statusId, desired.columns);
+  }
+
+  const kept = new Set(desired.fields.map((field) => field.id).filter(Boolean));
+  for (const field of current.fields) {
+    if (!kept.has(field.id)) {
+      await gql(`mutation($f: ID!) { deleteProjectV2Field(input: { fieldId: $f }) { clientMutationId } }`, { f: field.id });
+    }
+  }
+  for (const field of desired.fields) {
+    if (field.id === null) {
+      await createField(gql, projectId, field.name, field.options);
+      continue;
+    }
+    const before = current.fields.find((entry) => entry.id === field.id)!;
+    if (before.name !== field.name || !sameOptions(before.options, field.options)) {
+      await updateField(gql, field.id, field.options, before.name !== field.name ? field.name : undefined);
+    }
+  }
+}
+
+async function createFromStructure(gql: Gql, ownerId: string, title: string, structure: BoardStructure) {
   const created = await gql(`mutation($o: ID!, $t: String!) { createProjectV2(input: { ownerId: $o, title: $t }) { projectV2 { id } } }`, {
     o: ownerId,
     t: title,
@@ -253,18 +318,9 @@ async function createFromBuiltInTemplate(gql: Gql, ownerId: string, title: strin
     `query($id: ID!) { node(id: $id) { ... on ProjectV2 { field(name: "Status") { ... on ProjectV2SingleSelectField { id } } } } }`,
     { id: projectId },
   );
-  await gql(
-    `mutation($f: ID!, $o: [ProjectV2SingleSelectFieldOptionInput!]) { updateProjectV2Field(input: { fieldId: $f, singleSelectOptions: $o }) { clientMutationId } }`,
-    { f: status.node.field.id, o: toGitHubOptions(BOARD_TEMPLATE.statuses) },
-  );
-  for (const field of BOARD_TEMPLATE.fields) {
-    await gql(
-      `mutation($p: ID!, $n: String!, $o: [ProjectV2SingleSelectFieldOptionInput!]) {
-        createProjectV2Field(input: { projectId: $p, dataType: SINGLE_SELECT, name: $n, singleSelectOptions: $o }) { clientMutationId }
-      }`,
-      { p: projectId, n: field.name, o: toGitHubOptions(field.options) },
-    );
-  }
+  // A new project's Status options are GitHub's defaults: they are all replaced.
+  await updateField(gql, status.node.field.id, structure.columns.map((column) => ({ ...column, id: null })));
+  for (const field of structure.fields) await createField(gql, projectId, field.name, field.options);
   await gql(
     `mutation($id: ID!, $r: String, $s: String) { updateProjectV2(input: { projectId: $id, readme: $r, shortDescription: $s }) { clientMutationId } }`,
     { id: projectId, r: BOARD_TEMPLATE.readme, s: BOARD_TEMPLATE.shortDescription },

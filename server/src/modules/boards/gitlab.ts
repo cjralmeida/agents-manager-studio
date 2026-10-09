@@ -1,5 +1,6 @@
 import { HttpError } from '../../lib/errors.js';
 import type { ParsedBoardUrl } from './board-url.js';
+import { type BoardStructure, type FieldOrder, type StructureOption, templateStructure } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, GITLAB_STATUS_PREFIX } from './template.js';
 import type { BoardAdapter, BoardCandidate, BoardField, BoardItem, BoardOption, BoardSnapshot } from './types.js';
 
@@ -156,7 +157,7 @@ export function createGitLabClient(host: string, token: string) {
         }
         fieldsByPrefix.set(parts.prefix, field);
       }
-      const fields = sortLikeTemplate([...fieldsByPrefix.values()]);
+      const fields = sortFields([...fieldsByPrefix.values()], board.fieldOrder);
 
       const items = issues.map((issue) => issueToItem(issue, columns, fields));
 
@@ -214,7 +215,112 @@ export function createGitLabClient(host: string, token: string) {
       const user = await request<{ id: number }>('GET', '/user');
       await updateIssue(id, { assignee_ids: [user.id] });
     },
+
+    async applyStructure(board, current, desired) {
+      const { groupId, boardId } = parseExternalId(board.externalId);
+      await applyGroupStructure(groupId, boardId, current, desired);
+    },
   };
+
+  const labelData = (option: Pick<StructureOption, 'color' | 'description'>) => ({ color: GITHUB_COLORS[option.color], description: option.description });
+
+  /** Creates a group label, or updates the one that already has that name (e.g. left by an earlier board). */
+  async function ensureLabel(groupId: number, labels: Map<string, GitLabLabel>, name: string, option: Pick<StructureOption, 'color' | 'description'>) {
+    const existing = labels.get(name);
+    const label = existing
+      ? await request<GitLabLabel>('PUT', `/groups/${groupId}/labels/${existing.id}`, labelData(option))
+      : await request<GitLabLabel>('POST', `/groups/${groupId}/labels`, { name, ...labelData(option) });
+    labels.set(label.name, label);
+    return label;
+  }
+
+  async function updateLabel(groupId: number, labelId: number, data: Record<string, unknown>) {
+    await request('PUT', `/groups/${groupId}/labels/${labelId}`, data);
+  }
+
+  async function deleteLabel(groupId: number, labelId: number) {
+    const result = await call('DELETE', `/groups/${groupId}/labels/${labelId}`);
+    if (result.status >= 400 && result.status !== 404) throw new HttpError(502, `GitLab não removeu um label (erro ${result.status}).`);
+  }
+
+  /**
+   * Columns are board lists of "Status: X" labels; fields are "Field: option" labels. Renames edit the label, so
+   * the issues keep it; removals delete the list/label (cards in removed columns were moved before).
+   */
+  async function applyGroupStructure(groupId: number, boardId: number, current: BoardStructure, desired: BoardStructure) {
+    const labels = new Map((await groupLabels(groupId)).map((label) => [label.name, label]));
+    const labelById = new Map([...labels.values()].map((label) => [String(label.id), label]));
+    const detail = await request<GitLabBoard>('GET', `/groups/${groupId}/boards/${boardId}`);
+    const listOf = (labelId: number) => detail.lists.find((list) => list.label?.id === labelId);
+    const labelIdOf = (columnId: string) => Number(columnId.replace('label:', ''));
+
+    // Columns.
+    const keptColumns = new Set(desired.columns.map((column) => column.id).filter(Boolean));
+    for (const column of current.columns) {
+      if (keptColumns.has(column.id)) continue;
+      const labelId = labelIdOf(column.id!);
+      const list = listOf(labelId);
+      if (list) await request('DELETE', `/groups/${groupId}/boards/${boardId}/lists/${list.id}`);
+      const label = labelById.get(String(labelId));
+      if (label?.name.startsWith(GITLAB_STATUS_PREFIX)) await deleteLabel(groupId, labelId);
+    }
+    const orderedLabelIds: number[] = [];
+    for (const column of desired.columns) {
+      if (column.id === null) {
+        const label = await ensureLabel(groupId, labels, `${GITLAB_STATUS_PREFIX}${column.name}`, column);
+        if (!listOf(label.id)) await request('POST', `/groups/${groupId}/boards/${boardId}/lists`, { label_id: label.id });
+        orderedLabelIds.push(label.id);
+        continue;
+      }
+      const labelId = labelIdOf(column.id);
+      const before = current.columns.find((entry) => entry.id === column.id)!;
+      if (before.name !== column.name || before.color !== column.color || before.description !== column.description) {
+        const label = labelById.get(String(labelId));
+        const prefix = label?.name.startsWith(GITLAB_STATUS_PREFIX) ? GITLAB_STATUS_PREFIX : '';
+        await updateLabel(groupId, labelId, {
+          ...(before.name !== column.name && { new_name: `${prefix}${column.name}` }),
+          ...(before.color !== column.color && { color: GITHUB_COLORS[column.color] }),
+          ...(before.description !== column.description && { description: column.description }),
+        });
+      }
+      orderedLabelIds.push(labelId);
+    }
+    // Each move shifts the other lists, and GitLab refuses moving a list to where it already is: positions are re-read.
+    for (const [position, labelId] of orderedLabelIds.entries()) {
+      const lists = (await request<GitLabBoard>('GET', `/groups/${groupId}/boards/${boardId}`)).lists;
+      const list = lists.find((entry) => entry.label?.id === labelId);
+      if (list && list.position !== position) await request('PUT', `/groups/${groupId}/boards/${boardId}/lists/${list.id}`, { position });
+    }
+
+    // Fields.
+    const keptFields = new Set(desired.fields.map((field) => field.id).filter(Boolean));
+    for (const field of current.fields) {
+      if (!keptFields.has(field.id)) for (const option of field.options) await deleteLabel(groupId, Number(option.id));
+    }
+    for (const field of desired.fields) {
+      const before = field.id === null ? null : current.fields.find((entry) => entry.id === field.id)!;
+      const keptOptions = new Set(field.options.map((option) => option.id).filter(Boolean));
+      for (const option of before?.options ?? []) {
+        if (!keptOptions.has(option.id)) await deleteLabel(groupId, Number(option.id));
+      }
+      for (const option of field.options) {
+        const name = `${field.name}: ${option.name}`;
+        const previous = option.id === null ? null : before?.options.find((entry) => entry.id === option.id);
+        if (!previous) {
+          await ensureLabel(groupId, labels, name, option);
+          continue;
+        }
+        const renamed = before!.name !== field.name || previous.name !== option.name;
+        if (renamed || previous.color !== option.color || previous.description !== option.description) {
+          await updateLabel(groupId, Number(option.id), {
+            ...(renamed && { new_name: name }),
+            ...(previous.color !== option.color && { color: GITHUB_COLORS[option.color] }),
+            ...(previous.description !== option.description && { description: option.description }),
+          });
+        }
+      }
+    }
+  }
 
   async function groupByPath(path: string) {
     return request<{ id: number; full_path: string }>('GET', `/groups/${encodeURIComponent(path)}`);
@@ -293,33 +399,22 @@ export function createGitLabClient(host: string, token: string) {
       return toCandidate(group, boards[0]);
     },
 
-    /** Creates the template labels in the group, then a board with one list per status label. */
-    async create(input: { groupPath: string; title: string }) {
+    /** Creates the labels of the structure (the template by default) in the group, then a board with one list per column. */
+    async create(input: { groupPath: string; title: string; structure: BoardStructure | null }) {
       const group = await groupByPath(input.groupPath);
+      const structure = input.structure ?? templateStructure('GITLAB');
 
-      const wanted = [
-        ...BOARD_TEMPLATE.statuses
-          .filter((status) => status.role !== 'todo' && status.role !== 'done')
-          .map((status) => ({ ...status, name: `${GITLAB_STATUS_PREFIX}${status.name}` })),
-        ...BOARD_TEMPLATE.fields.flatMap((field) => field.options.map((option) => ({ ...option, name: `${field.name}: ${option.name}` }))),
-      ];
       const existing = new Map((await groupLabels(group.id)).map((label) => [label.name, label]));
-      for (const label of wanted) {
-        if (existing.has(label.name)) continue;
-        const created = await request<GitLabLabel>('POST', `/groups/${group.id}/labels`, {
-          name: label.name,
-          color: GITHUB_COLORS[label.color],
-          description: label.description,
-        });
-        existing.set(created.name, created);
+      const columnLabels: GitLabLabel[] = [];
+      for (const column of structure.columns) columnLabels.push(await ensureLabel(group.id, existing, `${GITLAB_STATUS_PREFIX}${column.name}`, column));
+      for (const field of structure.fields) {
+        for (const option of field.options) await ensureLabel(group.id, existing, `${field.name}: ${option.name}`, option);
       }
 
       const board = await createOrReuseBoard(group, input.title);
       const listed = new Set(board.lists.map((list) => list.label?.id));
-      const statusLabels = wanted.filter((label) => label.name.startsWith(GITLAB_STATUS_PREFIX));
-      for (const label of statusLabels) {
-        const labelId = existing.get(label.name)!.id;
-        if (!listed.has(labelId)) await request('POST', `/groups/${group.id}/boards/${board.id}/lists`, { label_id: labelId });
+      for (const label of columnLabels) {
+        if (!listed.has(label.id)) await request('POST', `/groups/${group.id}/boards/${board.id}/lists`, { label_id: label.id });
       }
 
       const created = await request<GitLabBoard>('GET', `/groups/${group.id}/boards/${board.id}`);
@@ -328,17 +423,20 @@ export function createGitLabClient(host: string, token: string) {
   };
 }
 
-/** GitLab lists labels alphabetically; fields and options known from the template keep the template order. */
-function sortLikeTemplate(fields: BoardField[]) {
-  const rank = <T>(list: T[], found: T | undefined) => (found === undefined ? list.length : list.indexOf(found));
-  const templateField = (field: BoardField) => BOARD_TEMPLATE.fields.find((entry) => entry.name === field.name);
+/**
+ * GitLab lists labels alphabetically: fields and options follow the order saved by the Studio editor, else the
+ * template order; unknown ones go last.
+ */
+function sortFields(fields: BoardField[], order: FieldOrder | null) {
+  const fieldNames = order?.fields ?? BOARD_TEMPLATE.fields.map((field) => field.name);
+  const optionNames = (field: string) =>
+    order?.options[field] ?? BOARD_TEMPLATE.fields.find((entry) => entry.name === field)?.options.map((option) => option.name) ?? [];
+  const rank = (list: string[], name: string) => (list.includes(name) ? list.indexOf(name) : list.length);
   for (const field of fields) {
-    const options = templateField(field)?.options ?? [];
-    const position = (option: BoardOption) => rank(options, options.find((entry) => entry.name === option.name));
-    field.options.sort((a, b) => position(a) - position(b));
+    const names = optionNames(field.name);
+    field.options.sort((a, b) => rank(names, a.name) - rank(names, b.name));
   }
-  const fieldPosition = (field: BoardField) => rank(BOARD_TEMPLATE.fields, templateField(field));
-  return fields.sort((a, b) => fieldPosition(a) - fieldPosition(b));
+  return fields.sort((a, b) => rank(fieldNames, a.name) - rank(fieldNames, b.name));
 }
 
 /** Column = list label present on the issue (open), or "closed"; fields = "Prefix: value" labels. */

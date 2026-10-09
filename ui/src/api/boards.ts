@@ -168,7 +168,7 @@ export function useLinkBoard(workspaceId: string) {
 export function useCreateBoard(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
-    mutationFn: (input: CreateOption & { title: string }) =>
+    mutationFn: (input: CreateOption & { title: string; structure: BoardStructure | null }) =>
       api.post<{ link: BoardLink; warnings: string[] }>(`${base(workspaceId)}/create`, input),
     onSuccess: invalidate,
   });
@@ -256,5 +256,101 @@ export function useCreateTask(workspaceId: string) {
   return useMutation({
     mutationFn: (input: NewTaskInput) => api.post<{ id: string }>(`${base(workspaceId)}/items`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: boardKeys.contents(workspaceId) }),
+  });
+}
+
+// ---------------------------------------------------------------- structure
+
+/** GitHub's single-select palette, also used for GitLab labels; hex tuned for the dark UI (as on the server). */
+export const boardColors = {
+  GRAY: '#8b949e',
+  BLUE: '#4493f8',
+  GREEN: '#3fb950',
+  YELLOW: '#d29922',
+  ORANGE: '#db6d28',
+  RED: '#f85149',
+  PINK: '#db61a2',
+  PURPLE: '#a371f7',
+} as const;
+export type BoardColor = keyof typeof boardColors;
+
+export const boardColorLabels: Record<BoardColor, string> = {
+  GRAY: 'Cinza',
+  BLUE: 'Azul',
+  GREEN: 'Verde',
+  YELLOW: 'Amarelo',
+  ORANGE: 'Laranja',
+  RED: 'Vermelho',
+  PINK: 'Rosa',
+  PURPLE: 'Roxo',
+};
+
+export interface StructureOption {
+  /** Provider id; null for a new one. */
+  id: string | null;
+  name: string;
+  color: BoardColor;
+  description: string;
+}
+
+export interface StructureField {
+  id: string | null;
+  name: string;
+  options: StructureOption[];
+}
+
+export interface BoardStructure {
+  /** On GitLab, without the fixed "A fazer" and "Concluído". */
+  columns: StructureOption[];
+  fields: StructureField[];
+}
+
+export interface BoardStructureState {
+  provider: BoardProvider;
+  /** GitLab: "A fazer" and "Concluído" always exist around the editable columns. */
+  fixedColumns: boolean;
+  structure: BoardStructure;
+  allColumns: { id: string; name: string }[];
+  columnItems: Record<string, number>;
+  optionItems: Record<string, Record<string, number>>;
+}
+
+export interface StructurePlan {
+  changes: string[];
+  removedColumns: { id: string; name: string; items: number }[];
+  lostValues: { field: string; option: string | null; items: number }[];
+}
+
+export function useTemplateStructure(provider: BoardProvider) {
+  return useQuery({
+    queryKey: ['board-template', provider] as const,
+    queryFn: () =>
+      api.get<{ provider: BoardProvider; fixedColumns: boolean; structure: BoardStructure }>(`/board-template/structure?provider=${provider}`),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** Read fresh from the provider each time the editor opens. */
+export function useBoardStructure(workspaceId: string) {
+  return useQuery({
+    queryKey: [...boardKeys.all(workspaceId), 'structure'] as const,
+    queryFn: () => api.get<BoardStructureState>(`${base(workspaceId)}/structure`),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePreviewBoardStructure(workspaceId: string) {
+  return useMutation({
+    mutationFn: (structure: BoardStructure) => api.post<StructurePlan>(`${base(workspaceId)}/structure/preview`, { structure }),
+  });
+}
+
+export function useApplyBoardStructure(workspaceId: string) {
+  const invalidate = useInvalidateBoard(workspaceId);
+  return useMutation({
+    mutationFn: (input: { structure: BoardStructure; columnMoves: Record<string, string> }) =>
+      api.put<{ applied: number; link: BoardLink }>(`${base(workspaceId)}/structure`, input),
+    onSuccess: invalidate,
   });
 }
