@@ -2,6 +2,7 @@
 # (Node.js/TypeScript, Python, Go, Java + Maven; Gradle projects use their own ./gradlew).
 FROM golang:1.25-bookworm AS go
 FROM maven:3.9-eclipse-temurin-21 AS java
+FROM eclipse-temurin:11-jdk AS java11
 
 FROM node:24-slim
 
@@ -13,6 +14,8 @@ RUN apt-get update \
 # Go, JDK 21 and Maven come from their official images.
 COPY --from=go /usr/local/go /usr/local/go
 COPY --from=java /opt/java/openjdk /opt/java/openjdk
+# Older Java projects (Java 8-11, e.g. Spring 4) build with JAVA_HOME=/opt/java/jdk11.
+COPY --from=java11 /opt/java/openjdk /opt/java/jdk11
 COPY --from=java /usr/share/maven /usr/share/maven
 ENV JAVA_HOME=/opt/java/openjdk \
   MAVEN_HOME=/usr/share/maven \

@@ -78,7 +78,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
     );
   }
   lines.push(
-    '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven, psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
+    '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven (Java 11 em /opt/java/jdk11: use JAVA_HOME=/opt/java/jdk11 em projetos Java 8 a 11), psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
     '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
     '- Ao terminar, resuma o que foi feito.',
     '- Responda em português.',
@@ -173,6 +173,8 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       STUDIO_TOOLS: runnerTools(agent).join(','),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
+      // Reference folders belong to the host user: git would refuse them as "dubious ownership".
+      ...(contextProjects.length > 0 && { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: '*' }),
       ...env,
     },
   });
