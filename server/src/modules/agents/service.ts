@@ -711,6 +711,11 @@ async function completeWithResult(id: string) {
 export async function onAgentIdle(id: string) {
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent || agent.status !== 'READY_FOR_REVIEW' || !agent.autoConclude) return;
+  // A turn that ended in error (e.g. the plan limit) is not a delivery: keep the work, the user resumes with a message.
+  if (agent.errorMessage) {
+    await addEvent(id, 'status', { message: 'Parou por erro (ex.: limite do plano). Nada foi enviado; mande uma mensagem (ex.: "continue") para retomar.' });
+    return;
+  }
   await finalizeAgent(id).catch((error: unknown) => addEvent(id, 'error', { message: errorMessage(error) }));
 }
 
