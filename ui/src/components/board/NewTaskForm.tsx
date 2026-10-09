@@ -5,11 +5,11 @@ import { ErrorText, Field, Select, TextInput } from '../form';
 
 const DRAFT = '__draft__';
 
-/** Creates an issue in a workspace repository (or a GitHub draft) and adds it to the board. */
+/** Creates the task in the board that holds the chosen project (an issue on GitHub/GitLab, or a Studio task). */
 export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: string; board: Board; onClose: () => void }) {
   const [title, setTitle] = useState('');
   const [repository, setRepository] = useState(board.repositories[0]?.path ?? (board.supportsDrafts ? DRAFT : ''));
-  const [columnId, setColumnId] = useState(board.link.statusMap.todo ?? board.columns[0]?.id ?? '');
+  const [columnId, setColumnId] = useState(board.statusMap.todo ?? board.columns[0]?.id ?? '');
   const [fields, setFields] = useState<Record<string, string>>({});
   const [body, setBody] = useState(board.taskBodyTemplate);
   const create = useCreateTask(workspaceId);
@@ -23,6 +23,8 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
   };
 
   const noTarget = board.repositories.length === 0 && !board.supportsDrafts;
+  const chosen = board.repositories.find((repo) => repo.path === repository);
+  const provider = (chosen ? board.sources.find((source) => source.id === chosen.sourceId) : undefined)?.provider;
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-6" onClick={onClose}>
@@ -33,11 +35,11 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
       >
         <h2 className="text-lg font-semibold">Nova tarefa</h2>
         <p className="mt-1 text-xs text-muted">
-          {board.link.provider === 'STUDIO'
-            ? 'A tarefa fica só no Studio, no quadro deste workspace.'
-            : board.link.provider === 'GITHUB'
-              ? 'Cria uma issue no repositório escolhido e a adiciona ao projeto.'
-              : 'Cria uma issue no projeto escolhido; colunas e campos viram labels.'}
+          {provider === 'GITHUB'
+            ? 'Cria uma issue no repositório escolhido e a adiciona ao GitHub Project.'
+            : provider === 'GITLAB'
+              ? 'Cria uma issue no projeto escolhido, no GitLab; colunas e campos viram labels.'
+              : 'A tarefa fica só no Studio, no quadro deste workspace.'}
         </p>
 
         <div className="mt-4 space-y-3">
@@ -45,7 +47,7 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
             <TextInput value={title} onChange={(event) => setTitle(event.target.value)} required autoFocus />
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={board.link.provider === 'STUDIO' ? 'Projeto' : 'Repositório'}>
+            <Field label="Projeto">
               <Select value={repository} onChange={(event) => setRepository(event.target.value)} required>
                 {board.repositories.map((repo) => (
                   <option key={repo.path} value={repo.path}>
@@ -54,7 +56,7 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
                   </option>
                 ))}
                 {board.supportsDrafts && (
-                  <option value={DRAFT}>{board.link.provider === 'STUDIO' ? 'Sem projeto' : 'Sem repositório (rascunho)'}</option>
+                  <option value={DRAFT}>Sem projeto (rascunho)</option>
                 )}
               </Select>
             </Field>
@@ -96,7 +98,7 @@ export function NewTaskForm({ workspaceId, board, onClose }: { workspaceId: stri
           </Field>
         </div>
 
-        {noTarget && <p className="mt-3 text-sm text-amber-300">Nenhum projeto do workspace está neste provedor.</p>}
+        {noTarget && <p className="mt-3 text-sm text-amber-300">Nenhum quadro deste workspace guarda tarefas dos seus projetos.</p>}
         <div className="mt-4 flex items-center gap-3">
           <Button type="submit" variant="primary" disabled={create.isPending || !title.trim() || noTarget}>
             {create.isPending ? 'Criando...' : 'Criar tarefa'}

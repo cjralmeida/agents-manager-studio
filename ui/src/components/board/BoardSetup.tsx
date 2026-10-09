@@ -18,8 +18,11 @@ import { ConnectorIcon } from '../connectors/ConnectorIcon';
 import { ErrorText, Field, Select, TextInput } from '../form';
 import { Logo } from '../Logo';
 
-/** Shown while the workspace has no board: three ways to get one, all following the Studio board model. */
-export function BoardSetup({ workspace }: { workspace: WorkspaceDetail }) {
+/**
+ * Three ways to get a board, all following the Studio board model. Shown while the workspace has no board, and to add
+ * another board (e.g. GitHub next to GitLab) to the workspace board, with `onClose`.
+ */
+export function BoardSetup({ workspace, hasStudioTasks = false, onClose }: { workspace: WorkspaceDetail; hasStudioTasks?: boolean; onClose?: () => void }) {
   const detection = useDetectBoards(workspace.id, true);
   const connectorsTab = `/workspaces/${workspace.id}?tab=connectors`;
   // "No git account for github.com" and the like: shown inside the git options, not as loose warnings.
@@ -27,11 +30,25 @@ export function BoardSetup({ workspace }: { workspace: WorkspaceDetail }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 py-2">
-      <Hero />
+      {onClose ? (
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Adicionar um quadro</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              As tarefas dele entram no quadro deste workspace, nas mesmas colunas e campos. Cada tarefa continua no seu provedor: as de
+              projetos do GitLab ficam no GitLab, as do GitHub no GitHub.
+            </p>
+          </div>
+          <Button onClick={onClose}>Voltar ao quadro</Button>
+        </header>
+      ) : (
+        <Hero />
+      )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <LocalOption workspaceId={workspace.id} />
+      <div className={`grid grid-cols-1 gap-4 ${hasStudioTasks ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
+        {!hasStudioTasks && <LocalOption workspaceId={workspace.id} onDone={onClose} />}
         <CreateOption
+          onDone={onClose}
           workspaceId={workspace.id}
           loading={detection.isPending}
           options={detection.data?.createOptions ?? []}
@@ -40,6 +57,7 @@ export function BoardSetup({ workspace }: { workspace: WorkspaceDetail }) {
           connectorsTab={connectorsTab}
         />
         <LinkOption
+          onDone={onClose}
           workspaceId={workspace.id}
           loading={detection.isPending}
           candidates={detection.data?.candidates ?? []}
@@ -137,7 +155,7 @@ function NeedsAccount({ missingAccounts, connectorsTab, text }: { missingAccount
   );
 }
 
-function LocalOption({ workspaceId }: { workspaceId: string }) {
+function LocalOption({ workspaceId, onDone }: { workspaceId: string; onDone?: () => void }) {
   const create = useCreateLocalBoard(workspaceId);
   return (
     <OptionCard
@@ -152,7 +170,7 @@ function LocalOption({ workspaceId }: { workspaceId: string }) {
         <li>✓ Sempre igual ao modelo</li>
       </ul>
       <div className="mt-auto pt-4">
-        <Button variant="primary" className="w-full" onClick={() => create.mutate()} disabled={create.isPending}>
+        <Button variant="primary" className="w-full" onClick={() => create.mutate(undefined, { onSuccess: onDone })} disabled={create.isPending}>
           {create.isPending ? 'Criando...' : 'Criar quadro do Studio'}
         </Button>
         <ErrorText error={create.error} />
@@ -173,6 +191,7 @@ function ProviderIcons() {
 }
 
 function CreateOption({
+  onDone,
   workspaceId,
   loading,
   options,
@@ -180,6 +199,7 @@ function CreateOption({
   missingAccounts,
   connectorsTab,
 }: {
+  onDone?: () => void;
   workspaceId: string;
   loading: boolean;
   options: CreateOption[];
@@ -197,7 +217,7 @@ function CreateOption({
     if (!option) return;
     const where = `${option.owner} no ${boardProviderLabels[option.provider]}`;
     if (window.confirm(`Criar o quadro "${title}" em ${where}? Ele ficará visível para quem tem acesso a ${option.owner}.`)) {
-      create.mutate({ ...option, title });
+      create.mutate({ ...option, title }, { onSuccess: onDone });
     }
   };
 
@@ -253,12 +273,14 @@ function LinkIcon() {
 }
 
 function LinkOption({
+  onDone,
   workspaceId,
   loading,
   candidates,
   missingAccounts,
   connectorsTab,
 }: {
+  onDone?: () => void;
   workspaceId: string;
   loading: boolean;
   candidates: BoardCandidate[];
@@ -270,7 +292,7 @@ function LinkOption({
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    link.mutate(url.trim());
+    link.mutate(url.trim(), { onSuccess: onDone });
   };
 
   return (
@@ -293,7 +315,7 @@ function LinkOption({
                   {candidate.matchesTemplate ? ' · estilo Studio' : ''}
                 </span>
               </div>
-              <Button size="sm" onClick={() => link.mutate(candidate.url)} disabled={link.isPending}>
+              <Button size="sm" onClick={() => link.mutate(candidate.url, { onSuccess: onDone })} disabled={link.isPending}>
                 Vincular
               </Button>
             </li>

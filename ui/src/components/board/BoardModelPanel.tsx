@@ -170,7 +170,7 @@ function BoardsList({ boards }: { boards: ModelState['boards'] }) {
       ) : (
         <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
           {boards.map((board) => (
-            <li key={board.workspaceId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm">
+            <li key={board.sourceId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className="font-medium">{board.workspaceName}</span>
                 <Badge tone="info">{boardProviderLabels[board.provider]}</Badge>

@@ -72,7 +72,9 @@ async function mergeResult(agentId: string, patch: AgentResult) {
  * Throws a message the agent can act on when a name does not exist.
  */
 export async function prepareTaskByNames(workspaceId: string, args: Args) {
-  const { snapshot, repos } = await boardContext(workspaceId);
+  const { snapshot, repos: allRepos } = await boardContext(workspaceId);
+  // Only projects some source of the board holds can get tasks.
+  const repos = allRepos.filter((repo) => repo.sourceId);
   const title = text(args.title, 250);
   if (!title) throw new HttpError(400, 'Informe o título da tarefa.');
   const repositoryName = text(args.repository);
@@ -133,7 +135,7 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       return {
         columns: snapshot.columns.map((entry) => entry.name),
         fields: Object.fromEntries(snapshot.fields.map((field) => [field.name, field.options.map((option) => option.name)])),
-        repositories: repos.map((repo) => repo.path),
+        repositories: repos.filter((repo) => repo.sourceId).map((repo) => repo.path),
         tasks: items.map((item) => describeItem(snapshot, item)),
       };
     }

@@ -44,6 +44,8 @@ export interface BoardItem {
   assignees: string[];
   pullRequests: BoardPullRequest[];
   updatedAt: string;
+  /** On the joined workspace board: the source (task_boards row) the task comes from. */
+  sourceId?: string;
 }
 
 export interface BoardSnapshot {

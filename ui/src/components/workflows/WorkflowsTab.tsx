@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { type AgentProfile, useAgentProfiles } from '../../api/agentProfiles';
-import { type Board, useBoard, useBoardLink } from '../../api/boards';
+import { type Board, useBoard, useBoardSources } from '../../api/boards';
 import { environmentLabels } from '../../api/render';
 import {
   type Workflow,
@@ -24,16 +24,17 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const workflows = useWorkflows(workspace.id);
   const runs = useWorkflowRuns(workspace.id);
   const profiles = useAgentProfiles(workspace.id);
-  const link = useBoardLink(workspace.id);
-  const board = useBoard(workspace.id, Boolean(link.data));
+  const sources = useBoardSources(workspace.id);
+  const hasBoard = (sources.data?.length ?? 0) > 0;
+  const board = useBoard(workspace.id, hasBoard);
   const [editing, setEditing] = useState<Workflow | 'new' | null>(null);
   const create = useCreateWorkflow(workspace.id);
   const update = useUpdateWorkflow(workspace.id);
 
   const error = workflows.error ?? profiles.error ?? runs.error;
   if (error) return <ErrorText error={error} />;
-  if (!workflows.data || !profiles.data || link.isPending) return <p className="text-sm text-muted">Carregando...</p>;
-  const boardData = link.data ? (board.data ?? null) : null;
+  if (!workflows.data || !profiles.data || sources.isPending) return <p className="text-sm text-muted">Carregando...</p>;
+  const boardData = hasBoard ? (board.data ?? null) : null;
 
   return (
     <div className="max-w-6xl space-y-6">

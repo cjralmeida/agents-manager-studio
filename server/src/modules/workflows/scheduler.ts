@@ -1,6 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
-import { syncBoard } from '../boards/service.js';
+import { syncWorkspaceBoard } from '../boards/service.js';
 import { advanceAllRuns, runBoardTriggers } from './engine.js';
 
 /** How often boards due for a refresh are looked for (each board has its own interval). */
@@ -9,15 +9,14 @@ const BOARD_TICK_MS = 15_000;
 const RUNS_TICK_MS = 10_000;
 const syncing = new Set<string>();
 
-/** Reads one board from the provider and runs the board triggers of its workspace; never throws. */
+/** Reads the workspace's sources that are due and runs the board triggers of the workspace; never throws. */
 async function syncAndTrigger(workspaceId: string, log: FastifyBaseLogger) {
   if (syncing.has(workspaceId)) return;
   syncing.add(workspaceId);
   try {
-    const board = await prisma.taskBoard.findUnique({ where: { workspaceId } });
-    if (!board) return;
-    await syncBoard(board);
-    await runBoardTriggers(workspaceId, log);
+    const { synced, errors } = await syncWorkspaceBoard(workspaceId, true);
+    if (errors.length > 0) log.warn({ workspaceId, errors }, 'Board source sync failed');
+    if (synced > 0) await runBoardTriggers(workspaceId, log);
   } catch (err) {
     log.warn({ workspaceId, err }, 'Board sync failed');
   } finally {
@@ -31,11 +30,11 @@ async function boardTick(log: FastifyBaseLogger) {
     select: { workspaceId: true, refreshIntervalSec: true, lastSyncedAt: true },
   });
   const now = Date.now();
-  for (const board of boards) {
-    const due = !board.lastSyncedAt || now - board.lastSyncedAt.getTime() >= board.refreshIntervalSec * 1000;
-    // One board after another, to spread the provider calls.
-    if (due) await syncAndTrigger(board.workspaceId, log);
-  }
+  const due = new Set(
+    boards.filter((board) => !board.lastSyncedAt || now - board.lastSyncedAt.getTime() >= board.refreshIntervalSec * 1000).map((board) => board.workspaceId),
+  );
+  // One workspace after another, to spread the provider calls.
+  for (const workspaceId of due) await syncAndTrigger(workspaceId, log);
 }
 
 function loop(name: string, intervalMs: number, work: () => Promise<void>, log: FastifyBaseLogger) {

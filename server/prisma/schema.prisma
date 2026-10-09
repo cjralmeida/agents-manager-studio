@@ -101,7 +101,7 @@ model Workspace {
   settings       WorkspaceSettings?
   gitAccounts    WorkspaceGitAccount[]
   agents         Agent[]
-  taskBoard      TaskBoard?
+  taskBoards     TaskBoard[]
   localTasks     LocalTask[]
   workflows      Workflow[]
   agentProfiles  AgentProfile[]
@@ -368,8 +368,11 @@ model AgentInbox {
 }
 
 /// Task board (GitHub Project v2 or GitLab group issue board) linked to a workspace.
+/// A source of tasks of a workspace board: a GitHub Project, a GitLab group board or the Studio's own tasks. A
+/// workspace board joins all its sources on the board model's columns and fields.
 model TaskBoard {
-  workspaceId        String        @id @map("workspace_id") @db.Uuid
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  workspaceId        String        @map("workspace_id") @db.Uuid
   provider           BoardProvider
   /// API host; the workspace git account for this host is used to talk to the board.
   host               String
@@ -402,8 +405,9 @@ model TaskBoard {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  /// A provider board belongs to one workspace only.
+  /// A provider board belongs to one workspace only (and a workspace has one Studio source).
   @@unique([provider, host, externalId])
+  @@index([workspaceId])
   @@map("task_boards")
 }
 

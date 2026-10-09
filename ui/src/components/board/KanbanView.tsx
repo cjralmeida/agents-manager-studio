@@ -19,7 +19,7 @@ const NO_STATUS = '__none__';
 
 export function KanbanView<T extends BoardItem>({ board, items, agents, onOpen, onMove, label }: KanbanViewProps<T>) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const blockedColumn = board.link.statusMap.blocked;
+  const blockedColumn = board.statusMap.blocked;
   const withoutStatus = items.filter((item) => !board.columns.some((column) => column.id === item.columnId));
 
   const columns = [

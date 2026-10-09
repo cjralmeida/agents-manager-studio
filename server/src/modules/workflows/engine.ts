@@ -136,8 +136,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     return;
   }
 
-  const { board, snapshot, projectOf } = await boardContext(workspaceId);
-  const statusMap = board.statusMap as StatusMap;
+  const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
   const [activeAgents, runs] = await Promise.all([
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({

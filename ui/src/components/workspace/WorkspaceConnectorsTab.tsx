@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { type AccountGitProvider, useAgentAccounts, useGitAccounts } from '../../api/accounts';
-import { useBoardLink } from '../../api/boards';
+import { useBoardSources } from '../../api/boards';
 import { useRenderAccounts } from '../../api/render';
 import { type WorkspaceSettings, useUpdateWorkspaceSettings, useWorkspaceSettings } from '../../api/workspaceSettings';
 import type { WorkspaceDetail } from '../../api/workspaces';
@@ -56,7 +56,7 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
   const settings = useWorkspaceSettings(workspace.id);
   const agentAccounts = useAgentAccounts();
   const gitAccounts = useGitAccounts();
-  const board = useBoardLink(workspace.id);
+  const boardSources = useBoardSources(workspace.id);
   const renderAccounts = useRenderAccounts();
   const update = useUpdateWorkspaceSettings(workspace.id);
 
@@ -150,19 +150,19 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
 
         <ConnectorCard
           icon={
-            board.data?.provider === 'STUDIO' ? (
+            boardSources.data?.length === 1 && boardSources.data[0]!.provider === 'STUDIO' ? (
               <span className="inline-flex size-10 items-center justify-center">
                 <Logo size={40} />
               </span>
-            ) : board.data ? (
-              <ConnectorIcon id={board.data.provider === 'GITHUB' ? 'github' : 'gitlab'} />
+            ) : boardSources.data?.length === 1 ? (
+              <ConnectorIcon id={boardSources.data[0]!.provider === 'GITHUB' ? 'github' : 'gitlab'} />
             ) : (
               <span className="inline-flex size-10 items-center justify-center rounded-xl bg-border text-lg">▦</span>
             )
           }
           name="Quadro de tarefas"
-          purpose="Onde ficam as tarefas que os agentes e workflows pegam e movimentam."
-          connected={Boolean(board.data)}
+          purpose="Onde ficam as tarefas que os agentes e workflows pegam e movimentam. Pode juntar quadros do GitHub, do GitLab e do Studio."
+          connected={(boardSources.data?.length ?? 0) > 0}
         >
           <BoardConnection workspaceId={workspace.id} />
         </ConnectorCard>

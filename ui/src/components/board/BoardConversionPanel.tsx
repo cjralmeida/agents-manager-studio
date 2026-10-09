@@ -21,9 +21,9 @@ const normalize = (name: string) =>
     .trim()
     .toLowerCase();
 
-/** Converts the workspace board to the Studio model (or syncs it again after a change on the provider). */
-export function BoardConversionPanel({ workspaceId, onClose }: { workspaceId: string; onClose: () => void }) {
-  const state = useBoardConversion(workspaceId);
+/** Converts one board of the workspace to the Studio model (or syncs it again after a change on the provider). */
+export function BoardConversionPanel({ workspaceId, sourceId, onClose }: { workspaceId: string; sourceId: string; onClose: () => void }) {
+  const state = useBoardConversion(workspaceId, sourceId);
   if (state.error) {
     return (
       <div className="space-y-3">
@@ -33,18 +33,18 @@ export function BoardConversionPanel({ workspaceId, onClose }: { workspaceId: st
     );
   }
   if (!state.data) return <p className="text-sm text-muted">Lendo o quadro no provedor...</p>;
-  return <ConversionForm workspaceId={workspaceId} state={state.data} onClose={onClose} />;
+  return <ConversionForm workspaceId={workspaceId} sourceId={sourceId} state={state.data} onClose={onClose} />;
 }
 
 function Dot({ color }: { color: string }) {
   return <span className="inline-block size-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />;
 }
 
-function ConversionForm({ workspaceId, state, onClose }: { workspaceId: string; state: ConversionState; onClose: () => void }) {
+function ConversionForm({ workspaceId, sourceId, state, onClose }: { workspaceId: string; sourceId: string; state: ConversionState; onClose: () => void }) {
   const [mapping, setMapping] = useState<ConversionMapping>(state.suggestion);
   const [plan, setPlan] = useState<Preview | null>(null);
-  const preview = usePreviewConversion(workspaceId);
-  const apply = useApplyConversion(workspaceId);
+  const preview = usePreviewConversion(workspaceId, sourceId);
+  const apply = useApplyConversion(workspaceId, sourceId);
   const provider = boardProviderLabels[state.provider];
   const pending = state.link.modelStatus === 'pending';
 
@@ -71,7 +71,9 @@ function ConversionForm({ workspaceId, state, onClose }: { workspaceId: string; 
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">{pending ? 'Converter o quadro para o modelo do Studio' : 'Sincronizar o quadro com o modelo do Studio'}</h2>
+          <h2 className="text-base font-semibold">
+            {pending ? 'Converter para o modelo do Studio' : 'Sincronizar com o modelo do Studio'}: {state.link.title}
+          </h2>
           <p className="max-w-3xl text-xs text-muted">
             Diga a que parte do{' '}
             <Link to="/board?tab=model" className="text-accent hover:underline">

@@ -2,7 +2,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
 import { type Prisma, Prisma as PrismaNamespace, type Workflow } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
-import { syncBoard } from '../boards/service.js';
+import { hasBoard, syncWorkspaceBoard } from '../boards/service.js';
 import { type ProfileFacts, type WorkflowStep, type WorkflowTrigger, validateSteps } from './definition.js';
 import { advanceRun, cancelRun, parseSteps, parseTrigger, runBoardTriggers, startManualRun } from './engine.js';
 
@@ -27,7 +27,7 @@ export async function validateWorkflow(workspaceId: string, input: Pick<Workflow
     usesBoard: profile.tools.includes('board'),
   }));
   const problems = validateSteps(input.steps, facts);
-  if (input.trigger.type !== 'manual' && !(await prisma.taskBoard.findUnique({ where: { workspaceId } }))) {
+  if (input.trigger.type !== 'manual' && !(await hasBoard(workspaceId))) {
     problems.push('Gatilhos do quadro precisam de um quadro vinculado ao workspace.');
   }
   if (problems.length > 0) throw new HttpError(422, problems.join(' '), problems);
@@ -121,8 +121,7 @@ export async function startWorkflow(id: string, message: string | undefined, log
     const run = await startManualRun(workflow, message, log);
     return { runId: run.id };
   }
-  const board = await prisma.taskBoard.findUnique({ where: { workspaceId: workflow.workspaceId } });
-  if (board) await syncBoard(board).catch(() => undefined);
+  if (await hasBoard(workflow.workspaceId)) await syncWorkspaceBoard(workflow.workspaceId).catch(() => undefined);
   await runBoardTriggers(workflow.workspaceId, log, workflow.id);
   return { runId: null };
 }

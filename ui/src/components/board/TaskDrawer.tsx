@@ -28,7 +28,8 @@ export function TaskDrawer({ workspace, board, item, agent, onClose }: TaskDrawe
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const blocked = board.link.statusMap.blocked !== undefined && item.columnId === board.link.statusMap.blocked;
+  const blocked = board.statusMap.blocked !== undefined && item.columnId === board.statusMap.blocked;
+  const source = board.sources.find((entry) => entry.id === item.sourceId);
   const agentActive = agent && agent.status !== 'CANCELLED' && agent.status !== 'FAILED' && agent.status !== 'COMPLETED';
 
   return (
@@ -50,7 +51,7 @@ export function TaskDrawer({ workspace, board, item, agent, onClose }: TaskDrawe
                 rel="noreferrer"
                 className="rounded-md border border-border bg-panel px-2 py-1 text-xs font-medium text-gray-200 hover:bg-border"
               >
-                Abrir no {boardProviderLabels[board.link.provider]} ↗
+                Abrir no {source ? boardProviderLabels[source.provider] : 'provedor'} ↗
               </a>
             )}
             <Button size="sm" onClick={onClose}>

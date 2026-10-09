@@ -3,7 +3,7 @@ import { HttpError } from '../../lib/errors.js';
 import { listAgentProfiles } from '../agent-profiles/service.js';
 import { getAgent, listAgentEvents, listAgents } from '../agents/service.js';
 import { PROPOSAL_KINDS, type ProposalKind, createProposal } from '../assistant/proposals.js';
-import { boardContext, getBoardLink } from '../boards/service.js';
+import { boardContext, hasBoard } from '../boards/service.js';
 import { getRenderSettings } from '../render/service.js';
 import { getUsageSummary } from '../usage/service.js';
 import { listRuns, listWorkflows } from '../workflows/service.js';
@@ -18,13 +18,13 @@ async function context(workspaceId: string) {
     where: { id: workspaceId },
     include: { projects: { where: { missingAt: null }, orderBy: { name: 'asc' } }, settings: true },
   });
-  const [link, profiles, workflows, render] = await Promise.all([
-    getBoardLink(workspaceId),
+  const [linked, profiles, workflows, render] = await Promise.all([
+    hasBoard(workspaceId),
     listAgentProfiles(workspaceId),
     listWorkflows(workspaceId),
     getRenderSettings(workspaceId),
   ]);
-  const board = link ? await boardContext(workspaceId).catch(() => null) : null;
+  const board = linked ? await boardContext(workspaceId).catch(() => null) : null;
   const projectName = (id: string) => workspace.projects.find((project) => project.id === id)?.name ?? id;
 
   return {
@@ -36,22 +36,20 @@ async function context(workspaceId: string) {
       provider: project.gitProvider,
       remote: project.gitRemoteUrl,
     })),
-    board:
-      link && board
-        ? {
-            provider: link.provider,
-            title: link.title,
-            url: link.url,
-            refreshMinutes: Math.round(link.refreshIntervalSec / 60),
+    board: board
+      ? {
+            // One board joining these sources; columns and fields are the board model's.
+            sources: board.sources.map((source) => ({ provider: source.provider, title: source.title, url: source.url, onBoard: !board.excluded.some((entry) => entry.sourceId === source.id) })),
+            refreshMinutes: Math.round((board.sources[0]?.refreshIntervalSec ?? 120) / 60),
             // Ids are what workflow triggers use; names are what board tools and create_task use.
             columns: board.snapshot.columns.map((column) => ({ id: column.id, name: column.name })),
-            columnRoles: link.statusMap,
+            columnRoles: board.statusMap,
             fields: board.snapshot.fields.map((field) => ({
               id: field.id,
               name: field.name,
               options: field.options.map((option) => ({ id: option.id, name: option.name })),
             })),
-            repositories: board.repos.map((repo) => repo.path),
+            repositories: board.repos.filter((repo) => repo.sourceId).map((repo) => repo.path),
           }
         : null,
     render: {

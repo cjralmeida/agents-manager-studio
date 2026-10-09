@@ -15,7 +15,7 @@ import {
   suggestMapping,
 } from './model-sync.js';
 import { applyModelToLocalTasks } from './local.js';
-import { adapterFor, findBoard, forgetSnapshot, linkResponse, loadSnapshot, refOf } from './service.js';
+import { adapterFor, findSource, forgetSnapshot, loadSnapshot, refOf, sourceResponse } from './service.js';
 import { type BoardStructure, fieldOrderOf, structureOf, validateStructure } from './structure.js';
 import type { BoardSnapshot } from './types.js';
 
@@ -70,6 +70,7 @@ export async function getModelState(userId: string) {
     model,
     usage: await modelUsage(userId, model),
     boards: boards.map((board) => ({
+      sourceId: board.id,
       workspaceId: board.workspaceId,
       workspaceName: board.workspace.name,
       provider: board.provider,
@@ -115,13 +116,13 @@ export async function applyModel(userId: string, input: ModelInput, columnMoves:
   });
   const results: PropagationResult[] = [];
   for (const board of boards) {
-    const base = { workspaceId: board.workspaceId, workspaceName: board.workspace.name };
+    const base = { workspaceId: board.workspaceId, workspaceName: `${board.workspace.name} · ${board.title}` };
     if (board.provider === 'STUDIO') {
       await applyModelToLocalTasks(board.workspaceId, desired, columnMoves);
       const statusMap = Object.fromEntries(desired.columns.filter((column) => column.role).map((column) => [column.role!, column.id]));
-      await prisma.taskBoard.update({ where: { workspaceId: board.workspaceId }, data: { statusMap: statusMap as Prisma.InputJsonValue } });
-      forgetSnapshot(board.workspaceId);
-      results.push({ ...base, status: 'applied', message: 'Quadro do Studio atualizado.' });
+      await prisma.taskBoard.update({ where: { id: board.id }, data: { statusMap: statusMap as Prisma.InputJsonValue } });
+      forgetSnapshot(board.id);
+      results.push({ ...base, status: 'applied', message: 'Tarefas do Studio atualizadas.' });
       continue;
     }
     if (board.modelStatus !== 'synced' || !board.modelMap) {
@@ -141,7 +142,7 @@ export async function applyModel(userId: string, input: ModelInput, columnMoves:
       results.push({ ...base, status: 'applied', message: `${applied.changes.length} mudança(s) aplicada(s).` });
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
-      await prisma.taskBoard.update({ where: { workspaceId: board.workspaceId }, data: { modelStatus: 'drift', modelSyncError: message } });
+      await prisma.taskBoard.update({ where: { id: board.id }, data: { modelStatus: 'drift', modelSyncError: message } });
       results.push({ ...base, status: 'failed', message });
     }
   }
@@ -176,16 +177,16 @@ async function runConversion(board: TaskBoard, snapshot: BoardSnapshot, model: B
   await adapter.applyStructure(ref, current, desired);
 
   const ordered = await prisma.taskBoard.update({
-    where: { workspaceId: board.workspaceId },
+    where: { id: board.id },
     data: { fieldOrder: provider === 'GITLAB' ? (fieldOrderOf(asStructure(model)) as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
   });
-  forgetSnapshot(board.workspaceId);
+  forgetSnapshot(board.id);
   const fresh = await loadSnapshot(ordered, true);
   const applied = structureOf(fresh.columns, fresh.fields, provider);
   const map = mapByName(model, applied, provider);
   const synced = followsModel(model, applied, map, provider);
   await prisma.taskBoard.update({
-    where: { workspaceId: board.workspaceId },
+    where: { id: board.id },
     data: {
       modelMap: map as unknown as Prisma.InputJsonValue,
       statusMap: statusMapFrom(model, map, provider) as Prisma.InputJsonValue,
@@ -208,16 +209,16 @@ function counts(snapshot: BoardSnapshot) {
   return { columnItems, optionItems };
 }
 
-/** The board next to the model, with a suggested mapping (what it had, same names, roles guessed from names). */
-export async function getConversion(workspaceId: string) {
-  const board = await findBoard(workspaceId);
-  if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
+/** A source next to the model, with a suggested mapping (what it had, same names, roles guessed from names). */
+export async function getConversion(workspaceId: string, sourceId: string) {
+  const board = await findSource(workspaceId, sourceId);
+  if (board.provider === 'STUDIO') throw new HttpError(422, 'As tarefas do Studio já seguem o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
   const model = await getWorkspaceModel(workspaceId);
   const current = structureOf(snapshot.columns, snapshot.fields, provider);
   return {
-    link: linkResponse(board),
+    link: sourceResponse(board),
     provider,
     model: {
       ...model,
@@ -230,30 +231,30 @@ export async function getConversion(workspaceId: string) {
   };
 }
 
-async function conversionContext(workspaceId: string) {
-  const board = await findBoard(workspaceId);
-  if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
+async function conversionContext(workspaceId: string, sourceId: string) {
+  const board = await findSource(workspaceId, sourceId);
+  if (board.provider === 'STUDIO') throw new HttpError(422, 'As tarefas do Studio já seguem o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
   return { board, snapshot, provider, model: await getWorkspaceModel(workspaceId), current: structureOf(snapshot.columns, snapshot.fields, provider) };
 }
 
-export async function previewConversion(workspaceId: string, mapping: ConversionMapping) {
-  const { snapshot, provider, model, current } = await conversionContext(workspaceId);
+export async function previewConversion(workspaceId: string, sourceId: string, mapping: ConversionMapping) {
+  const { snapshot, provider, model, current } = await conversionContext(workspaceId, sourceId);
   const plan = planSync(model, current, mapping, provider, snapshot.items);
   validateStructure(plan.desired, current, provider);
   return { changes: plan.changes, lostValues: plan.lostValues, movedCards: plan.movedCards };
 }
 
-export async function applyConversion(workspaceId: string, mapping: ConversionMapping) {
-  const { board, snapshot, model, current } = await conversionContext(workspaceId);
+export async function applyConversion(workspaceId: string, sourceId: string, mapping: ConversionMapping) {
+  const { board, snapshot, model, current } = await conversionContext(workspaceId, sourceId);
   try {
     const plan = await runConversion(board, snapshot, model, current, mapping);
-    return { applied: plan.changes.length, link: linkResponse(await findBoard(workspaceId)) };
+    return { applied: plan.changes.length, link: sourceResponse(await findSource(workspaceId, sourceId)) };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
     if (board.modelStatus !== 'pending') {
-      await prisma.taskBoard.update({ where: { workspaceId }, data: { modelStatus: 'drift', modelSyncError: message } });
+      await prisma.taskBoard.update({ where: { id: board.id }, data: { modelStatus: 'drift', modelSyncError: message } });
     }
     throw error;
   }

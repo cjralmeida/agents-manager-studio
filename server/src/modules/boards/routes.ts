@@ -10,17 +10,18 @@ import {
   createTask,
   detectBoards,
   getBoard,
-  getBoardLink,
+  getBoardSources,
   linkBoard,
   moveItem,
   setItemField,
-  unlinkBoard,
+  unlinkSource,
   updateBoardSettings,
 } from './service.js';
 import { STATUS_ROLES } from './types.js';
 
 const workspaceParams = z.object({ id: z.uuid() });
-const itemParams = workspaceParams.extend({ itemId: z.string().min(1).max(200) });
+const itemParams = workspaceParams.extend({ itemId: z.string().min(1).max(300) });
+const sourceParams = workspaceParams.extend({ sourceId: z.uuid() });
 
 const boardQuery = z.object({ refresh: z.stringbool().default(false) }).strict();
 
@@ -48,7 +49,7 @@ const createBody = z
   })
   .strict();
 
-const overviewMoveBody = z.object({ workspaceId: z.uuid(), itemId: z.string().min(1).max(200), columnId: z.string().min(1).max(200) }).strict();
+const overviewMoveBody = z.object({ workspaceId: z.uuid(), itemId: z.string().min(1).max(300), columnId: z.string().min(1).max(200) }).strict();
 
 const modelPreviewBody = z.object({ model }).strict();
 /** For each removed model column, the model column its cards move to. */
@@ -107,23 +108,27 @@ export async function boardRoutes(app: FastifyInstance) {
     return applyModel(request.user.id, body.model, body.columnMoves);
   });
 
-  /** A board only in the Studio (no GitHub/GitLab), following the model. */
+  /** The Studio's own tasks as a source of the workspace board, following the model. */
   app.post('/workspaces/:id/board/local', async (request, reply) => reply.code(201).send(await createLocalBoard(parseInput(workspaceParams, request.params).id)));
 
-  /** The workspace board next to the model, to convert it (or sync it again after a change on the provider). */
-  app.get('/workspaces/:id/board/conversion', async (request) => getConversion(parseInput(workspaceParams, request.params).id));
-
-  app.post('/workspaces/:id/board/conversion/preview', async (request) => {
-    const { id: workspaceId } = parseInput(workspaceParams, request.params);
-    return previewConversion(workspaceId, parseInput(conversionBody, request.body).mapping);
+  /** A source next to the model, to convert it (or sync it again after a change on the provider). */
+  app.get('/workspaces/:id/board/sources/:sourceId/conversion', async (request) => {
+    const { id, sourceId } = parseInput(sourceParams, request.params);
+    return getConversion(id, sourceId);
   });
 
-  app.put('/workspaces/:id/board/conversion', async (request) => {
-    const { id: workspaceId } = parseInput(workspaceParams, request.params);
-    return applyConversion(workspaceId, parseInput(conversionBody, request.body).mapping);
+  app.post('/workspaces/:id/board/sources/:sourceId/conversion/preview', async (request) => {
+    const { id, sourceId } = parseInput(sourceParams, request.params);
+    return previewConversion(id, sourceId, parseInput(conversionBody, request.body).mapping);
   });
 
-  app.get('/workspaces/:id/board-link', async (request) => getBoardLink(parseInput(workspaceParams, request.params).id));
+  app.put('/workspaces/:id/board/sources/:sourceId/conversion', async (request) => {
+    const { id, sourceId } = parseInput(sourceParams, request.params);
+    return applyConversion(id, sourceId, parseInput(conversionBody, request.body).mapping);
+  });
+
+  /** The boards (sources) joined on the workspace board. */
+  app.get('/workspaces/:id/board/sources', async (request) => getBoardSources(parseInput(workspaceParams, request.params).id));
 
   app.get('/workspaces/:id/board/detect', async (request) => detectBoards(parseInput(workspaceParams, request.params).id));
 
@@ -137,8 +142,9 @@ export async function boardRoutes(app: FastifyInstance) {
     return createBoard(id, parseInput(createBody, request.body));
   });
 
-  app.delete('/workspaces/:id/board/link', async (request, reply) => {
-    await unlinkBoard(parseInput(workspaceParams, request.params).id);
+  app.delete('/workspaces/:id/board/sources/:sourceId', async (request, reply) => {
+    const { id, sourceId } = parseInput(sourceParams, request.params);
+    await unlinkSource(id, sourceId);
     return reply.code(204).send();
   });
 

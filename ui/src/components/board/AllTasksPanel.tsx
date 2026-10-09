@@ -39,7 +39,7 @@ export function AllTasksPanel() {
 
   const workspaces = [...new Map(data.items.map((item) => [item.workspaceId, item.workspaceName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const items = data.items.filter((item) => (workspaceIds.length === 0 || workspaceIds.includes(item.workspaceId)) && matchesSearch(item, search));
-  const layout = { columns: data.columns, fields: data.fields, link: { statusMap: data.statusMap } };
+  const layout = { columns: data.columns, fields: data.fields, statusMap: data.statusMap };
   const open = (item: OverviewItem) => navigate(`/workspaces/${item.workspaceId}?tab=board&task=${encodeURIComponent(item.itemId)}`);
   const label = (item: OverviewItem) => (item.alsoIn.length > 0 ? `${item.workspaceName} +${item.alsoIn.length}` : item.workspaceName);
 

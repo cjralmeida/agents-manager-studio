@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
-/** STUDIO: a board only in the Studio, without GitHub/GitLab. */
+/** STUDIO: tasks that live only in the Studio, without GitHub/GitLab. */
 export type BoardProvider = 'GITHUB' | 'GITLAB' | 'STUDIO';
 export type StatusRole = 'todo' | 'inProgress' | 'review' | 'homologation' | 'done' | 'blocked';
 export type StatusMap = Partial<Record<StatusRole, string>>;
 
-export interface BoardLink {
+/** One of the boards joined on the workspace board (a GitHub Project, a GitLab group board or the Studio's tasks). */
+export interface BoardSource {
+  id: string;
   provider: BoardProvider;
   host: string;
   ownerPath: string;
@@ -17,7 +19,7 @@ export interface BoardLink {
   refreshIntervalSec: number;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
-  /** "synced" follows the Studio model; "drift" was changed on the provider; "pending" was never converted. */
+  /** "synced" follows the Studio model; "drift" was changed on the provider; "pending" was never converted (not on the board). */
   modelStatus: 'synced' | 'drift' | 'pending';
   modelSyncError: string | null;
 }
@@ -51,29 +53,36 @@ export interface BoardItem {
   updatedAt: string;
   /** Workspace project whose remote is the item repository. */
   projectId: string | null;
+  /** Source board the task comes from. */
+  sourceId?: string;
 }
 
 export interface BoardRepository {
   projectId: string;
   projectName: string;
   path: string;
+  /** Source where the project's tasks are created. */
+  sourceId: string;
 }
 
+/** The workspace board: every source joined on the board model's columns and fields. */
 export interface Board {
-  link: BoardLink;
-  title: string;
-  url: string;
+  sources: BoardSource[];
+  /** Model column of each agent role. */
+  statusMap: StatusMap;
   readme: string | null;
   columns: BoardOption[];
   fields: BoardField[];
   items: BoardItem[];
   supportsDrafts: boolean;
+  /** Sources left out of the board, and why (e.g. not converted to the model yet). */
+  excluded: { sourceId: string; title: string; reason: string }[];
   taskBodyTemplate: string;
   repositories: BoardRepository[];
 }
 
 /** What the kanban/table views need: a workspace board, or the model for all workspaces. */
-export type BoardLayout = Pick<Board, 'columns' | 'fields'> & { link: Pick<BoardLink, 'statusMap'> };
+export type BoardLayout = Pick<Board, 'columns' | 'fields' | 'statusMap'>;
 
 export interface BoardCandidate {
   provider: BoardProvider;
@@ -119,17 +128,18 @@ export const boardProviderLabels: Record<BoardProvider, string> = { GITHUB: 'Git
 
 const boardKeys = {
   all: (workspaceId: string) => ['board', workspaceId] as const,
-  link: (workspaceId: string) => ['board', workspaceId, 'link'] as const,
+  sources: (workspaceId: string) => ['board', workspaceId, 'sources'] as const,
   contents: (workspaceId: string) => ['board', workspaceId, 'contents'] as const,
   detect: (workspaceId: string) => ['board', workspaceId, 'detect'] as const,
 };
 
 const base = (workspaceId: string) => `/workspaces/${workspaceId}/board`;
 
-export function useBoardLink(workspaceId: string) {
+/** Boards joined on the workspace board; empty when the workspace has no board yet. */
+export function useBoardSources(workspaceId: string) {
   return useQuery({
-    queryKey: boardKeys.link(workspaceId),
-    queryFn: () => api.get<BoardLink | null>(`/workspaces/${workspaceId}/board-link`),
+    queryKey: boardKeys.sources(workspaceId),
+    queryFn: () => api.get<BoardSource[]>(`${base(workspaceId)}/sources`),
   });
 }
 
@@ -168,7 +178,7 @@ function useInvalidateBoard(workspaceId: string) {
 export function useLinkBoard(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
-    mutationFn: (url: string) => api.post<BoardLink>(`${base(workspaceId)}/link`, { url }),
+    mutationFn: (url: string) => api.post<BoardSource>(`${base(workspaceId)}/link`, { url }),
     onSuccess: invalidate,
   });
 }
@@ -177,21 +187,22 @@ export function useCreateBoard(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
     mutationFn: (input: CreateOption & { title: string }) =>
-      api.post<{ link: BoardLink; warnings: string[] }>(`${base(workspaceId)}/create`, input),
+      api.post<{ link: BoardSource; warnings: string[] }>(`${base(workspaceId)}/create`, input),
     onSuccess: invalidate,
   });
 }
 
-/** A board only in the Studio, following the board model. */
+/** The Studio's own tasks as a source of the workspace board, following the board model. */
 export function useCreateLocalBoard(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
-  return useMutation({ mutationFn: () => api.post<BoardLink>(`${base(workspaceId)}/local`), onSuccess: invalidate });
+  return useMutation({ mutationFn: () => api.post<BoardSource>(`${base(workspaceId)}/local`), onSuccess: invalidate });
 }
 
-export function useUnlinkBoard(workspaceId: string) {
+/** Removes one source from the workspace board (the board itself stays on the provider). */
+export function useUnlinkSource(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api.delete<void>(`${base(workspaceId)}/link`),
+    mutationFn: (sourceId: string) => api.delete<void>(`${base(workspaceId)}/sources/${sourceId}`),
     onSuccess: () => queryClient.resetQueries({ queryKey: boardKeys.all(workspaceId) }),
   });
 }
@@ -199,7 +210,7 @@ export function useUnlinkBoard(workspaceId: string) {
 export function useUpdateBoardSettings(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
-    mutationFn: (input: { refreshIntervalSec: number }) => api.put<BoardLink>(`${base(workspaceId)}/settings`, input),
+    mutationFn: (input: { refreshIntervalSec: number }) => api.put<BoardSource[]>(`${base(workspaceId)}/settings`, input),
     onSuccess: invalidate,
   });
 }
@@ -322,12 +333,13 @@ export interface BoardModel {
 }
 
 export interface ModelBoardSummary {
+  sourceId: string;
   workspaceId: string;
   workspaceName: string;
   provider: BoardProvider;
   title: string;
   url: string;
-  modelStatus: BoardLink['modelStatus'];
+  modelStatus: BoardSource['modelStatus'];
   modelSyncError: string | null;
 }
 
@@ -383,7 +395,7 @@ export interface ConversionMapping {
 }
 
 export interface ConversionState {
-  link: BoardLink;
+  link: BoardSource;
   provider: BoardProvider;
   model: { columns: (ModelColumn & { id: string; fixed: boolean })[]; fields: StructureField[] };
   /** The board as it is on the provider (GitLab's fixed columns left out). */
@@ -393,27 +405,30 @@ export interface ConversionState {
   optionItems: Record<string, Record<string, number>>;
 }
 
-export function useBoardConversion(workspaceId: string) {
+export function useBoardConversion(workspaceId: string, sourceId: string) {
   return useQuery({
-    queryKey: [...boardKeys.all(workspaceId), 'conversion'] as const,
-    queryFn: () => api.get<ConversionState>(`${base(workspaceId)}/conversion`),
+    queryKey: [...boardKeys.all(workspaceId), 'conversion', sourceId] as const,
+    queryFn: () => api.get<ConversionState>(`${base(workspaceId)}/sources/${sourceId}/conversion`),
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
 }
 
-export function usePreviewConversion(workspaceId: string) {
+export function usePreviewConversion(workspaceId: string, sourceId: string) {
   return useMutation({
     mutationFn: (mapping: ConversionMapping) =>
-      api.post<{ changes: string[]; lostValues: StructurePlan['lostValues']; movedCards: number }>(`${base(workspaceId)}/conversion/preview`, { mapping }),
+      api.post<{ changes: string[]; lostValues: StructurePlan['lostValues']; movedCards: number }>(`${base(workspaceId)}/sources/${sourceId}/conversion/preview`, {
+        mapping,
+      }),
   });
 }
 
-export function useApplyConversion(workspaceId: string) {
+export function useApplyConversion(workspaceId: string, sourceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (mapping: ConversionMapping) => api.put<{ applied: number; link: BoardLink }>(`${base(workspaceId)}/conversion`, { mapping }),
+    mutationFn: (mapping: ConversionMapping) =>
+      api.put<{ applied: number; link: BoardSource }>(`${base(workspaceId)}/sources/${sourceId}/conversion`, { mapping }),
     onSuccess: () => {
       void invalidate();
       void queryClient.invalidateQueries({ queryKey: modelKey });
