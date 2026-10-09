@@ -14,6 +14,15 @@ export interface AuthUser {
 
 export const meKey = ['auth', 'me'] as const;
 
+/**
+ * Data of the previous session is dropped, but not the "me" query: the login gate is subscribed to it, and
+ * removing it (queryClient.clear) would leave the gate watching a query that no longer gets updates.
+ */
+function resetSession(queryClient: ReturnType<typeof useQueryClient>, user: AuthUser | null) {
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== meKey[0] });
+  queryClient.setQueryData(meKey, user);
+}
+
 /** The signed-in user, or null without a session (401). */
 export function useMe() {
   return useQuery({
@@ -35,11 +44,7 @@ export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { email: string; password: string }) => api.post<AuthUser>('/auth/login', input),
-    onSuccess: (user) => {
-      // Whatever was cached belonged to the previous session.
-      queryClient.clear();
-      queryClient.setQueryData(meKey, user);
-    },
+    onSuccess: (user) => resetSession(queryClient, user),
   });
 }
 
@@ -47,10 +52,7 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<void>('/auth/logout'),
-    onSettled: () => {
-      queryClient.clear();
-      queryClient.setQueryData(meKey, null);
-    },
+    onSettled: () => resetSession(queryClient, null),
   });
 }
 
