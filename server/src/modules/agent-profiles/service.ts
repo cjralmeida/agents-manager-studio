@@ -14,6 +14,7 @@ export interface AgentProfileInput {
   output: 'PULL_REQUEST' | 'RESULT';
   tools: (typeof PROFILE_TOOLS)[number][];
   autoConclude: boolean;
+  autoMerge: boolean;
 }
 
 const WORKING_STATUSES = ['PREPARING', 'RUNNING', 'WAITING_INPUT'] as const;
@@ -36,6 +37,7 @@ async function toResponse(profile: AgentProfile & { workspace?: { name: string }
     output: profile.projectIds.length === 0 ? 'RESULT' : profile.output,
     tools: profile.tools,
     autoConclude: profile.autoConclude,
+    autoMerge: profile.autoMerge && profile.projectIds.length > 0 && profile.output === 'PULL_REQUEST',
     workingAgents: working,
     totalAgents: total,
     createdAt: profile.createdAt,

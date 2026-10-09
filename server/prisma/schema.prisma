@@ -276,6 +276,8 @@ model Agent {
   tools           String[]    @default([])
   /// Concludes by itself when it finishes (PR/MR or result) instead of waiting for the user.
   autoConclude    Boolean     @default(false) @map("auto_conclude")
+  /// Copied from the workspace agent: merge the PR/MR as soon as it is opened.
+  autoMerge       Boolean     @default(false) @map("auto_merge")
   /// Outcome reported by the agent (studio_report_result) or collected by the Studio (created tasks).
   result          Json?
   title           String
@@ -474,6 +476,8 @@ model AgentProfile {
   tools        String[]    @default([])
   /// Concludes by itself when it finishes, without waiting for the user.
   autoConclude Boolean     @default(false) @map("auto_conclude")
+  /// Merges its own PR/MR right after opening it (e.g. documentation the next workflow step reads).
+  autoMerge    Boolean     @default(false) @map("auto_merge")
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 

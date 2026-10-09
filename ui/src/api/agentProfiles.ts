@@ -20,6 +20,8 @@ export interface AgentProfile {
   output: AgentOutput;
   tools: ProfileTool[];
   autoConclude: boolean;
+  /** Merges its own PR/MR as soon as it is opened. */
+  autoMerge: boolean;
   workingAgents: number;
   totalAgents: number;
   createdAt: string;
@@ -27,7 +29,7 @@ export interface AgentProfile {
 
 export type AgentProfileInput = Pick<
   AgentProfile,
-  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'output' | 'tools' | 'autoConclude'
+  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
 >;
 
 export const outputLabels: Record<AgentOutput, string> = {

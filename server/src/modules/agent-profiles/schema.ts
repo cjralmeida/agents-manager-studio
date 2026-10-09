@@ -15,5 +15,7 @@ export const profileSchema = z
     output: z.enum(['PULL_REQUEST', 'RESULT']).default('PULL_REQUEST'),
     tools: z.array(z.enum(PROFILE_TOOLS)).default([]),
     autoConclude: z.boolean().default(false),
+    /** Merge the PR/MR as soon as it is opened (only for agents that deliver code). */
+    autoMerge: z.boolean().default(false),
   })
   .strict();

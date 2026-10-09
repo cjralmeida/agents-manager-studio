@@ -7,10 +7,11 @@ import { HttpError, notFound } from '../../lib/errors.js';
 import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { moveAgentTask, taskForAgent } from '../boards/service.js';
+import { pullRequestNumber } from '../render/status.js';
 import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
-import { openPullRequest } from './pull-requests.js';
+import { mergePullRequest, openPullRequest } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import {
@@ -43,6 +44,7 @@ export interface LaunchAgentInput {
   sourceAgentId?: string;
   /** Overrides the profile: conclude without waiting for the user. */
   autoConclude?: boolean;
+  autoMerge?: boolean;
   /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
   taskItemId?: string;
   /** The user already confirmed launching while Docker usage is high. */
@@ -229,6 +231,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       // Órbi reads everything and proposes changes; it only reads the board.
       tools: isAssistant ? ['studio', 'board_read'] : (profile?.tools ?? []),
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
+      autoMerge: input.autoMerge ?? profile?.autoMerge ?? false,
       baseBranch,
       branch: project ? `agent/${slug ? `${slug}-` : ''}${shortId}` : '-',
       workdir: `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
@@ -246,7 +249,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   return toResponse(agent);
 }
 
-async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review', assignSelf = false) {
+async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review' | 'done', assignSelf = false) {
   const message = await moveAgentTask(agent, role, { assignSelf });
   if (message) await addEvent(agent.id, 'status', { message });
 }
@@ -483,6 +486,11 @@ async function finalizeInBackground(id: string) {
         body,
       }));
 
+    if (agent.autoMerge) {
+      await mergeOwnPullRequest(agent, { provider, remote, token, prUrl });
+      return;
+    }
+
     await prisma.agent.update({
       where: { id },
       data: { status: 'COMPLETED', prUrl, finishedAt: new Date(), lastActivityAt: new Date() },
@@ -512,6 +520,44 @@ async function finalizeInBackground(id: string) {
       data: { status: 'READY_FOR_REVIEW', errorMessage: message, lastActivityAt: new Date() },
     });
     await addEvent(id, 'error', { message });
+  }
+}
+
+/**
+ * Merges the PR/MR the agent just opened. A failed merge still completes the agent (the PR stays open for the
+ * user), but its result becomes a failure, so a workflow stops at this step instead of going on without the merge.
+ */
+async function mergeOwnPullRequest(
+  agent: Agent,
+  input: { provider: 'GITHUB' | 'GITLAB'; remote: RemoteInfo; token: string; prUrl: string },
+) {
+  const result = (agent.result ?? {}) as Prisma.JsonObject;
+  const number = pullRequestNumber(input.prUrl);
+  try {
+    if (!number) throw new HttpError(422, 'Não foi possível identificar o número do PR/MR.');
+    await mergePullRequest({ provider: input.provider, remote: input.remote, token: input.token, number });
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: { status: 'COMPLETED', prUrl: input.prUrl, finishedAt: new Date(), lastActivityAt: new Date() },
+    });
+    await addEvent(agent.id, 'status', { message: 'Merge do PR/MR feito.' });
+    await addEvent(agent.id, 'completed', { prUrl: input.prUrl });
+    await reportTaskMove(agent, 'done');
+  } catch (error) {
+    const message = `PR/MR aberto, mas o merge falhou: ${errorMessage(error)}`;
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: {
+        status: 'COMPLETED',
+        prUrl: input.prUrl,
+        result: { ...result, status: 'failure', summary: message },
+        finishedAt: new Date(),
+        lastActivityAt: new Date(),
+      },
+    });
+    await addEvent(agent.id, 'error', { message });
+    await addEvent(agent.id, 'completed', { prUrl: input.prUrl });
+    await reportTaskMove(agent, 'review');
   }
 }
 

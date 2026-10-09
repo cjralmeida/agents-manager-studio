@@ -32,6 +32,7 @@ const empty: AgentProfileInput = {
   output: 'PULL_REQUEST',
   tools: [],
   autoConclude: false,
+  autoMerge: false,
 };
 
 /** Fixed agents of the workspace: each has a role and can be run by hand or used in workflows. */
@@ -126,6 +127,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         <Badge>{profile.output === 'RESULT' ? 'entrega resultado' : 'entrega PR/MR'}</Badge>
         {profile.tools.includes('board') && <Badge>quadro</Badge>}
         {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
+        {profile.autoMerge && <Badge tone="success">merge automático</Badge>}
       </div>
       {profile.instructions && <p className="mt-3 line-clamp-3 text-xs whitespace-pre-line text-gray-300">{profile.instructions}</p>}
       <p className="mt-auto pt-3 text-[11px] text-muted">
@@ -244,6 +246,12 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
             <input type="checkbox" checked={form.autoConclude} onChange={(event) => set('autoConclude', event.target.checked)} />
             Concluir sozinho (sem revisão)
           </label>
+          {!withoutRepository && form.output === 'PULL_REQUEST' && (
+            <label className="flex items-center gap-2 text-sm" title="Se o merge falhar, o PR/MR fica aberto e o passo do workflow falha.">
+              <input type="checkbox" checked={form.autoMerge} onChange={(event) => set('autoMerge', event.target.checked)} />
+              Fazer o merge do PR/MR ao concluir
+            </label>
+          )}
         </div>
       </div>
 
