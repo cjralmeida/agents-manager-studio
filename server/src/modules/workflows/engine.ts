@@ -424,7 +424,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   }
 }
 
-/** The open PR/MR a person opened for a task, found with the workspace account of the project's host. */
+/** The open PR/MR made outside the Studio for a task, found with the workspace account of the project's host. */
 async function pullRequestOfTask(workspaceId: string, projectId: string, task: BoardItem) {
   const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
   const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
