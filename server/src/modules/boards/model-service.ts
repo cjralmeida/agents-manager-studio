@@ -118,7 +118,7 @@ export async function applyModel(input: ModelInput, columnMoves: Record<string, 
     }
     if (board.modelStatus !== 'synced' || !board.modelMap) {
       const reason = board.modelStatus === 'pending' ? 'ainda não foi convertido para o modelo' : 'está fora do modelo';
-      results.push({ ...base, status: 'skipped', message: `O quadro ${reason}: sincronize na aba Quadro do workspace.` });
+      results.push({ ...base, status: 'skipped', message: `O quadro ${reason}: sincronize na aba Quadro de tarefas do workspace.` });
       continue;
     }
     try {

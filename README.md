@@ -77,7 +77,7 @@ Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
 
 ## Quadro de tarefas
 
-Cada workspace pode vincular um quadro próprio (aba **Quadro**):
+Cada workspace pode vincular um quadro próprio (aba **Quadro de tarefas**):
 
 - **GitHub:** um GitHub Project (v2). O token fine-grained da conta precisa de *Projects: leitura e escrita* na organização e *Issues: leitura e escrita* nos repositórios.
 - **GitLab:** um board de grupo. As colunas são labels `Status: …` e os campos são labels `Campo: valor`. "A fazer" corresponde às issues abertas sem coluna, e "Concluído" às fechadas.
@@ -85,8 +85,8 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 **Tarefas de todos os workspaces:** em **Quadro de tarefas → Tarefas**, as tarefas de todos os quadros aparecem nas colunas do modelo, em quadro ou tabela.
 - Dá para filtrar por workspace e buscar.
 - Arrastar um card move a tarefa no quadro do próprio workspace. No GitLab, levar para "Concluído" fecha a issue.
-- Clicar num card abre a tarefa na aba Quadro do workspace.
-- Dentro de cada workspace, a aba Quadro mostra só as tarefas dele.
+- Clicar num card abre a tarefa na aba Quadro de tarefas do workspace.
+- Dentro de cada workspace, a aba Quadro de tarefas mostra só as tarefas dele.
 - Quadros ainda não convertidos para o modelo ficam de fora, com um aviso.
 - Uma mesma issue que esteja em dois quadros aparece uma vez só, com "+N" ao lado do workspace.
 
@@ -102,7 +102,7 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 - **No GitLab**, as colunas do modelo com papel "A fazer" e "Concluído" são as issues abertas sem coluna e as fechadas. A ordem dos campos segue o modelo.
 - **Um quadro só pode estar vinculado a um workspace.**
 
-**Quadro só do Studio:** na aba Quadro, **Criar quadro do Studio** cria um quadro sem GitHub nem GitLab.
+**Quadro só do Studio:** na aba Quadro de tarefas, **Criar quadro do Studio** cria um quadro sem GitHub nem GitLab.
 - As tarefas ficam no banco do Studio (`local_tasks`), numeradas por workspace, e seguem o modelo diretamente, por isso ele está sempre "no modelo".
 - Cada tarefa pode pertencer a um projeto do workspace, com ou sem git, ou a nenhum.
 - Agentes, workflows e o Órbi usam esse quadro como os outros.

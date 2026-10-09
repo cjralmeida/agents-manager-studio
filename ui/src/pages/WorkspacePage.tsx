@@ -15,7 +15,7 @@ import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsT
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'board', label: 'Quadro' },
+  { id: 'board', label: 'Quadro de tarefas' },
   { id: 'agents', label: 'Agentes' },
   { id: 'workflows', label: 'Workflows' },
   { id: 'projects', label: 'Projetos' },

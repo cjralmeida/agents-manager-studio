@@ -23,7 +23,7 @@ export function BoardBehaviorSection({ workspaceId }: { workspaceId: string }) {
     <section className="rounded-lg border border-border bg-panel p-4">
       <h2 className="text-base font-semibold">Quadro de tarefas</h2>
       <ErrorText error={link.error ?? board.error} />
-      {link.data === null && <p className="mt-2 text-sm text-muted">Nenhum quadro vinculado. Vincule ou crie um na aba Quadro.</p>}
+      {link.data === null && <p className="mt-2 text-sm text-muted">Nenhum quadro vinculado. Vincule ou crie um na aba Quadro de tarefas.</p>}
       {link.data && board.data && (
         <BoardBehavior workspaceId={workspaceId} link={link.data} />
       )}
@@ -42,7 +42,7 @@ export function BoardConnection({ workspaceId }: { workspaceId: string }) {
       <p className="text-sm text-muted">
         Nenhum quadro vinculado.{' '}
         <Link to={`/workspaces/${workspaceId}?tab=board`} className="text-accent hover:underline">
-          Vincular ou criar na aba Quadro
+          Vincular ou criar na aba Quadro de tarefas
         </Link>
       </p>
     );
