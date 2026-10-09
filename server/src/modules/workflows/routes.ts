@@ -12,6 +12,7 @@ import {
   startWorkflow,
   updateWorkflow,
   activeRunTasks,
+  listActiveRuns,
 } from './service.js';
 
 const workspaceParams = z.object({ id: z.uuid() });
@@ -53,6 +54,9 @@ export async function workflowRoutes(app: FastifyInstance) {
 
   /** Board tasks that running workflows are working on, in every workspace the user sees. */
   app.get('/workflow-runs/active-tasks', async (request) => activeRunTasks(request.user.id));
+
+  /** Running workflow runs of every workspace the user sees. */
+  app.get('/workflow-runs/active', async (request) => listActiveRuns(request.user.id));
 
   app.get('/workflow-runs/:id', async (request) => getRun(parseInput(idParams, request.params).id));
 

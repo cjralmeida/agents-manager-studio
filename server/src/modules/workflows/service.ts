@@ -195,6 +195,19 @@ export async function listRuns(workspaceId: string, workflowId?: string) {
   return Promise.all(runs.map(runResponse));
 }
 
+/** Running workflow runs over the workspaces the user sees (general dashboard), with the workspace name. */
+export async function listActiveRuns(userId: string) {
+  const runs = await prisma.workflowRun.findMany({
+    where: { status: 'RUNNING', workspace: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) } },
+    include: runInclude,
+    orderBy: { startedAt: 'desc' },
+    take: 50,
+  });
+  const workspaces = await prisma.workspace.findMany({ where: { id: { in: runs.map((run) => run.workspaceId) } }, select: { id: true, name: true } });
+  const nameOf = (id: string) => workspaces.find((workspace) => workspace.id === id)?.name ?? '';
+  return Promise.all(runs.map(async (run) => ({ ...(await runResponse(run)), workspaceName: nameOf(run.workspaceId) })));
+}
+
 export async function getRun(id: string) {
   const run = await prisma.workflowRun.findUnique({ where: { id }, include: runInclude });
   if (!run) throw notFound('Execução não encontrada.');

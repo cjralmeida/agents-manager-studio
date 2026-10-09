@@ -85,6 +85,9 @@ export interface WorkflowRun {
   id: string;
   workflowId: string;
   workflowName: string;
+  workspaceId: string;
+  /** Only on the list of active runs of every workspace. */
+  workspaceName?: string;
   title: string;
   status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   error: string | null;
@@ -109,10 +112,11 @@ export function useWorkflows(workspaceId: string) {
   });
 }
 
-export function useWorkflowRuns(workspaceId: string) {
+export function useWorkflowRuns(workspaceId: string, enabled = true) {
   return useQuery({
     queryKey: keys.runs(workspaceId),
     queryFn: () => api.get<WorkflowRun[]>(`/workspaces/${workspaceId}/workflow-runs`),
+    enabled: enabled && Boolean(workspaceId),
     refetchInterval: (query) => (query.state.data?.some((run) => run.status === 'RUNNING') ? 5_000 : 20_000),
   });
 }
@@ -175,4 +179,14 @@ export function useInActiveWorkflow() {
   const active = useActiveWorkflowTasks();
   const keys = new Set((active.data ?? []).map((entry) => `${entry.workspaceId}|${entry.taskItemId}`));
   return (workspaceId: string, taskItemId: string) => keys.has(`${workspaceId}|${taskItemId}`);
+}
+
+/** Running workflow runs of every workspace the user sees (general dashboard). */
+export function useActiveRuns(enabled = true) {
+  return useQuery({
+    queryKey: ['workflow-runs', 'active'] as const,
+    queryFn: () => api.get<WorkflowRun[]>('/workflow-runs/active'),
+    refetchInterval: 10_000,
+    enabled,
+  });
 }
