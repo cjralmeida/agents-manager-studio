@@ -39,11 +39,17 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
         title="Variáveis dos agentes"
         description="Valores que os agentes usam no container, como o login de teste em homologação. Ficam criptografados e não são mostrados de novo."
         summary={
-          !variables.data
-            ? 'Carregando...'
-            : variables.data.length === 0
-              ? 'Nenhuma variável.'
-              : `${variables.data.length} variáve${variables.data.length === 1 ? 'l' : 'is'}: ${variables.data.map((variable) => variable.key).join(', ')}`
+          !variables.data ? (
+            'Carregando...'
+          ) : variables.data.length === 0 ? (
+            'Nenhuma variável.'
+          ) : (
+            <ChipList
+              label={`${variables.data.length} variáve${variables.data.length === 1 ? 'l' : 'is'}`}
+              items={variables.data.map((variable) => variable.key)}
+              mono
+            />
+          )
         }
         openLabel="Gerenciar"
       >
@@ -52,6 +58,20 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
       <BoardBehaviorSection workspaceId={workspace.id} />
       <CopySettingsPanel workspaceId={workspace.id} disabled={false} />
     </div>
+  );
+}
+
+/** What a collapsed section has, one chip per item. */
+function ChipList({ label, items, mono = false }: { label: string; items: string[]; mono?: boolean }) {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-xs text-muted">{label}</span>
+      {items.map((item) => (
+        <span key={item} className={`rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs text-gray-200 ${mono ? 'font-mono' : ''}`}>
+          {item}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -71,7 +91,11 @@ function SkillsForm({ workspace, initial, skills }: { workspace: WorkspaceDetail
       title="Skills"
       description="Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code."
       summary={
-        enabledNames.length === 0 ? 'Nenhuma skill extra.' : `${enabledNames.length} skill${enabledNames.length === 1 ? '' : 's'} ativa${enabledNames.length === 1 ? '' : 's'}: ${enabledNames.join(', ')}`
+        enabledNames.length === 0 ? (
+          'Nenhuma skill extra.'
+        ) : (
+          <ChipList label={`${enabledNames.length} skill${enabledNames.length === 1 ? '' : 's'} ativa${enabledNames.length === 1 ? '' : 's'}`} items={enabledNames} />
+        )
       }
     >
       <div className="max-w-2xl">

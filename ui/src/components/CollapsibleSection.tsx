@@ -28,7 +28,7 @@ export function CollapsibleSection({
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">{title}</h2>
           <p className="mt-1 text-xs text-muted">{description}</p>
-          {!open && <p className="mt-2 text-sm text-gray-300">{summary}</p>}
+          {!open && <div className="mt-2 text-sm text-gray-300">{summary}</div>}
         </div>
         <Button size="sm" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls={contentId}>
           {open ? 'Recolher' : openLabel}
