@@ -6,7 +6,7 @@ import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, cancelAgent, launchAgent, sendMessage } from '../agents/service.js';
 import { fastForwardFrom } from '../agents/workdir.js';
-import { boardContext } from '../boards/service.js';
+import { boardContext, moveAgentTask } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
@@ -157,6 +157,13 @@ function latest(stepRuns: WorkflowStepRun[], stepId: string, lane: string) {
 }
 
 const outputOf = (stepRun: WorkflowStepRun | undefined) => (stepRun?.output ?? {}) as StepOutput;
+
+/** The task a lane works on goes to the done column once the lane's last step succeeds (e.g. tests in homologation). */
+async function completeTask(run: RunWithSteps, lane: string) {
+  const trigger = run.trigger as { taskItemId?: string };
+  const taskItemId = lane !== 'main' ? lane : (trigger.taskItemId ?? null);
+  await moveAgentTask({ workspaceId: run.workspaceId, taskItemId }, 'done');
+}
 
 /** Updates a running step from its agent or deployment. */
 async function syncStep(stepRun: WorkflowStepRun) {
@@ -401,7 +408,10 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
     if (run.status !== 'RUNNING') return;
     const steps = parseSteps(run.workflow);
 
-    for (const stepRun of run.steps.filter((entry) => entry.status === 'RUNNING')) await syncStep(stepRun);
+    for (const stepRun of run.steps.filter((entry) => entry.status === 'RUNNING')) {
+      const updated = await syncStep(stepRun);
+      if (updated?.status === 'SUCCEEDED' && updated.stepIndex === steps.length - 1) await completeTask(run, updated.lane);
+    }
     run = await load();
 
     for (const stepRun of run.steps.filter((entry) => entry.status === 'FAILED')) {

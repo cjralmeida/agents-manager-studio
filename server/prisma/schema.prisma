@@ -107,6 +107,7 @@ model Workspace {
   agentProfiles  AgentProfile[]
   renderServices RenderService[]
   deployments    Deployment[]
+  agentVariables AgentVariable[]
   owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([ownerId])
@@ -688,4 +689,20 @@ model AssistantProposal {
 
   @@index([agentId])
   @@map("assistant_proposals")
+}
+
+/// Value the workspace's agents can read in their container (e.g. a test login for homologation), encrypted.
+model AgentVariable {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  key            String
+  valueEncrypted String   @map("value_encrypted")
+  valueHint      String   @map("value_hint")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
+  @@map("agent_variables")
 }

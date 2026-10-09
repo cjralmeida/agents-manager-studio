@@ -45,3 +45,36 @@ export function useCopyWorkspaceSettings(workspaceId: string) {
     },
   });
 }
+
+export interface AgentVariable {
+  key: string;
+  valueHint: string;
+  updatedAt: string;
+}
+
+const variablesKey = (workspaceId: string) => ['agent-variables', workspaceId] as const;
+
+/** Variables the workspace's agents read in their container; values are never sent back. */
+export function useAgentVariables(workspaceId: string) {
+  return useQuery({
+    queryKey: variablesKey(workspaceId),
+    queryFn: () => api.get<AgentVariable[]>(`/workspaces/${workspaceId}/agent-variables`),
+  });
+}
+
+export function useSetAgentVariable(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, value }: { key: string; value: string }) =>
+      api.put<AgentVariable[]>(`/workspaces/${workspaceId}/agent-variables/${encodeURIComponent(key)}`, { value }),
+    onSuccess: (saved) => queryClient.setQueryData(variablesKey(workspaceId), saved),
+  });
+}
+
+export function useDeleteAgentVariable(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => api.delete<AgentVariable[]>(`/workspaces/${workspaceId}/agent-variables/${encodeURIComponent(key)}`),
+    onSuccess: (saved) => queryClient.setQueryData(variablesKey(workspaceId), saved),
+  });
+}

@@ -13,6 +13,7 @@ import { type ConnectorId, ConnectorIcon } from '../connectors/ConnectorIcon';
 import { ErrorText, Select } from '../form';
 import { MultiSelect } from '../MultiSelect';
 import { RenderSection } from '../render/RenderSection';
+import { AgentVariablesSection } from './AgentVariablesSection';
 
 function ConnectorCard({
   icon,
@@ -190,6 +191,17 @@ export function WorkspaceConnectorsTab({ workspace }: { workspace: WorkspaceDeta
                 {current.renderAccountId && <RenderSection key={current.renderAccountId} workspace={workspace} />}
               </div>
             )}
+          </ConnectorCard>
+        </div>
+
+        <div className="lg:col-span-2">
+          <ConnectorCard
+            icon={<span className="inline-flex size-10 items-center justify-center rounded-xl bg-border font-mono text-sm">$_</span>}
+            name="Variáveis dos agentes"
+            purpose="Valores que os agentes usam no container, como o login de teste em homologação. Ficam criptografados e não são mostrados de novo."
+            connected={true}
+          >
+            <AgentVariablesSection workspaceId={workspace.id} />
           </ConnectorCard>
         </div>
       </div>

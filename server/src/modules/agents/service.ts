@@ -15,6 +15,7 @@ import { mergePullRequest, openPullRequest, pullRequestState } from './pull-requ
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
+import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
 import {
   NO_CHANGES_MESSAGE,
   commitAndPush,
@@ -345,6 +346,7 @@ export async function ensureContainer(agentId: string) {
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
       env: await testServicesEnv(agent.id, Boolean(agent.projectId)),
+      variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
   } finally {
@@ -423,6 +425,7 @@ export async function deleteAgent(id: string) {
   if (agent.containerId) await stopAgentContainer(agent.containerId);
   await removeVolume(agentVolumeName(id));
   await removeWorkdir(agent.workdir);
+  await removeAgentVariables(id);
   await prisma.agent.delete({ where: { id } });
 }
 

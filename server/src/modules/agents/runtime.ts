@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../../config.js';
 import { createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
+import { AGENT_VARIABLES_FILE, variablesHostDir } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
 import { workdirHostPath } from './workdir.js';
 
@@ -35,7 +36,7 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind
   return [...new Set([...agent.tools, ...(agent.output === 'RESULT' || agent.kind === 'TASK' ? ['result'] : [])])];
 }
 
-function systemPromptAppend(agent: RuntimeAgent) {
+function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null) {
   // Órbi has its own guide (always the current version, also for resumed conversations).
   if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
@@ -81,6 +82,11 @@ function systemPromptAppend(agent: RuntimeAgent) {
       '- Para testes que precisam de banco, use SOMENTE TEST_DATABASE_URL (PostgreSQL vazio e exclusivo desta execução) e, se precisar de Redis, TEST_REDIS_URL. Nunca use outro banco ou serviço real nos testes.',
     );
   }
+  if (variableNames) {
+    lines.push(
+      `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Conectores → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
+    );
+  }
   if (agent.instructions.trim()) lines.push('', 'Seu papel neste workspace:', agent.instructions.trim());
   return lines.join('\n');
 }
@@ -102,10 +108,12 @@ export interface StartAgentInput {
   skillIds: string[];
   /** Extra variables, e.g. the URLs of the throwaway test database and Redis. */
   env?: Record<string, string>;
+  /** Names in the workspace variables file mounted at /run/studio (null: no file, e.g. Órbi). */
+  variableNames?: string[] | null;
 }
 
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds, env = {} }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
 
@@ -119,6 +127,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       `${workdirHostPath(agent.workdir)}:/workspace`,
       `${agentVolumeName(agent.id)}:/home/node/.claude`,
       ...skillBinds(skillIds),
+      ...(variableNames ? [`${variablesHostDir(agent.id)}:/run/studio:ro`] : []),
     ],
     env: {
       AGENT_ID: agent.id,
@@ -126,7 +135,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       SERVER_URL: config.serverInternalUrl,
       MODEL: agent.model,
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
-      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent),
+      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames),
       STUDIO_TOOLS: runnerTools(agent).join(','),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
