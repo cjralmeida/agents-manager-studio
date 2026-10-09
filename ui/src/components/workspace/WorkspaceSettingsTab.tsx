@@ -3,12 +3,14 @@ import { type Skill, skillSourceLabels, useSkills } from '../../api/skills';
 import { type WorkspaceDetail, useWorkspaces } from '../../api/workspaces';
 import {
   type WorkspaceSettings,
+  useAgentVariables,
   useCopyWorkspaceSettings,
   useUpdateWorkspaceSettings,
   useWorkspaceSettings,
 } from '../../api/workspaceSettings';
 import { BoardBehaviorSection } from '../board/BoardLinkSection';
 import { AgentVariablesSection } from './AgentVariablesSection';
+import { CollapsibleSection } from '../CollapsibleSection';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { MultiSelect } from '../MultiSelect';
@@ -18,6 +20,7 @@ import { groupSkills } from '../settings/SkillsSection';
 export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const settings = useWorkspaceSettings(workspace.id);
   const skills = useSkills();
+  const variables = useAgentVariables(workspace.id);
 
   const error = settings.error ?? skills.error;
   if (error) return <ErrorText error={error} />;
@@ -32,13 +35,20 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
         initial={settings.data}
         skills={skills.data}
       />
-      <section className="rounded-lg border border-border bg-panel p-4">
-        <h2 className="text-base font-semibold">Variáveis dos agentes</h2>
-        <p className="mt-1 mb-3 text-xs text-muted">
-          Valores que os agentes usam no container, como o login de teste em homologação. Ficam criptografados e não são mostrados de novo.
-        </p>
+      <CollapsibleSection
+        title="Variáveis dos agentes"
+        description="Valores que os agentes usam no container, como o login de teste em homologação. Ficam criptografados e não são mostrados de novo."
+        summary={
+          !variables.data
+            ? 'Carregando...'
+            : variables.data.length === 0
+              ? 'Nenhuma variável.'
+              : `${variables.data.length} variáve${variables.data.length === 1 ? 'l' : 'is'}: ${variables.data.map((variable) => variable.key).join(', ')}`
+        }
+        openLabel="Gerenciar"
+      >
         <AgentVariablesSection workspaceId={workspace.id} />
-      </section>
+      </CollapsibleSection>
       <BoardBehaviorSection workspaceId={workspace.id} />
       <CopySettingsPanel workspaceId={workspace.id} disabled={false} />
     </div>
@@ -54,11 +64,17 @@ function SkillsForm({ workspace, initial, skills }: { workspace: WorkspaceDetail
   const update = useUpdateWorkspaceSettings(workspace.id);
   const isDirty = !sameItems(enabledSkillIds, initial.enabledSkillIds);
 
+  const enabledNames = initial.enabledSkillIds.map((id) => skills.find((skill) => skill.id === id)?.name ?? id);
+
   return (
-    <section className="rounded-lg border border-border bg-panel p-4">
-      <h2 className="text-base font-semibold">Skills</h2>
-      <p className="mt-1 text-xs text-muted">Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code.</p>
-      <div className="mt-3 max-w-2xl">
+    <CollapsibleSection
+      title="Skills"
+      description="Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code."
+      summary={
+        enabledNames.length === 0 ? 'Nenhuma skill extra.' : `${enabledNames.length} skill${enabledNames.length === 1 ? '' : 's'} ativa${enabledNames.length === 1 ? '' : 's'}: ${enabledNames.join(', ')}`
+      }
+    >
+      <div className="max-w-2xl">
         <MultiSelect
           options={groupSkills(skills).flatMap(([source, items]) =>
             items.map((skill) => ({ value: skill.id, label: skill.name, detail: skill.description, group: skillSourceLabels[source] })),
@@ -75,7 +91,7 @@ function SkillsForm({ workspace, initial, skills }: { workspace: WorkspaceDetail
         {isDirty && <span className="text-xs text-amber-300">Alterações não salvas</span>}
         <ErrorText error={update.error} />
       </div>
-    </section>
+    </CollapsibleSection>
   );
 }
 
