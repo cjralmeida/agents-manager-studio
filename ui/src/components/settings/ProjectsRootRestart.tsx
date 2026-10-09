@@ -111,11 +111,14 @@ export function ProjectsRootRestart({ target, onClose }: { target: RestartTarget
           <p className="text-sm text-amber-300">Está demorando mais que o normal. Confira o Docker Desktop e o arquivo host-helper/helper.log.</p>
         )}
 
-        {phase !== 'done' && (
-          <Button onClick={onClose} variant={phase === 'error' ? 'primary' : 'secondary'}>
-            {phase === 'error' ? 'Voltar' : 'Fechar esta tela'}
+        {/* While the restart runs there is nothing to do but wait; leaving is offered only when it never started or got stuck. */}
+        {phase === 'error' && (
+          <Button onClick={onClose} variant="primary">
+            Voltar
           </Button>
         )}
+        {phase === 'waiting' && !target.requestId && <Button onClick={onClose}>Cancelar</Button>}
+        {slow && phase !== 'error' && phase !== 'done' && <Button onClick={onClose}>Fechar</Button>}
       </div>
     </div>
   );
