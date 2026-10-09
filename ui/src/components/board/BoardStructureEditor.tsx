@@ -128,6 +128,7 @@ const ROLE_HINTS: Record<StatusRole, string> = {
   todo: 'Tarefas novas. No GitLab, as issues abertas sem coluna.',
   inProgress: 'Para onde a tarefa vai quando um agente é lançado.',
   review: 'Para onde a tarefa vai quando o PR/MR é aberto.',
+  homologation: 'Publicadas em homologação; quando todas as tarefas de uma funcionalidade chegam aqui, o teste em HOM começa.',
   done: 'Concluídas. No GitLab, as issues fechadas.',
   blocked: 'Agentes não são lançados nestas tarefas.',
 };

@@ -32,6 +32,12 @@ export const BOARD_TEMPLATE = {
     { role: 'todo', name: 'A fazer', color: 'GRAY', description: 'A tarefa foi registrada, mas ainda não começou.' },
     { role: 'inProgress', name: 'Em andamento', color: 'YELLOW', description: 'Existe alguém trabalhando na tarefa.' },
     { role: 'review', name: 'Em validação', color: 'PURPLE', description: 'O trabalho foi realizado e aguarda revisão ou aprovação.' },
+    {
+      role: 'homologation',
+      name: 'Em homologação',
+      color: 'ORANGE',
+      description: 'Publicado em homologação; aguarda o teste da funcionalidade completa.',
+    },
     { role: 'done', name: 'Concluído', color: 'GREEN', description: 'O critério de conclusão foi atendido e a entrega foi validada.' },
     {
       role: 'blocked',

@@ -5,14 +5,18 @@ import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../gener
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, cancelAgent, launchAgent, sendMessage } from '../agents/service.js';
+import { parseRemote, remoteHostname } from '../agents/remote.js';
+import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
+import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
+import { secrets } from '../../lib/secrets.js';
 import { boardContext, moveAgentTask } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
-import { pickTasks, taskPrompt } from './match.js';
+import { type ReadyFeature, featurePrompt, featuresReady, pickTasks, taskPrompt } from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
 export interface StepOutput {
@@ -90,14 +94,37 @@ async function startBoardRun(workflow: Workflow, item: BoardItem, log?: FastifyB
   return run;
 }
 
+async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, log?: FastifyBaseLogger) {
+  const run = await prisma.workflowRun.create({
+    data: {
+      workflowId: workflow.id,
+      workspaceId: workflow.workspaceId,
+      title: `${feature.featureId} — teste em homologação`,
+      trigger: {
+        featureId: feature.featureId,
+        signature: feature.signature,
+        taskItemIds: feature.tasks.map((task) => task.id),
+        message: featurePrompt(feature),
+      },
+    },
+  });
+  await advanceRun(run.id, log);
+  return run;
+}
+
+/** Agent states in which a task is still being worked on. */
+const ACTIVE_AGENT = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
+
 /**
- * Board triggers: for each enabled workflow watching the board, starts a run per
- * matching task, up to its concurrent runs. A task that ever had an agent or a run is never picked again.
+ * Board triggers: for each enabled workflow watching the board, starts a run per matching task (or per feature
+ * ready in homologation), up to its concurrent runs. A task is picked again only when it comes back to the watched
+ * column after its last run finished (e.g. sent back with a homologation report); after a failed run, only once
+ * someone changed the task.
  */
 export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLogger, onlyWorkflowId?: string) {
   const workflows = (
     await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true, ...(onlyWorkflowId && { id: onlyWorkflowId }) }, orderBy: { createdAt: 'asc' } })
-  ).filter((workflow) => parseTrigger(workflow).type === 'board_task');
+  ).filter((workflow) => parseTrigger(workflow).type !== 'manual');
   if (workflows.length === 0) return;
 
   const report = (workflow: Workflow, statusMessage: string) =>
@@ -111,20 +138,65 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
 
   const { board, snapshot, projectOf } = await boardContext(workspaceId);
   const statusMap = board.statusMap as StatusMap;
-  const [agentTasks, runTasks] = await Promise.all([
-    prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null } }, select: { taskItemId: true } }),
-    prisma.workflowRun.findMany({ where: { workspaceId, taskItemId: { not: null } }, select: { taskItemId: true } }),
+  const [activeAgents, runs] = await Promise.all([
+    prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
+    prisma.workflowRun.findMany({
+      where: { workspaceId, taskItemId: { not: null } },
+      select: { taskItemId: true, status: true, finishedAt: true },
+      orderBy: { startedAt: 'desc' },
+    }),
   ]);
-  const taken = new Set([...agentTasks, ...runTasks].map((entry) => entry.taskItemId!));
+  const lastRun = new Map<string, (typeof runs)[number]>();
+  for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
+  const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
+  for (const item of snapshot.items) {
+    const run = lastRun.get(item.id);
+    if (!run) continue;
+    const changedSince = run.finishedAt !== null && new Date(item.updatedAt).getTime() > run.finishedAt.getTime();
+    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince)) taken.add(item.id);
+  }
 
   for (const workflow of workflows) {
-    const trigger = parseTrigger(workflow) as Extract<WorkflowTrigger, { type: 'board_task' }>;
+    const trigger = parseTrigger(workflow);
     const running = await prisma.workflowRun.count({ where: { workflowId: workflow.id, status: 'RUNNING' } });
     const slots = workflow.maxConcurrentRuns - running;
     if (slots <= 0) {
       await report(workflow, `Ocupado: ${running} execução(ões) em andamento.`);
       continue;
     }
+
+    if (trigger.type === 'feature_in_homologation') {
+      if (!statusMap.homologation) {
+        await report(workflow, 'Parado: o quadro não tem coluna de homologação definida.');
+        continue;
+      }
+      const ready = featuresReady(snapshot.items, {
+        homologationColumnId: statusMap.homologation,
+        doneColumnId: statusMap.done ?? null,
+        repositories: trigger.repositories,
+      });
+      const previous = await prisma.workflowRun.findMany({
+        where: { workflowId: workflow.id },
+        select: { status: true, trigger: true },
+        orderBy: { startedAt: 'desc' },
+        take: 300,
+      });
+      const lastOf = (featureId: string) => previous.find((run) => (run.trigger as { featureId?: string }).featureId === featureId);
+      // A feature is tested again only after something changed (e.g. a task came back with a report).
+      const candidates = ready.filter((feature) => {
+        const last = lastOf(feature.featureId);
+        return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== feature.signature);
+      });
+      if (candidates.length === 0) {
+        await report(workflow, 'Vigiando: nenhuma funcionalidade completa nova em homologação.');
+        continue;
+      }
+      for (const feature of candidates.slice(0, slots)) await startFeatureRun(workflow, feature, log);
+      await report(workflow, `Iniciou para: ${candidates.slice(0, slots).map((feature) => feature.featureId).join(', ')}.`);
+      continue;
+    }
+    if (trigger.type !== 'board_task') continue;
+
     const columnId = trigger.columnId ?? statusMap.todo ?? null;
     const candidates = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId }).filter(
       (item) => !taken.has(item.id) && projectOf(item) && item.columnId !== statusMap.blocked,
@@ -162,7 +234,9 @@ const outputOf = (stepRun: WorkflowStepRun | undefined) => (stepRun?.output ?? {
 async function completeTask(run: RunWithSteps, lane: string) {
   const trigger = run.trigger as { taskItemId?: string };
   const taskItemId = lane !== 'main' ? lane : (trigger.taskItemId ?? null);
-  await moveAgentTask({ workspaceId: run.workspaceId, taskItemId }, 'done');
+  const workflowTrigger = parseTrigger(run.workflow);
+  const role = workflowTrigger.type === 'board_task' ? workflowTrigger.moveWhenDone : 'done';
+  await moveAgentTask({ workspaceId: run.workspaceId, taskItemId }, role);
 }
 
 /** Updates a running step from its agent or deployment. */
@@ -290,6 +364,17 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     return fail(`A tarefa "${task.title}" é do projeto ${project?.name ?? '?'}, e o agente "${profile.name}" não trabalha nele.`);
   }
 
+  let pullRequest: TaskPullRequest | null = null;
+  if (step.fromTaskPullRequest) {
+    if (!task || !projectId) return fail('"Publicar o PR/MR da tarefa" precisa de uma tarefa do quadro num repositório do workspace.');
+    try {
+      pullRequest = await pullRequestOfTask(run.workspaceId, projectId, task);
+    } catch (error) {
+      return fail(errorText(error));
+    }
+    if (!pullRequest) return fail(`Nenhum PR/MR aberto cita a tarefa "${task.title}". Peça para citar a tarefa na descrição (ex.: "Closes #${task.number}").`);
+  }
+
   let sourceAgentId: string | undefined;
   if (step.continueFromPrevious) {
     const output = outputOf(previous?.run);
@@ -321,8 +406,10 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       autoConclude: true,
       confirmHighUsage: true,
       // Only the step that picks the task moves its card (to "in progress", then review on the PR).
-      ...(taskItemId && (index === 0 || index === fanOut) && { taskItemId }),
+      // A person's PR keeps its card where the person left it until the run ends.
+      ...(taskItemId && !pullRequest && (index === 0 || index === fanOut) && { taskItemId }),
       ...(sourceAgentId && { sourceAgentId }),
+      ...(pullRequest && { pullRequest: { url: pullRequest.url, branch: pullRequest.branch, baseBranch: pullRequest.baseBranch } }),
     });
     return prisma.workflowStepRun.create({
       data: { runId: run.id, stepId: step.id, stepIndex: index, lane, attempt, agentId: agent.id },
@@ -330,6 +417,21 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   } catch (error) {
     return fail(errorText(error));
   }
+}
+
+/** The open PR/MR a person opened for a task, found with the workspace account of the project's host. */
+async function pullRequestOfTask(workspaceId: string, projectId: string, task: BoardItem) {
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+  const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+  if (!remote || !task.number) throw new HttpError(422, 'A tarefa precisa ser uma issue do repositório do projeto para achar o PR/MR.');
+  const account = await findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
+  return findTaskPullRequest({
+    provider: account.provider as 'GITHUB' | 'GITLAB',
+    remote,
+    token: secrets.decrypt(account.tokenEncrypted),
+    issueNumber: task.number,
+    knownNumbers: task.pullRequests.map((pr) => pr.number),
+  });
 }
 
 /**

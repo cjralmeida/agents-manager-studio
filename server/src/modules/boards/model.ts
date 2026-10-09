@@ -43,6 +43,7 @@ export const roleLabels: Record<StatusRole, string> = {
   todo: 'A fazer',
   inProgress: 'Em andamento',
   review: 'Em validação',
+  homologation: 'Em homologação',
   done: 'Concluído',
   blocked: 'Bloqueado para agentes',
 };

@@ -3,7 +3,7 @@ import { api } from './client';
 
 /** STUDIO: a board only in the Studio, without GitHub/GitLab. */
 export type BoardProvider = 'GITHUB' | 'GITLAB' | 'STUDIO';
-export type StatusRole = 'todo' | 'inProgress' | 'review' | 'done' | 'blocked';
+export type StatusRole = 'todo' | 'inProgress' | 'review' | 'homologation' | 'done' | 'blocked';
 export type StatusMap = Partial<Record<StatusRole, string>>;
 
 export interface BoardLink {
@@ -110,6 +110,7 @@ export const statusRoleLabels: Record<StatusRole, string> = {
   todo: 'A fazer',
   inProgress: 'Agente trabalhando',
   review: 'PR/MR aberto',
+  homologation: 'Em homologação',
   done: 'Concluído',
   blocked: 'Bloqueado para agentes',
 };

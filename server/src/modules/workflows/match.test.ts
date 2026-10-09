@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
-import { matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
+import { featureIdOf, featuresReady, matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
 
 const priority: BoardField = {
   id: 'prio',
@@ -74,7 +74,48 @@ describe('taskPrompt', () => {
   it('includes the task and the extra instructions', () => {
     const prompt = taskPrompt(item(), 'Rode os testes antes de terminar.');
     assert.match(prompt, /^Resolva a tarefa org\/repo#7: Corrigir login/);
+    assert.match(prompt, /id no quadro: i1/);
     assert.match(prompt, /Instruções extras:\nRode os testes antes de terminar\.$/);
     assert.doesNotMatch(taskPrompt(item(), '  '), /Instruções/);
+  });
+});
+
+describe('featuresReady', () => {
+  const input = { homologationColumnId: 'hom', doneColumnId: 'done', repositories: [] };
+  const task = (id: string, title: string, columnId: string, overrides: Partial<BoardItem> = {}) => item({ id, title, columnId, ...overrides });
+
+  it('reads the feature id from the title', () => {
+    assert.equal(featureIdOf('[func-012] Backend — desconto'), 'FUNC-012');
+    assert.equal(featureIdOf('Corrigir login'), null);
+  });
+
+  it('is ready when every open task of the feature is in homologation', () => {
+    const items = [
+      task('a', '[FUNC-001] Backend — API', 'hom'),
+      task('b', '[FUNC-001] Frontend — tela', 'hom'),
+      task('c', '[FUNC-001] Ajuste antigo', 'done'),
+      task('d', '[FUNC-002] Backend — API', 'hom'),
+      task('e', '[FUNC-002] Frontend — tela', 'doing'),
+      task('f', 'Sem funcionalidade', 'hom'),
+    ];
+    const ready = featuresReady(items, input);
+    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-001']);
+    assert.deepEqual(ready[0]!.tasks.map((entry) => entry.id), ['a', 'b']);
+  });
+
+  it('ignores closed tasks and other repositories', () => {
+    const items = [
+      task('a', '[FUNC-003] Backend', 'hom'),
+      task('b', '[FUNC-003] Frontend', 'doing', { isClosed: true }),
+      task('c', '[FUNC-003] Mobile', 'doing', { repository: 'org/app' }),
+    ];
+    assert.equal(featuresReady(items, { ...input, repositories: ['org/repo'] }).length, 1);
+    assert.equal(featuresReady(items, input).length, 0);
+  });
+
+  it('changes the signature when a description changes', () => {
+    const before = featuresReady([task('a', '[FUNC-004] Backend', 'hom')], input)[0]!.signature;
+    const after = featuresReady([task('a', '[FUNC-004] Backend', 'hom', { body: 'com relatório' })], input)[0]!.signature;
+    assert.notEqual(before, after);
   });
 });

@@ -618,7 +618,7 @@ model WorkflowRun {
   status      WorkflowRunStatus @default(RUNNING)
   /// { message } for a conversation, { taskItemId } for a board task.
   trigger     Json
-  /// Board task that started the run (board trigger), to never start it twice.
+  /// Board task that started the run (board trigger); it is picked again only after its runs finish.
   taskItemId  String?           @map("task_item_id")
   error       String?
   startedAt   DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)

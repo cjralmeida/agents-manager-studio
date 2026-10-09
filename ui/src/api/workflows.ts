@@ -11,7 +11,9 @@ export type WorkflowTrigger =
       fieldFilters: Record<string, string[]>;
       repositories: string[];
       onlyUnassigned: boolean;
-    };
+      moveWhenDone: 'done' | 'homologation';
+    }
+  | { type: 'feature_in_homologation'; repositories: string[] };
 
 export interface AgentStep {
   id: string;
@@ -21,6 +23,7 @@ export interface AgentStep {
   forEachTask: boolean;
   maxParallel: number;
   continueFromPrevious: boolean;
+  fromTaskPullRequest: boolean;
   instructions: string;
   onFailure: { retryStepId: string; maxAttempts: number } | null;
 }

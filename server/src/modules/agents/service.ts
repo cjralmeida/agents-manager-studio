@@ -20,6 +20,7 @@ import {
   NO_CHANGES_MESSAGE,
   commitAndPush,
   currentBranch,
+  checkoutRemoteBranch,
   isMergedInto,
   returnToAgent,
   prepareEmptyWorkdir,
@@ -49,6 +50,8 @@ export interface LaunchAgentInput {
   /** Overrides the profile: conclude without waiting for the user. */
   autoConclude?: boolean;
   autoMerge?: boolean;
+  /** Starts on a person's open PR/MR (its branch, merging into its base) instead of a new branch. */
+  pullRequest?: { url: string; branch: string; baseBranch: string };
   /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
   taskItemId?: string;
   /** The user already confirmed launching while Docker usage is high. */
@@ -211,7 +214,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   // Continuing another agent: same branch and PR (its base stays the PR base).
   const baseBranch = !project
     ? '-'
-    : (source?.baseBranch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
+    : (source?.baseBranch ?? input.pullRequest?.baseBranch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
   if (!baseBranch) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
@@ -238,8 +241,9 @@ export async function launchAgent(input: LaunchAgentInput) {
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       autoMerge: input.autoMerge ?? profile?.autoMerge ?? false,
       baseBranch,
-      branch: project ? (source?.branch ?? `agent/${slug ? `${slug}-` : ''}${shortId}`) : '-',
+      branch: project ? (source?.branch ?? input.pullRequest?.branch ?? `agent/${slug ? `${slug}-` : ''}${shortId}`) : '-',
       ...(source?.prUrl && { prUrl: source.prUrl }),
+      ...(input.pullRequest && { prUrl: input.pullRequest.url }),
       workdir: `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
@@ -250,7 +254,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
   // A copy continuing another agent keeps that agent's branch; fresh copies follow the remote base.
-  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch);
+  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch, Boolean(input.pullRequest));
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -260,7 +264,15 @@ async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review' | 'don
   if (message) await addEvent(agent.id, 'status', { message });
 }
 
-async function prepareAndStart(agentId: string, projectDir: string | null, remoteUrl: string | null, followRemoteBase: boolean, cloneBranch?: string) {
+async function prepareAndStart(
+  agentId: string,
+  projectDir: string | null,
+  remoteUrl: string | null,
+  followRemoteBase: boolean,
+  cloneBranch?: string,
+  /** The agent's branch is a person's PR branch that only exists on the remote. */
+  onRemoteBranch = false,
+) {
   try {
     const agent = await findOrThrow(agentId);
     if (!projectDir) {
@@ -290,6 +302,10 @@ async function prepareAndStart(agentId: string, projectDir: string | null, remot
         });
       }
     }
+    if (onRemoteBranch && remoteUrl) {
+      baseCommit = await checkoutFromRemote(agent, remoteUrl);
+      await addEvent(agentId, 'status', { message: `Branch ${agent.branch} do PR/MR baixada do remoto (${baseCommit.slice(0, 7)}).` });
+    }
     await prisma.agent.update({ where: { id: agentId }, data: { baseCommit } });
     await addEvent(agentId, 'status', {
       message: `Cópia isolada criada em ${workdirHostPath(agent.workdir)} na branch ${agent.branch}.`,
@@ -298,6 +314,20 @@ async function prepareAndStart(agentId: string, projectDir: string | null, remot
   } catch (error) {
     await markFailed(agentId, error);
   }
+}
+
+/** Puts the copy on a branch that only exists on the remote (a person's PR/MR), with the workspace credentials. */
+async function checkoutFromRemote(agent: Agent, remoteUrl: string) {
+  const remote = parseRemote(remoteUrl);
+  if (!remote) throw new HttpError(422, 'O projeto não tem um remote válido.');
+  const account = await findGitAccount(agent.workspaceId, remote);
+  const token = secrets.decrypt(account.tokenEncrypted);
+  return checkoutRemoteBranch({
+    workdir: agent.workdir,
+    branch: agent.branch,
+    fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token),
+    token,
+  });
 }
 
 /** Fetches the base branch from the remote with the workspace credentials (never stored in the copy). */

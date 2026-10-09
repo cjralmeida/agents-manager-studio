@@ -66,6 +66,9 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null)
   if (tools.includes('board')) {
     lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
   }
+  if (tools.includes('render_read') && !tools.includes('render')) {
+    lines.push('- Use studio_render_environments para as URLs de homologação dos projetos e studio_render_logs para os logs deles (só leitura).');
+  }
   if (tools.includes('render')) {
     lines.push(
       '- Use as ferramentas studio_render_* para o serviço de HOMOLOGAÇÃO do projeto no Render. Alterações que você fizer na cópia são publicadas por studio_render_deploy (o Studio faz commit, PR/MR e merge); depois do último deploy, não deixe alterações sem publicar.',

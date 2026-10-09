@@ -144,7 +144,11 @@ function WorkflowCard({
       </div>
 
       <p className="mt-3 text-xs text-muted">
-        {isManual ? 'Começa com uma mensagem sua.' : 'Começa quando aparece uma tarefa no quadro:'}
+        {isManual
+          ? 'Começa com uma mensagem sua.'
+          : workflow.trigger.type === 'feature_in_homologation'
+            ? 'Começa quando todas as tarefas de uma funcionalidade estão em homologação.'
+            : 'Começa quando aparece uma tarefa no quadro:'}
       </p>
       {filters.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">

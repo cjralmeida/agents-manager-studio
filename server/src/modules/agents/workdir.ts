@@ -103,6 +103,21 @@ export async function updateToRemoteBase(input: { workdir: string; baseBranch: s
   }
 }
 
+/** Moves the copy to a branch fetched from the remote (e.g. a person's PR/MR branch); returns its head commit. */
+export async function checkoutRemoteBranch(input: { workdir: string; branch: string; fetchUrl: string; token: string }) {
+  const dir = workdirPath(input.workdir);
+  const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
+  try {
+    await git(dir, ['fetch', '--quiet', '--depth', CLONE_DEPTH, input.fetchUrl, input.branch], { timeoutMs: 300_000 });
+    await git(dir, ['checkout', '--quiet', '-B', input.branch, 'FETCH_HEAD']);
+    await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
+    return (await git(dir, ['rev-parse', 'HEAD'])).trim();
+  } catch (error) {
+    if (error instanceof GitError) throw new HttpError(502, redact(error.message));
+    throw error;
+  }
+}
+
 /** Work folder for an agent without a repository (e.g. one that only plans tasks). */
 export async function prepareEmptyWorkdir(workdir: string) {
   const dest = workdirPath(workdir);

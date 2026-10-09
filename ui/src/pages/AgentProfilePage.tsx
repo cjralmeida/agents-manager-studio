@@ -79,6 +79,7 @@ export function AgentProfilePage() {
                 <Badge>{outputLabels[profile.output]}</Badge>
                 {profile.tools.includes('board') && <Badge>quadro</Badge>}
                 {profile.tools.includes('render') && <Badge>Render</Badge>}
+                {profile.tools.includes('render_read') && <Badge>HOM leitura</Badge>}
                 {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
               </div>
             )}

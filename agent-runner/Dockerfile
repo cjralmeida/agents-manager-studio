@@ -28,6 +28,17 @@ ARG CLAUDE_CODE_VERSION=2.1.285
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
   && npm cache clean --force
 
+# Playwright with Chromium for black-box tests in homologation. Test folders link /opt/playwright/node_modules,
+# so no run downloads browsers.
+ARG PLAYWRIGHT_VERSION=1.55.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright/browsers
+RUN mkdir -p /opt/playwright && cd /opt/playwright \
+  && npm init -y > /dev/null \
+  && npm install @playwright/test@${PLAYWRIGHT_VERSION} \
+  && npx playwright install --with-deps chromium \
+  && npm cache clean --force && rm -rf /var/lib/apt/lists/* \
+  && chmod -R a+rX /opt/playwright
+
 # Versions are pinned by the image; agents must not update themselves.
 ENV DISABLE_AUTOUPDATER=1
 

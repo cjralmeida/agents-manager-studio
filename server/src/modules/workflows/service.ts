@@ -27,8 +27,8 @@ export async function validateWorkflow(workspaceId: string, input: Pick<Workflow
     usesBoard: profile.tools.includes('board'),
   }));
   const problems = validateSteps(input.steps, facts);
-  if (input.trigger.type === 'board_task' && !(await prisma.taskBoard.findUnique({ where: { workspaceId } }))) {
-    problems.push('O gatilho "tarefa no quadro" precisa de um quadro vinculado ao workspace.');
+  if (input.trigger.type !== 'manual' && !(await prisma.taskBoard.findUnique({ where: { workspaceId } }))) {
+    problems.push('Gatilhos do quadro precisam de um quadro vinculado ao workspace.');
   }
   if (problems.length > 0) throw new HttpError(422, problems.join(' '), problems);
 }

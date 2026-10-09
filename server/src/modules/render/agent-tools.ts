@@ -8,10 +8,20 @@ import { parseEnvVars } from './env-vars.js';
 import { getDeployment, startDeploy } from './service.js';
 
 /**
- * Render tools for agents (the "render" group): they only ever touch the homologation service of the agent's
- * project. The API key stays on the server; variable values are written but never read back.
+ * Render tools for agents. The "render" group touches only the homologation service of the agent's project; the
+ * "render_read" group (testers) only reads: homologation URLs of every project and their logs. The API key stays on
+ * the server; variable values are written but never read back.
  */
-export const RENDER_TOOL_NAMES = ['render_service', 'render_set_env_vars', 'render_deploy', 'render_deploy_status', 'render_logs'] as const;
+export const RENDER_TOOL_NAMES = [
+  'render_service',
+  'render_set_env_vars',
+  'render_deploy',
+  'render_deploy_status',
+  'render_logs',
+  'render_environments',
+] as const;
+/** Tools of the read-only group. */
+export const RENDER_READ_TOOLS: readonly string[] = ['render_logs', 'render_environments'];
 export type RenderToolName = (typeof RENDER_TOOL_NAMES)[number];
 
 type Args = Record<string, unknown>;
@@ -20,10 +30,22 @@ const ENVIRONMENT = 'HOMOLOGACAO' as const;
 const MAX_WAIT_SECONDS = 240;
 const POLL_MS = 10_000;
 
-async function homologation(agent: Agent) {
-  if (!agent.projectId) throw new HttpError(422, 'Este agente não trabalha num projeto, então não tem serviço para publicar.');
+/** Project named by the agent (read tools), or the agent's own project. */
+async function projectIdFor(agent: Agent, projectName: unknown) {
+  if (typeof projectName === 'string' && projectName.trim()) {
+    const projects = await prisma.project.findMany({ where: { workspaceId: agent.workspaceId, missingAt: null }, select: { id: true, name: true } });
+    const project = projects.find((entry) => entry.name.toLowerCase() === projectName.trim().toLowerCase());
+    if (!project) throw new HttpError(404, `Projeto "${projectName}" não encontrado. Projetos: ${projects.map((entry) => entry.name).join(', ')}.`);
+    return project.id;
+  }
+  if (!agent.projectId) throw new HttpError(422, 'Informe o projeto (veja render_environments).');
+  return agent.projectId;
+}
+
+async function homologation(agent: Agent, projectName?: unknown) {
+  const projectId = await projectIdFor(agent, projectName);
   const [service, settings] = await Promise.all([
-    prisma.renderService.findUnique({ where: { projectId_environment: { projectId: agent.projectId, environment: ENVIRONMENT } } }),
+    prisma.renderService.findUnique({ where: { projectId_environment: { projectId, environment: ENVIRONMENT } } }),
     prisma.workspaceSettings.findUnique({ where: { workspaceId: agent.workspaceId }, include: { renderAccount: true } }),
   ]);
   if (!settings?.renderAccount) throw new HttpError(422, 'O workspace não tem conta do Render. Pergunte ao usuário (AskUserQuestion) e pare.');
@@ -69,7 +91,19 @@ function deploymentView(deployment: Awaited<ReturnType<typeof getDeployment>>) {
 }
 
 export async function runRenderTool(agent: Agent, name: RenderToolName, args: Args) {
-  const { service, client } = await homologation(agent);
+  if (name === 'render_environments') {
+    const services = await prisma.renderService.findMany({
+      where: { workspaceId: agent.workspaceId, environment: ENVIRONMENT },
+      include: { project: { select: { name: true } } },
+      orderBy: { serviceName: 'asc' },
+    });
+    return {
+      environment: 'homologação',
+      services: services.map((service) => ({ project: service.project.name, service: service.serviceName, url: service.url, branch: service.branch })),
+    };
+  }
+
+  const { service, client } = await homologation(agent, name === 'render_logs' ? args.project : undefined);
 
   switch (name) {
     case 'render_service': {

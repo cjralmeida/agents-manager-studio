@@ -84,10 +84,10 @@ describe('validateStructure', () => {
 
 describe('templateStructure', () => {
   it('leaves GitLab fixed columns out', () => {
-    assert.equal(templateStructure('GITHUB').columns.length, 5);
+    assert.equal(templateStructure('GITHUB').columns.length, 6);
     assert.deepEqual(
       templateStructure('GITLAB').columns.map((column) => column.name),
-      ['Em andamento', 'Em validação', 'Aguardando aprovação'],
+      ['Em andamento', 'Em validação', 'Em homologação', 'Aguardando aprovação'],
     );
   });
 });

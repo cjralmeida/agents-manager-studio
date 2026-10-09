@@ -3,7 +3,9 @@ import { z } from 'zod';
 /**
  * How a workflow starts:
  * - "manual": a conversation started in the Studio (the message goes to the first step);
- * - "board_task": a task appears on the board matching the filters.
+ * - "board_task": a task appears on the board matching the filters;
+ * - "feature_in_homologation": every open task of a feature ("[FUNC-NNN]" in the title) reached the homologation
+ *   column, so the whole feature can be tested there.
  */
 export const triggerSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('manual') }).strict(),
@@ -15,6 +17,14 @@ export const triggerSchema = z.discriminatedUnion('type', [
       fieldFilters: z.record(z.string().min(1).max(200), z.array(z.string().min(1).max(200)).max(50)).default({}),
       repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
       onlyUnassigned: z.boolean().default(true),
+      /** Column the task goes to when the run's last step succeeds. */
+      moveWhenDone: z.enum(['done', 'homologation']).default('done'),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('feature_in_homologation'),
+      repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
     })
     .strict(),
 ]);
@@ -36,6 +46,8 @@ export const stepSchema = z.discriminatedUnion('kind', [
       maxParallel: z.number().int().min(1).max(5).default(1),
       /** Starts from the previous agent's copy and branch (e.g. a tester checking the executor's work). */
       continueFromPrevious: z.boolean().default(false),
+      /** Starts from the open PR/MR that cites the run's task (work a person did), e.g. to publish it. */
+      fromTaskPullRequest: z.boolean().default(false),
       /** Extra instructions for this step, on top of the agent's role. */
       instructions: z.string().max(10_000).default(''),
       /** When this step fails, sends the report back to an earlier step and runs again from there. */
@@ -109,6 +121,12 @@ export function validateSteps(steps: WorkflowStep[], profiles: ProfileFacts[]) {
     }
     if (step.forEachTask && (!previousProfile || !previousProfile.usesBoard)) {
       problems.push(`${label}: "para cada tarefa criada" precisa de um passo anterior com agente que usa o quadro.`);
+    }
+    if (step.fromTaskPullRequest && step.continueFromPrevious) {
+      problems.push(`${label}: escolha entre "continuar do passo anterior" e "publicar o PR/MR da tarefa".`);
+    }
+    if (step.fromTaskPullRequest && !profile.hasRepository) {
+      problems.push(`${label}: o agente "${profile.name}" precisa trabalhar em repositório para publicar o PR/MR da tarefa.`);
     }
     if (step.continueFromPrevious && (!previousProfile || !previousProfile.hasRepository)) {
       problems.push(`${label}: "continuar do passo anterior" precisa de um agente anterior que trabalhe em repositório.`);

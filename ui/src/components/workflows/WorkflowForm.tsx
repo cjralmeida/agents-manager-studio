@@ -17,6 +17,7 @@ const agentStep = (profileId: string): AgentStep => ({
   forEachTask: false,
   maxParallel: 1,
   continueFromPrevious: false,
+  fromTaskPullRequest: false,
   instructions: '',
   onFailure: null,
 });
@@ -27,7 +28,10 @@ const boardTrigger: Extract<WorkflowTrigger, { type: 'board_task' }> = {
   fieldFilters: {},
   repositories: [],
   onlyUnassigned: true,
+  moveWhenDone: 'done',
 };
+
+const featureTrigger: WorkflowTrigger = { type: 'feature_in_homologation', repositories: [] };
 
 interface WorkflowFormProps {
   profiles: AgentProfile[];
@@ -89,11 +93,16 @@ export function WorkflowForm({ profiles, board, initial, pending, error, onSubmi
           <Field label="Começa quando">
             <Select
               value={trigger.type}
-              onChange={(event) => setTrigger(event.target.value === 'manual' ? { type: 'manual' } : boardTrigger)}
+              onChange={(event) =>
+                setTrigger(event.target.value === 'manual' ? { type: 'manual' } : event.target.value === 'board_task' ? boardTrigger : featureTrigger)
+              }
             >
               <option value="manual">Você inicia com uma mensagem (conversa no Studio)</option>
               <option value="board_task" disabled={!board}>
                 Aparece uma tarefa no quadro{board ? '' : ' (vincule um quadro)'}
+              </option>
+              <option value="feature_in_homologation" disabled={!board}>
+                Uma funcionalidade inteira chega em homologação{board ? '' : ' (vincule um quadro)'}
               </option>
             </Select>
           </Field>
@@ -109,6 +118,15 @@ export function WorkflowForm({ profiles, board, initial, pending, error, onSubmi
                   ))}
                 </Select>
               </Field>
+              <Field label="Ao terminar, a tarefa vai para">
+                <Select
+                  value={trigger.moveWhenDone}
+                  onChange={(event) => setTrigger({ ...trigger, moveWhenDone: event.target.value as 'done' | 'homologation' })}
+                >
+                  <option value="done">Concluído</option>
+                  <option value="homologation">Em homologação</option>
+                </Select>
+              </Field>
               <Field label="Execuções ao mesmo tempo">
                 <Select value={maxConcurrentRuns} onChange={(event) => setMaxConcurrentRuns(Number(event.target.value))}>
                   {[1, 2, 3, 4, 5].map((count) => (
@@ -121,6 +139,25 @@ export function WorkflowForm({ profiles, board, initial, pending, error, onSubmi
             </>
           )}
         </div>
+        {trigger.type === 'feature_in_homologation' && board && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-muted">
+              Junta as tarefas pelo código no título (ex.: "[FUNC-012] ..."). Quando todas as abertas estão na coluna de homologação, o primeiro
+              passo recebe todas elas. A funcionalidade só é testada de novo depois que alguma tarefa muda (ex.: volta corrigida).
+            </p>
+            {board.repositories.length > 1 && (
+              <div className="grid grid-cols-1 gap-1 md:grid-cols-[8rem_1fr] md:items-center">
+                <span className="text-xs text-muted">Repositório</span>
+                <MultiSelect
+                  options={board.repositories.map((repo) => ({ value: repo.path, label: repo.projectName }))}
+                  placeholder="Qualquer"
+                  selected={trigger.repositories}
+                  onChange={(next) => setTrigger({ ...trigger, repositories: next })}
+                />
+              </div>
+            )}
+          </div>
+        )}
         {trigger.type === 'board_task' && board && (
           <div className="mt-3 space-y-2">
             {board.fields.map((field) => (
@@ -297,6 +334,14 @@ function StepEditor({ step, index, steps, profiles, onChange, onKindChange, onMo
                 disabled={index === 0}
               />
               Continuar do trabalho do passo anterior
+            </label>
+            <label className="flex items-center gap-2" title="Começa do PR/MR aberto que cita a tarefa (feito por uma pessoa), ex.: para publicá-lo em homologação">
+              <input
+                type="checkbox"
+                checked={step.fromTaskPullRequest}
+                onChange={(event) => onChange({ fromTaskPullRequest: event.target.checked, ...(event.target.checked && { continueFromPrevious: false }) })}
+              />
+              Publicar o PR/MR da tarefa (feito por uma pessoa)
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">

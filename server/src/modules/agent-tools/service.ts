@@ -4,7 +4,7 @@ import { HttpError } from '../../lib/errors.js';
 import { boardContext, createTask, editItem, moveItem, setItemField } from '../boards/service.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
-import { RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
+import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
 import { runStudioTool } from './studio.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -101,7 +101,8 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
   }
 
   if (name.startsWith('render_')) {
-    if (!agent.tools.includes('render')) throw new HttpError(403, 'Este agente não tem acesso ao Render.');
+    const allowed = agent.tools.includes('render') || (agent.tools.includes('render_read') && RENDER_READ_TOOLS.includes(name));
+    if (!allowed) throw new HttpError(403, 'Este agente não tem acesso a esta ferramenta do Render.');
     return runRenderTool(agent, name as RenderToolName, args);
   }
 

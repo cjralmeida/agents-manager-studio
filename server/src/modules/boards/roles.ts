@@ -4,7 +4,8 @@ import type { BoardOption, StatusMap, StatusRole } from './types.js';
 const ROLE_PATTERNS: [StatusRole, RegExp][] = [
   ['blocked', /aprova|bloque|blocked|on hold|impedid|approval/],
   ['done', /conclu|done|feito|finaliz|closed|fechad|entregue/],
-  ['review', /valida|revis|review|homolog|\bqa\b|teste/],
+  ['homologation', /homolog|staging|\bhom\b/],
+  ['review', /valida|revis|review|\bqa\b|teste/],
   ['inProgress', /andamento|progress|doing|fazendo|desenvolv|executand/],
   ['todo', /a fazer|to ?do|backlog|abert|\bopen\b|pronto|ready|novo|\bnew\b/],
 ];

@@ -2,7 +2,7 @@
 
 import type { BoardStructure, FieldOrder } from './structure.js';
 
-export const STATUS_ROLES = ['todo', 'inProgress', 'review', 'done', 'blocked'] as const;
+export const STATUS_ROLES = ['todo', 'inProgress', 'review', 'homologation', 'done', 'blocked'] as const;
 export type StatusRole = (typeof STATUS_ROLES)[number];
 /** Column id for each role; a role may be unmapped. */
 export type StatusMap = Partial<Record<StatusRole, string>>;

@@ -8,7 +8,7 @@ const asText = (value) => ({ content: [{ type: 'text', text: JSON.stringify(valu
 
 /**
  * @param {(name: string, args: object) => Promise<{ ok: boolean, data?: unknown, error?: string }>} call
- * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "studio" (Órbi)
+ * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "render_read" (homologation URLs and logs), "studio" (Órbi)
  */
 export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
@@ -78,6 +78,28 @@ export function createStudioTools(call, groups) {
     );
   }
 
+  const renderRead = groups.includes('render') || groups.includes('render_read');
+  if (renderRead) {
+    tools.push(
+      tool(
+        'render_environments',
+        'Lista os serviços de HOMOLOGAÇÃO de todos os projetos do workspace no Render, com a URL de cada um.',
+        {},
+        run('render_environments'),
+      ),
+      tool(
+        'render_logs',
+        'Últimas linhas de log de um serviço de homologação: "build" (compilação e pré-deploy), "app" (aplicação rodando) ou "request" (requisições HTTP).',
+        {
+          type: z.enum(['build', 'app', 'request']),
+          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          limit: z.number().int().optional().describe('Quantidade de linhas (padrão 100, até 300).'),
+          text: z.string().optional().describe('Filtra as linhas que contêm este texto.'),
+        },
+        run('render_logs'),
+      ),
+    );
+  }
   if (groups.includes('render')) {
     tools.push(
       tool(
@@ -116,16 +138,6 @@ export function createStudioTools(call, groups) {
           waitSeconds: z.number().int().optional(),
         },
         run('render_deploy_status'),
-      ),
-      tool(
-        'render_logs',
-        'Últimas linhas de log do serviço de homologação: "build" (compilação e pré-deploy), "app" (aplicação rodando) ou "request" (requisições HTTP).',
-        {
-          type: z.enum(['build', 'app', 'request']),
-          limit: z.number().int().optional().describe('Quantidade de linhas (padrão 100, até 300).'),
-          text: z.string().optional().describe('Filtra as linhas que contêm este texto.'),
-        },
-        run('render_logs'),
       ),
     );
   }

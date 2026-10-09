@@ -19,7 +19,11 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
       <div className="space-y-2 text-xs">
         {trigger && (
           <p className="text-muted">
-            {trigger.type === 'manual' ? 'Começa com uma mensagem sua.' : 'Começa quando aparece uma tarefa no quadro que bate com os filtros.'}
+            {trigger.type === 'manual'
+              ? 'Começa com uma mensagem sua.'
+              : trigger.type === 'feature_in_homologation'
+                ? 'Começa quando todas as tarefas de uma funcionalidade estão em homologação.'
+                : 'Começa quando aparece uma tarefa no quadro que bate com os filtros.'}
           </p>
         )}
         <ol className="flex flex-wrap items-center gap-1">
