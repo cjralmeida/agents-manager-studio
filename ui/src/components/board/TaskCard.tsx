@@ -14,6 +14,7 @@ interface TaskCardProps {
 
 export function TaskCard({ board, item, agent, onOpen, label }: TaskCardProps) {
   const waiting = agent?.status === 'WAITING_INPUT';
+  const working = agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status);
   const values = board.fields.flatMap((field) => {
     const option = field.options.find((entry) => entry.id === item.fields[field.id]);
     return option ? [{ field, option }] : [];
@@ -29,7 +30,7 @@ export function TaskCard({ board, item, agent, onOpen, label }: TaskCardProps) {
       }}
       onClick={onOpen}
       className={`w-full cursor-grab rounded-lg border bg-panel p-3 text-left transition-colors hover:border-accent/60 active:cursor-grabbing ${
-        waiting ? 'glow-question border-amber-400/70' : 'border-border'
+        waiting ? 'glow-question border-amber-400/70' : working ? 'glow-working' : 'border-border'
       }`}
     >
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted">

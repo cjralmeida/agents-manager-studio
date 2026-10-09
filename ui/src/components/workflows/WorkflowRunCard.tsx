@@ -47,7 +47,7 @@ export function WorkflowRunCard({ workspaceId, run }: { workspaceId: string; run
   const errors = run.steps.filter((step) => step.status === 'FAILED' && step.error && latest(step.stepId, step.lane)?.id === step.id);
 
   return (
-    <article className="rounded-lg border border-border bg-panel p-4">
+    <article className={`rounded-lg border bg-panel p-4 ${run.status === 'RUNNING' ? 'glow-working' : 'border-border'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{run.title}</h3>
