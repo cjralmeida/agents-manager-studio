@@ -8,7 +8,7 @@ const asText = (value) => ({ content: [{ type: 'text', text: JSON.stringify(valu
 
 /**
  * @param {(name: string, args: object) => Promise<{ ok: boolean, data?: unknown, error?: string }>} call
- * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "render_read" (homologation URLs and logs), "studio" (Órbi)
+ * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "render_read" (homologation URLs and logs), "clickup_read", "studio" (Órbi)
  */
 export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
@@ -138,6 +138,29 @@ export function createStudioTools(call, groups) {
           waitSeconds: z.number().int().optional(),
         },
         run('render_deploy_status'),
+      ),
+    );
+  }
+
+  if (groups.includes('clickup_read')) {
+    tools.push(
+      tool(
+        'clickup_hierarchy',
+        'Mostra a estrutura do ClickUp da conta do workspace: workspaces, espaços, pastas e listas (com ids), para achar onde estão as tarefas.',
+        {},
+        run('clickup_hierarchy'),
+      ),
+      tool(
+        'clickup_list_tasks',
+        'Lista as tarefas de uma lista do ClickUp (100 por página, incluindo fechadas e subtarefas): id, nome, status, responsáveis, tags, datas.',
+        { listId: z.string(), page: z.number().int().optional().describe('Página, começando em 0.') },
+        run('clickup_list_tasks'),
+      ),
+      tool(
+        'clickup_get_task',
+        'Lê uma tarefa do ClickUp por inteiro: descrição em Markdown, subtarefas, checklists, campos personalizados e, se pedir, os comentários.',
+        { taskId: z.string(), comments: z.boolean().optional() },
+        run('clickup_get_task'),
       ),
     );
   }

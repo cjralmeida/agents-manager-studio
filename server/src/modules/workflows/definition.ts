@@ -48,6 +48,8 @@ export const stepSchema = z.discriminatedUnion('kind', [
       continueFromPrevious: z.boolean().default(false),
       /** Starts from the open PR/MR that cites the run's task (work done outside the Studio), e.g. to publish it. */
       fromTaskPullRequest: z.boolean().default(false),
+      /** Model for this step only (e.g. Opus for a one-off survey); null uses the agent's. */
+      model: z.enum(['sonnet', 'opus', 'haiku']).nullable().default(null),
       /** Extra instructions for this step, on top of the agent's role. */
       instructions: z.string().max(10_000).default(''),
       /** When this step fails, sends the report back to an earlier step and runs again from there. */

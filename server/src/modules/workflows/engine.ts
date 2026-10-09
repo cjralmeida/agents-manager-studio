@@ -10,7 +10,7 @@ import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-r
 import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
-import { boardContext, moveAgentTask } from '../boards/service.js';
+import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
@@ -377,6 +377,19 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       return fail(errorText(error));
     }
     if (!pullRequest) return fail(`Nenhum PR/MR aberto cita a tarefa "${task.title}". Peça para citar a tarefa na descrição (ex.: "Closes #${task.number}").`);
+    // Work done outside the Studio is only published when it targets the project's base branch (never "master" or "hom").
+    const { baseBranch } = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { baseBranch: true } });
+    if (baseBranch && pullRequest.baseBranch !== baseBranch) {
+      const notice = [
+        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '',
+        `O PR/MR ${pullRequest.url} aponta para \`${pullRequest.baseBranch}\`, mas este projeto só publica a partir de \`${baseBranch}\`. Nada foi mesclado.`,
+        `Abra (ou redirecione) o PR/MR para \`${baseBranch}\` e mova a tarefa de novo para a coluna de validação.`,
+      ].join('\n');
+      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
+      return fail(`O PR/MR da tarefa aponta para "${pullRequest.baseBranch}"; o projeto só aceita "${baseBranch}". A tarefa voltou para "A fazer" com o aviso.`);
+    }
   }
 
   let sourceAgentId: string | undefined;
@@ -405,7 +418,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       projectId: projectId ?? null,
       prompt,
       title: `${step.name}: ${task?.title ?? run.title}`.slice(0, 120),
-      model: profile.model as AgentModel,
+      model: (step.model ?? profile.model) as AgentModel,
       workflowRunId: run.id,
       autoConclude: true,
       confirmHighUsage: true,

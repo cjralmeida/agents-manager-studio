@@ -7,6 +7,8 @@ export interface WorkspaceSettingsData {
   agentAccountId: string | null;
   /** Render account used for deploys (services per project are set apart). */
   renderAccountId: string | null;
+  /** ClickUp account agents read tasks from. */
+  clickupAccountId: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }
@@ -52,6 +54,7 @@ async function readSettings(db: Tx, workspaceId: string): Promise<WorkspaceSetti
   return {
     agentAccountId: settings?.agentAccountId ?? null,
     renderAccountId: settings?.renderAccountId ?? null,
+    clickupAccountId: settings?.clickupAccountId ?? null,
     gitAccountIds: links.map((link) => link.gitAccountId),
     enabledSkillIds: settings?.enabledSkillIds ?? [],
   };
@@ -61,6 +64,7 @@ async function writeSettings(tx: Tx, workspaceId: string, settings: WorkspaceSet
   const data = {
     agentAccountId: settings.agentAccountId,
     renderAccountId: settings.renderAccountId,
+    clickupAccountId: settings.clickupAccountId ?? null,
     enabledSkillIds: settings.enabledSkillIds,
   };
   await tx.workspaceSettings.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
@@ -74,6 +78,10 @@ async function validateSettings(ownerId: string, input: WorkspaceSettingsData) {
   if (input.agentAccountId) {
     const exists = await prisma.agentAccount.count({ where: { id: input.agentAccountId, ownerId } });
     if (!exists) throw new HttpError(422, 'Conta de agente não encontrada.');
+  }
+
+  if (input.clickupAccountId && !(await prisma.clickupAccount.count({ where: { id: input.clickupAccountId, ownerId } }))) {
+    throw new HttpError(422, 'Conta do ClickUp não encontrada.');
   }
 
   if (input.renderAccountId && !(await prisma.renderAccount.count({ where: { id: input.renderAccountId, ownerId } }))) {

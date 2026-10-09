@@ -24,6 +24,8 @@ export interface AgentStep {
   maxParallel: number;
   continueFromPrevious: boolean;
   fromTaskPullRequest: boolean;
+  /** Model for this step only; null uses the agent's. */
+  model: 'sonnet' | 'opus' | 'haiku' | null;
   instructions: string;
   onFailure: { retryStepId: string; maxAttempts: number } | null;
 }

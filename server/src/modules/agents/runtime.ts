@@ -66,6 +66,9 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   if (tools.includes('board')) {
     lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
   }
+  if (tools.includes('clickup_read')) {
+    lines.push('- Use studio_clickup_hierarchy, studio_clickup_list_tasks e studio_clickup_get_task para LER tarefas do ClickUp (somente leitura; nada é alterado lá).');
+  }
   if (tools.includes('render_read') && !tools.includes('render')) {
     lines.push('- Use studio_render_environments para as URLs de homologação dos projetos e studio_render_logs para os logs deles (só leitura).');
   }

@@ -1,4 +1,5 @@
 import { HttpError } from '../../lib/errors.js';
+import { type GuardedProject, assertMergeTarget } from './branch-guard.js';
 import type { RemoteInfo } from './remote.js';
 
 export interface PullRequestInput {
@@ -148,24 +149,39 @@ async function mergeGitLab(input: MergeInput) {
 
 export type PullRequestState = 'open' | 'merged' | 'closed';
 
-/** Whether a PR/MR is still open, merged or closed without merging. */
-export async function pullRequestState(input: MergeInput): Promise<PullRequestState> {
+/** Whether a PR/MR is open, merged or closed, and the branch it merges into, as the provider says. */
+export async function pullRequestInfo(input: MergeInput): Promise<{ state: PullRequestState; target: string }> {
   if (input.provider === 'GITHUB') {
     const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
     const [owner, repo] = input.remote.path.split('/');
-    const response = await api<{ state?: string; merged?: boolean; message?: string }>(
+    const response = await api<{ state?: string; merged?: boolean; message?: string; base?: { ref?: string } }>(
       `${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`,
       { headers: { Authorization: `Bearer ${input.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agents-manager-studio' } },
     );
     if (response.status !== 200) throw new HttpError(502, `GitHub: ${response.body.message ?? `erro ${response.status}`}`);
-    if (response.body.merged) return 'merged';
-    return response.body.state === 'open' ? 'open' : 'closed';
+    const state = response.body.merged ? 'merged' : response.body.state === 'open' ? 'open' : 'closed';
+    return { state, target: response.body.base?.ref ?? '' };
   }
   const projectUrl = `https://${input.remote.host}/api/v4/projects/${encodeURIComponent(input.remote.path)}`;
-  const response = await api<{ state?: string; message?: unknown }>(`${projectUrl}/merge_requests/${input.number}`, {
+  const response = await api<{ state?: string; message?: unknown; target_branch?: string }>(`${projectUrl}/merge_requests/${input.number}`, {
     headers: { 'PRIVATE-TOKEN': input.token },
   });
   if (response.status !== 200) throw new HttpError(502, `GitLab: ${JSON.stringify(response.body.message ?? `erro ${response.status}`)}`);
-  if (response.body.state === 'merged') return 'merged';
-  return response.body.state === 'opened' ? 'open' : 'closed';
+  const state = response.body.state === 'merged' ? 'merged' : response.body.state === 'opened' ? 'open' : 'closed';
+  return { state, target: response.body.target_branch ?? '' };
+}
+
+export async function pullRequestState(input: MergeInput): Promise<PullRequestState> {
+  return (await pullRequestInfo(input)).state;
+}
+
+/**
+ * The only way agents' work is merged: the PR/MR must target the allowed base (checked on the provider right before
+ * merging, so a PR retargeted to "master" is refused).
+ */
+export async function mergeIntoBase(input: MergeInput & { project: GuardedProject; expectedBase: string }) {
+  const label = `${input.provider === 'GITHUB' ? 'O PR #' : 'O MR !'}${input.number}`;
+  const { target } = await pullRequestInfo(input);
+  assertMergeTarget(input.project, input.expectedBase, target, label);
+  return mergePullRequest(input);
 }

@@ -5,6 +5,7 @@ import { getAgent, listAgentEvents, listAgents } from '../agents/service.js';
 import { PROPOSAL_KINDS, type ProposalKind, createProposal } from '../assistant/proposals.js';
 import { listAgentAccounts } from '../agent-accounts/service.js';
 import { boardContext, detectBoards, hasBoard } from '../boards/service.js';
+import { listClickupAccounts } from '../clickup/service.js';
 import { listGitAccounts } from '../git-accounts/service.js';
 import { getRenderSettings, listAvailableServices, listRenderAccounts } from '../render/service.js';
 import { listSkills } from '../skills/service.js';
@@ -22,7 +23,7 @@ async function context(workspaceId: string) {
     where: { id: workspaceId },
     include: { projects: { where: { missingAt: null }, orderBy: { name: 'asc' } }, settings: true },
   });
-  const [linked, profiles, workflows, render, settings, claudeAccounts, gitAccounts, renderAccounts, skills] = await Promise.all([
+  const [linked, profiles, workflows, render, settings, claudeAccounts, gitAccounts, renderAccounts, skills, clickupAccounts] = await Promise.all([
     hasBoard(workspaceId),
     listAgentProfiles(workspaceId),
     listWorkflows(workspaceId),
@@ -32,6 +33,7 @@ async function context(workspaceId: string) {
     listGitAccounts(workspace.ownerId),
     listRenderAccounts(workspace.ownerId),
     listSkills(),
+    listClickupAccounts(workspace.ownerId),
   ]);
   const board = linked ? await boardContext(workspaceId).catch(() => null) : null;
   const projectName = (id: string) => workspace.projects.find((project) => project.id === id)?.name ?? id;
@@ -44,6 +46,7 @@ async function context(workspaceId: string) {
       claude: claudeAccounts.map((account) => ({ id: account.id, label: account.label })),
       git: gitAccounts.map((account) => ({ id: account.id, provider: account.provider, host: account.host, username: account.username, label: account.label })),
       render: renderAccounts.map((account) => ({ id: account.id, label: account.label, owner: account.ownerName })),
+      clickup: clickupAccounts.map((account) => ({ id: account.id, label: account.label, user: account.username })),
     },
     skills: skills.map((skill) => ({ id: skill.id, name: skill.name })),
     projects: workspace.projects.map((project) => ({

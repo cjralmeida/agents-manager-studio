@@ -4,7 +4,7 @@ import type { DeployEnvironment, Deployment, RenderAccount } from '../../generat
 import { secretHint } from '../../lib/crypto.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
-import { mergePullRequest } from '../agents/pull-requests.js';
+import { mergeIntoBase } from '../agents/pull-requests.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { createRenderClient } from './api.js';
@@ -215,11 +215,16 @@ async function runDeploy(id: string) {
       const number = pullRequestNumber(deployment.prUrl);
       if (!remote || !number) throw new HttpError(422, 'Não foi possível identificar o PR/MR para o merge.');
       const account = await findWorkspaceGitAccount(deployment.workspaceId, [remoteHostname(remote), remote.host]);
-      commitId = await mergePullRequest({
+      const agent = deployment.agentId ? await prisma.agent.findUnique({ where: { id: deployment.agentId } }) : null;
+      const expectedBase = agent?.baseBranch ?? project.baseBranch;
+      if (!expectedBase) throw new HttpError(422, 'Não foi possível saber para qual branch o PR/MR pode ser mesclado.');
+      commitId = await mergeIntoBase({
         provider: account.provider as 'GITHUB' | 'GITLAB',
         remote,
         token: secrets.decrypt(account.tokenEncrypted),
         number,
+        project,
+        expectedBase,
       });
     }
 

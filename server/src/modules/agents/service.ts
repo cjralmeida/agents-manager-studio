@@ -11,7 +11,8 @@ import { pullRequestNumber } from '../render/status.js';
 import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
-import { mergePullRequest, openPullRequest, pullRequestState } from './pull-requests.js';
+import { assertPushBranch, assertWorkBase } from './branch-guard.js';
+import { mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
@@ -222,6 +223,8 @@ export async function launchAgent(input: LaunchAgentInput) {
   if (!baseBranch) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
+  // With a base branch set on the project, agents work on nothing else (e.g. never "master" or "hom").
+  if (project) assertWorkBase(project, baseBranch);
 
   const task = input.taskItemId ? await taskForAgent(workspaceId, input.taskItemId) : null;
   const prompt = input.prompt.trim();
@@ -516,6 +519,7 @@ async function finalizeInBackground(id: string) {
     const provider = account.provider as 'GITHUB' | 'GITLAB';
 
     const body = await pullRequestBody(agent, remote);
+    assertPushBranch(agent.project!, agent);
 
     await commitAndPush({
       workdir: agent.workdir,
@@ -534,7 +538,7 @@ async function finalizeInBackground(id: string) {
     const prUrl = await openOrReusePullRequest(agent, { provider, remote, token, body });
 
     if (agent.autoMerge) {
-      await mergeOwnPullRequest(agent, { provider, remote, token, prUrl });
+      await mergeOwnPullRequest(agent, { provider, remote, token, prUrl, project: agent.project! });
       return;
     }
 
@@ -609,6 +613,7 @@ export async function publishAgentWork(agentId: string) {
   const provider = account.provider as 'GITHUB' | 'GITLAB';
   const pushUrl = authenticatedPushUrl(remote, provider, token);
   const body = await pullRequestBody(agent, remote);
+  assertPushBranch(agent.project!, agent);
 
   await commitAndPush({
     workdir: agent.workdir,
@@ -641,13 +646,13 @@ export async function publishAgentWork(agentId: string) {
  */
 async function mergeOwnPullRequest(
   agent: Agent,
-  input: { provider: 'GITHUB' | 'GITLAB'; remote: RemoteInfo; token: string; prUrl: string },
+  input: { provider: 'GITHUB' | 'GITLAB'; remote: RemoteInfo; token: string; prUrl: string; project: { name: string; baseBranch: string | null } },
 ) {
   const result = (agent.result ?? {}) as Prisma.JsonObject;
   const number = pullRequestNumber(input.prUrl);
   try {
     if (!number) throw new HttpError(422, 'Não foi possível identificar o número do PR/MR.');
-    await mergePullRequest({ provider: input.provider, remote: input.remote, token: input.token, number });
+    await mergeIntoBase({ provider: input.provider, remote: input.remote, token: input.token, number, project: input.project, expectedBase: agent.baseBranch });
     await prisma.agent.update({
       where: { id: agent.id },
       data: { status: 'COMPLETED', prUrl: input.prUrl, finishedAt: new Date(), lastActivityAt: new Date() },

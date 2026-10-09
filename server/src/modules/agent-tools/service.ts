@@ -5,6 +5,7 @@ import { boardContext, createTask, editItem, moveItem, setItemField } from '../b
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
 import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
+import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
 import { runStudioTool } from './studio.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -23,6 +24,7 @@ export const AGENT_TOOL_NAMES = [
   'studio_board_options',
   'studio_render_services',
   ...RENDER_TOOL_NAMES,
+  ...CLICKUP_TOOL_NAMES,
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -102,6 +104,11 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     const summary = text(args.summary, 20_000) ?? '';
     await mergeResult(agentId, { status, summary, details: text(args.details) });
     return { ok: true, message: 'Resultado registrado. Encerre com um resumo curto.' };
+  }
+
+  if (name.startsWith('clickup_')) {
+    if (!agent.tools.includes('clickup_read')) throw new HttpError(403, 'Este agente não tem acesso ao ClickUp.');
+    return runClickupTool(agent, name as ClickupToolName, args);
   }
 
   if (name.startsWith('render_')) {

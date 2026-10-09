@@ -57,6 +57,7 @@ const payloadSchemas: Record<ProposalKind, z.ZodType> = {
       agentAccountId: z.uuid().nullable().optional(),
       gitAccountIds: z.array(z.uuid()).max(20).optional(),
       renderAccountId: z.uuid().nullable().optional(),
+      clickupAccountId: z.uuid().nullable().optional(),
       enabledSkillIds: z.array(z.string().min(1).max(300)).max(200).optional(),
     })
     .strict()

@@ -18,6 +18,7 @@ const agentStep = (profileId: string): AgentStep => ({
   maxParallel: 1,
   continueFromPrevious: false,
   fromTaskPullRequest: false,
+  model: null,
   instructions: '',
   onFailure: null,
 });
@@ -343,6 +344,19 @@ function StepEditor({ step, index, steps, profiles, onChange, onKindChange, onMo
               />
               Publicar o PR/MR da tarefa (feito fora do Studio)
             </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted">Modelo:</span>
+            <Select
+              className="w-auto py-0.5"
+              value={step.model ?? ''}
+              onChange={(event) => onChange({ model: (event.target.value || null) as AgentStep['model'] })}
+            >
+              <option value="">o do agente</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="opus">Opus</option>
+              <option value="haiku">Haiku</option>
+            </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted">Se falhar:</span>
