@@ -63,7 +63,11 @@ export function AgentProfilePage() {
         <Link to={`/workspaces/${workspaceId}`} className="text-sm text-muted hover:text-white">
           ← {workspace.data.name}
         </Link>
-        <header className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <header
+          className={`mt-3 flex flex-wrap items-start justify-between gap-4 rounded-lg border bg-panel p-4 ${
+            summary?.state === 'working' ? 'glow-working' : 'border-border'
+          }`}
+        >
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-xl font-semibold">{profile?.name ?? 'Agentes avulsos'}</h1>

@@ -51,7 +51,11 @@ export function AgentPage() {
         ← {data.workspaceName} / {data.profileName ?? 'Agentes avulsos'}
       </Link>
 
-      <header className="mt-3 flex flex-wrap items-start justify-between gap-4">
+      <header
+        className={`mt-3 flex flex-wrap items-start justify-between gap-4 rounded-lg border bg-panel p-4 ${
+          ['PREPARING', 'RUNNING', 'FINALIZING'].includes(data.status) ? 'glow-working' : 'border-border'
+        }`}
+      >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-xl font-semibold">{data.title}</h1>
