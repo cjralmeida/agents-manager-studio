@@ -77,6 +77,8 @@ services:
       # One isolated clone per agent; also mounted into each agent container.
       - ${AGENTS_HOST_DIR}:/data/agents
       - ${CLAUDE_SKILLS_HOST_DIR:?set CLAUDE_SKILLS_HOST_DIR in .env}:/data/claude-skills:ro
+      # Requests to the Windows helper (studio.ps1), which changes the central folder and recreates the server.
+      - ./host-helper:/data/host-helper
     depends_on:
       postgres:
         condition: service_healthy

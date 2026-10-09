@@ -19,6 +19,16 @@ cp .env.example .env   # preencha os valores
 docker compose up -d --build
 ```
 
+Depois disso, o jeito do dia a dia é o `studio.ps1` (PowerShell). Ele roda `docker compose up -d` e deixa em segundo plano o **ajudante do Windows**, que troca a pasta central quando você pede em **Configurações → Geral**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\studio.ps1            # sobe o Studio e o ajudante
+powershell -ExecutionPolicy Bypass -File .\studio.ps1 -Install   # também inicia o ajudante com o Windows
+powershell -ExecutionPolicy Bypass -File .\studio.ps1 -Uninstall # tira do Inicializar e para o ajudante
+```
+
+Use `-Dev` em todos para o modo de desenvolvimento. O `-Install` só cria um atalho na pasta Inicializar do seu usuário, sem precisar de administrador.
+
 ## Desenvolvimento (hot reload)
 
 ```sh
@@ -59,7 +69,7 @@ Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
   - Os privados usam o token da conta apenas durante o clone; o `origin` fica com a URL sem credenciais.
   - O clone roda em segundo plano, e o projeto aparece sozinho quando termina.
 - **Permissões:** o Studio só escreve na pasta central, porque ela é montada com escrita no server, e não no disco inteiro.
-- **Trocar a pasta central:** mude `PROJECTS_HOST_DIR` no `.env`, rode `docker compose up -d` e releia o diretório. **Configurações → Geral** mostra a pasta atual.
+- **Trocar a pasta central:** em **Configurações → Geral**, informe a pasta (e as pastas ignoradas) e clique em aplicar. O ajudante do Windows (`studio.ps1`) confere se a pasta existe e não é a raiz de um disco nem pasta do sistema, atualiza o `.env` e recria o server. Enquanto isso, o Studio mostra uma tela de espera e relê os workspaces quando volta. Sem o ajudante rodando, a tela mostra o comando para colar no PowerShell. Pedidos, estado e log do ajudante ficam em `host-helper/`, que não é versionada.
 
 ## Quadro de tarefas
 

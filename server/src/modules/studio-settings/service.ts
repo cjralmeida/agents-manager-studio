@@ -10,7 +10,7 @@ export interface StudioSettings {
 
 const DEFAULTS: StudioSettings = { githubBoardTemplateUrl: null };
 
-/** Set in .env (PROJECTS_HOST_DIR, SCAN_EXCLUDE): changing the folder means remounting it, so it is read-only here. */
+/** Set in .env (PROJECTS_HOST_DIR, SCAN_EXCLUDE); changing it remounts the folder, done by the Windows helper (host-helper.ts). */
 function projectsRoot() {
   return { hostPath: config.projectsHostDir, excluded: config.scanExclude };
 }

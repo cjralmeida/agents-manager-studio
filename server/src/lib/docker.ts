@@ -147,6 +147,17 @@ export async function inspectContainer(id: string): Promise<ContainerState | nul
   }
 }
 
+/** Labels of a container (e.g. the compose working dir of the server itself); null when it does not exist. */
+export async function containerLabels(id: string): Promise<Record<string, string> | null> {
+  try {
+    const info = await call<{ Config: { Labels: Record<string, string> | null } }>('GET', `/containers/${id}/json`);
+    return info.Config.Labels ?? {};
+  } catch (error) {
+    if (error instanceof DockerError && error.statusCode === 404) return null;
+    throw error;
+  }
+}
+
 export async function containerLogs(id: string, tail = 200) {
   const logs = await request('GET', `/containers/${id}/logs?stdout=1&stderr=1&tail=${tail}`);
   return demuxLogs(logs.body);

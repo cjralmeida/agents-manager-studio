@@ -11,3 +11,6 @@ server/src/generated/
 .idea/
 .vscode/
 *.log
+
+# Requests and state of the Windows helper (studio.ps1).
+host-helper/

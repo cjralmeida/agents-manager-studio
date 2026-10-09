@@ -41,6 +41,8 @@ const envSchema = z.object({
   AGENT_LAUNCH_CPU_PERCENT: z.coerce.number().min(1).max(100).default(85),
   // Workflows stop starting agents while the Claude 5-hour window is at or above this percentage.
   WORKFLOW_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
+  // Folder shared with the Windows helper (studio.ps1): requests in, heartbeat and results out.
+  HOST_HELPER_DIR: z.string().min(1).default('/data/host-helper'),
   // Render API base; overridable to point tests at a fake server.
   RENDER_API_URL: z.url().default('https://api.render.com/v1'),
 });
@@ -75,6 +77,7 @@ function loadConfig() {
     launchMemoryPercent: env.AGENT_LAUNCH_MEMORY_PERCENT,
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
     workflowPlanLimitPercent: env.WORKFLOW_PLAN_LIMIT_PERCENT,
+    hostHelperDir: env.HOST_HELPER_DIR,
     renderApiUrl: env.RENDER_API_URL.replace(/\/+$/, ''),
   };
 }
