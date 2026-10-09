@@ -198,8 +198,13 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     if (trigger.type !== 'board_task') continue;
 
     const columnId = trigger.columnId ?? statusMap.todo ?? null;
-    const candidates = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId }).filter(
-      (item) => !taken.has(item.id) && projectOf(item) && item.columnId !== statusMap.blocked,
+    // A task sent back after its run (e.g. with a homologation report) keeps the assignee the run gave it.
+    const candidates = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId, onlyUnassigned: false }).filter(
+      (item) =>
+        !taken.has(item.id) &&
+        projectOf(item) &&
+        item.columnId !== statusMap.blocked &&
+        (!trigger.onlyUnassigned || item.assignees.length === 0 || lastRun.has(item.id)),
     );
     if (candidates.length === 0) {
       await report(workflow, columnId ? 'Vigiando: nenhuma tarefa nova.' : 'Parado: o quadro não tem coluna "A fazer" definida.');
