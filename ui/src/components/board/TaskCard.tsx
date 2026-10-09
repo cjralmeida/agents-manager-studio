@@ -10,11 +10,13 @@ interface TaskCardProps {
   agent: Agent | undefined;
   onOpen: () => void;
   label?: string | null;
+  /** A workflow run is processing the task (any step, not only the one linked to it). */
+  inWorkflow?: boolean;
 }
 
-export function TaskCard({ board, item, agent, onOpen, label }: TaskCardProps) {
+export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false }: TaskCardProps) {
   const waiting = agent?.status === 'WAITING_INPUT';
-  const working = agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status);
+  const working = inWorkflow || (agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status));
   const values = board.fields.flatMap((field) => {
     const option = field.options.find((entry) => entry.id === item.fields[field.id]);
     return option ? [{ field, option }] : [];

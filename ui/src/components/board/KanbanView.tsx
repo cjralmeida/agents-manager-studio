@@ -13,11 +13,13 @@ interface KanbanViewProps<T extends BoardItem> {
   onMove: (item: T, columnId: string) => void;
   /** Extra line on each card (the workspace, on the board of all workspaces). */
   label?: (item: T) => string | null;
+  /** Whether an active workflow run is processing the task. */
+  inWorkflow?: (item: T) => boolean;
 }
 
 const NO_STATUS = '__none__';
 
-export function KanbanView<T extends BoardItem>({ board, items, agents, onOpen, onMove, label }: KanbanViewProps<T>) {
+export function KanbanView<T extends BoardItem>({ board, items, agents, onOpen, onMove, label, inWorkflow }: KanbanViewProps<T>) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const blockedColumn = board.statusMap.blocked;
   const withoutStatus = items.filter((item) => !board.columns.some((column) => column.id === item.columnId));
@@ -67,7 +69,15 @@ export function KanbanView<T extends BoardItem>({ board, items, agents, onOpen, 
             </header>
             <div className="flex min-h-24 flex-col gap-2 p-2">
               {sortItems(board, columnItems, agents).map((item) => (
-                <TaskCard key={item.id} board={board} item={item} agent={agents.get(item.id)} onOpen={() => onOpen(item)} label={label?.(item)} />
+                <TaskCard
+                  key={item.id}
+                  board={board}
+                  item={item}
+                  agent={agents.get(item.id)}
+                  onOpen={() => onOpen(item)}
+                  label={label?.(item)}
+                  inWorkflow={inWorkflow?.(item)}
+                />
               ))}
             </div>
           </section>
