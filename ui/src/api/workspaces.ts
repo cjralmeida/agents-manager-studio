@@ -20,6 +20,8 @@ export interface Project {
   isGitRepo: boolean;
   gitRemoteUrl: string | null;
   gitProvider: GitProvider | null;
+  /** Branch agents start from and open PRs/MRs into; null: the folder's current branch. */
+  baseBranch: string | null;
   isMissing: boolean;
 }
 
@@ -190,5 +192,14 @@ export function useCreateProject(workspaceId: string) {
     mutationFn: (input: NewProjectInput) =>
       api.post<{ projectId: string | null; folder: string; remoteUrl: string | null; remotePath: string | null; remoteVisibility: 'private' | 'public' | null }>(`/workspaces/${workspaceId}/projects`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKeys.detail(workspaceId) }),
+  });
+}
+
+export function useSetProjectBaseBranch(workspaceId: string) {
+  const invalidate = useInvalidateWorkspaces();
+  return useMutation({
+    mutationFn: (input: { projectId: string; baseBranch: string | null }) =>
+      api.put<Project>(`/workspaces/${workspaceId}/projects/${input.projectId}/base-branch`, { baseBranch: input.baseBranch }),
+    onSuccess: invalidate,
   });
 }

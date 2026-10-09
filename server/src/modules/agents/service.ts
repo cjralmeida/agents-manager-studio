@@ -4,7 +4,7 @@ import { type Agent, type AgentProfile, type AgentStatus, Prisma } from '../../g
 import { imageExists, inspectContainer, removeContainer, removeVolume } from '../../lib/docker.js';
 import { config } from '../../config.js';
 import { HttpError, notFound } from '../../lib/errors.js';
-import { toContainerPath } from '../../lib/paths.js';
+import { toContainerPath, toHostPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { moveAgentTask, taskForAgent } from '../boards/service.js';
 import { pullRequestNumber } from '../render/status.js';
@@ -216,7 +216,9 @@ export async function launchAgent(input: LaunchAgentInput) {
   // Continuing another agent: same branch and PR (its base stays the PR base).
   const baseBranch = !project
     ? '-'
-    : (source?.baseBranch ?? input.pullRequest?.baseBranch ?? (input.baseBranch?.trim() || (await currentBranch(cloneFrom!))));
+    : (source?.baseBranch ??
+      input.pullRequest?.baseBranch ??
+      (input.baseBranch?.trim() || project.baseBranch || (await currentBranch(cloneFrom!))));
   if (!baseBranch) {
     throw new HttpError(422, 'O projeto está sem branch atual (HEAD destacado). Informe a branch base.');
   }
@@ -240,6 +242,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       output,
       // Órbi reads everything and proposes changes; it only reads the board.
       tools: isAssistant ? ['studio', 'board_read'] : (profile?.tools ?? []),
+      contextProjectIds: isAssistant ? [] : (profile?.contextProjectIds ?? []),
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       autoMerge: input.autoMerge ?? profile?.autoMerge ?? false,
       baseBranch,
@@ -375,6 +378,7 @@ export async function ensureContainer(agentId: string) {
 
     const { containerId, secretHash } = await startAgentContainer({
       agent,
+      contextProjects: await contextProjectsOf(agent),
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
       env: await testServicesEnv(agent.id, Boolean(agent.projectId)),
@@ -384,6 +388,24 @@ export async function ensureContainer(agentId: string) {
   } finally {
     starting.delete(agentId);
   }
+}
+
+/** Reference projects of an execution, as mounted read-only at /context/<name>. */
+async function contextProjectsOf(agent: Agent) {
+  if (agent.contextProjectIds.length === 0) return [];
+  const projects = await prisma.project.findMany({
+    where: { id: { in: agent.contextProjectIds }, workspaceId: agent.workspaceId, missingAt: null },
+    include: { workspace: { select: { name: true } } },
+    orderBy: { name: 'asc' },
+  });
+  return Promise.all(
+    projects.map(async (project) => ({
+      name: project.name,
+      hostPath: toHostPath(project.workspace.name, project.name),
+      branch: project.isGitRepo ? await currentBranch(toContainerPath(project.workspace.name, project.name)) : null,
+      baseBranch: project.baseBranch,
+    })),
+  );
 }
 
 function wake(agentId: string) {

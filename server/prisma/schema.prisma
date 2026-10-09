@@ -48,12 +48,13 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sessions       Session[]
-  settings       UserSetting[]
-  workspaces     Workspace[]
-  gitAccounts    GitAccount[]
-  agentAccounts  AgentAccount[]
-  renderAccounts RenderAccount[]
+  sessions        Session[]
+  settings        UserSetting[]
+  workspaces      Workspace[]
+  gitAccounts     GitAccount[]
+  agentAccounts   AgentAccount[]
+  renderAccounts  RenderAccount[]
+  clickupAccounts ClickupAccount[]
 
   @@map("users")
 }
@@ -123,6 +124,8 @@ model Project {
   /// "origin" remote, without embedded credentials.
   gitRemoteUrl String?      @map("git_remote_url")
   gitProvider  GitProvider? @map("git_provider")
+  /// Branch agents start from and open PRs/MRs into (e.g. the homologation branch); null = the folder's current branch.
+  baseBranch   String?      @map("base_branch")
   missingAt    DateTime?    @map("missing_at") @db.Timestamptz(3)
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -195,21 +198,25 @@ model AgentAccount {
 }
 
 model WorkspaceSettings {
-  workspaceId     String   @id @map("workspace_id") @db.Uuid
-  agentAccountId  String?  @map("agent_account_id") @db.Uuid
+  workspaceId      String   @id @map("workspace_id") @db.Uuid
+  agentAccountId   String?  @map("agent_account_id") @db.Uuid
   /// Render account used to deploy this workspace's projects.
-  renderAccountId String?  @map("render_account_id") @db.Uuid
+  renderAccountId  String?  @map("render_account_id") @db.Uuid
+  /// ClickUp account agents read tasks from (read-only tools).
+  clickupAccountId String?  @map("clickup_account_id") @db.Uuid
   /// Skill ids (path relative to the skills folder) enabled for agents of this workspace.
-  enabledSkillIds String[] @default([]) @map("enabled_skill_ids")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  enabledSkillIds  String[] @default([]) @map("enabled_skill_ids")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agentAccount  AgentAccount?  @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
-  renderAccount RenderAccount? @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentAccount   AgentAccount?   @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
+  renderAccount  RenderAccount?  @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
+  clickupAccount ClickupAccount? @relation(fields: [clickupAccountId], references: [id], onDelete: SetNull)
 
   @@index([agentAccountId])
   @@index([renderAccountId])
+  @@index([clickupAccountId])
   @@map("workspace_settings")
 }
 
@@ -263,61 +270,63 @@ enum AgentInboxKind {
 
 /// A coding agent working on an isolated clone of a project.
 model Agent {
-  id              String      @id @default(uuid(7)) @db.Uuid
-  workspaceId     String      @map("workspace_id") @db.Uuid
+  id                String      @id @default(uuid(7)) @db.Uuid
+  workspaceId       String      @map("workspace_id") @db.Uuid
   /// Null for agents that do not work on a repository (they get an empty work folder).
-  projectId       String?     @map("project_id") @db.Uuid
-  kind            AgentKind   @default(TASK)
+  projectId         String?     @map("project_id") @db.Uuid
+  kind              AgentKind   @default(TASK)
   /// Workspace agent (profile) this execution belongs to, if any.
-  profileId       String?     @map("profile_id") @db.Uuid
+  profileId         String?     @map("profile_id") @db.Uuid
   /// Role instructions of the profile, copied at launch and added to the system prompt.
-  instructions    String      @default("")
-  output          AgentOutput @default(PULL_REQUEST)
+  instructions      String      @default("")
+  output            AgentOutput @default(PULL_REQUEST)
   /// Studio tools the agent may call (e.g. "board").
-  tools           String[]    @default([])
+  tools             String[]    @default([])
+  /// Projects mounted read-only at /context/<name> (from the profile when launched).
+  contextProjectIds String[]    @default([]) @map("context_project_ids")
   /// Concludes by itself when it finishes (PR/MR or result) instead of waiting for the user.
-  autoConclude    Boolean     @default(false) @map("auto_conclude")
+  autoConclude      Boolean     @default(false) @map("auto_conclude")
   /// Copied from the workspace agent: merge the PR/MR as soon as it is opened.
-  autoMerge       Boolean     @default(false) @map("auto_merge")
+  autoMerge         Boolean     @default(false) @map("auto_merge")
   /// Redis database index (1-15) held for its tests while it is not finished; see test-services.ts.
-  testRedisDb     Int?        @map("test_redis_db")
+  testRedisDb       Int?        @map("test_redis_db")
   /// Outcome reported by the agent (studio_report_result) or collected by the Studio (created tasks).
-  result          Json?
-  title           String
+  result            Json?
+  title             String
   /// Model alias passed to Claude Code (sonnet, opus, haiku).
-  model           String
-  status          AgentStatus @default(PREPARING)
-  baseBranch      String      @map("base_branch")
+  model             String
+  status            AgentStatus @default(PREPARING)
+  baseBranch        String      @map("base_branch")
   /// Commit the agent branch started from; the review diff is computed against it.
-  baseCommit      String?     @map("base_commit")
-  branch          String
+  baseCommit        String?     @map("base_commit")
+  branch            String
   /// Clone folder relative to the agents root (e.g. GlobalFarm/agro-gf-01a2b3c4).
-  workdir         String
+  workdir           String
   /// Claude Code session, used to resume after the container stops.
-  sessionId       String?     @map("session_id")
+  sessionId         String?     @map("session_id")
   /// Set while a container is running for this agent.
-  containerId     String?     @map("container_id")
+  containerId       String?     @map("container_id")
   /// SHA-256 of the secret the running container uses to call the server.
-  secretHash      String?     @map("secret_hash")
+  secretHash        String?     @map("secret_hash")
   /// Question waiting for the user (AskUserQuestion input).
-  pendingQuestion Json?       @map("pending_question")
-  prUrl           String?     @map("pr_url")
+  pendingQuestion   Json?       @map("pending_question")
+  prUrl             String?     @map("pr_url")
   /// Board item the agent is solving (see TaskBoard); moved across columns as the agent progresses.
-  taskItemId      String?     @map("task_item_id")
+  taskItemId        String?     @map("task_item_id")
   /// Issue reference, e.g. GlobalFarm-Hub/automacoes#12 (null for draft items).
-  taskRef         String?     @map("task_ref")
-  taskUrl         String?     @map("task_url")
+  taskRef           String?     @map("task_ref")
+  taskUrl           String?     @map("task_url")
   /// Workflow run this execution belongs to, if any.
-  workflowRunId   String?     @map("workflow_run_id") @db.Uuid
+  workflowRunId     String?     @map("workflow_run_id") @db.Uuid
   /// Cumulative usage per model as last reported by the session; new reports are turned into AgentUsage deltas.
-  usageTotals     Json        @default("{}") @map("usage_totals")
+  usageTotals       Json        @default("{}") @map("usage_totals")
   /// Estimated cost (API list prices) of everything the agent used.
-  costUsd         Float       @default(0) @map("cost_usd")
-  errorMessage    String?     @map("error_message")
-  lastActivityAt  DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
-  finishedAt      DateTime?   @map("finished_at") @db.Timestamptz(3)
-  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  costUsd           Float       @default(0) @map("cost_usd")
+  errorMessage      String?     @map("error_message")
+  lastActivityAt    DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
+  finishedAt        DateTime?   @map("finished_at") @db.Timestamptz(3)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project     Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -469,24 +478,26 @@ model AgentUsage {
 
 /// A fixed agent of the workspace (e.g. "Documentador", "Testador"); each run of it is an Agent.
 model AgentProfile {
-  id           String      @id @default(uuid(7)) @db.Uuid
-  workspaceId  String      @map("workspace_id") @db.Uuid
-  name         String
-  description  String      @default("")
+  id                String      @id @default(uuid(7)) @db.Uuid
+  workspaceId       String      @map("workspace_id") @db.Uuid
+  name              String
+  description       String      @default("")
   /// Role instructions added to the system prompt of every execution.
-  instructions String      @default("")
-  model        String      @default("sonnet")
+  instructions      String      @default("")
+  model             String      @default("sonnet")
   /// Projects it may work on; empty means it works without a repository.
-  projectIds   String[]    @default([]) @map("project_ids")
-  output       AgentOutput @default(PULL_REQUEST)
+  projectIds        String[]    @default([]) @map("project_ids")
+  output            AgentOutput @default(PULL_REQUEST)
   /// Studio tools enabled (e.g. "board").
-  tools        String[]    @default([])
+  tools             String[]    @default([])
+  /// Projects the agent can read (mounted read-only, local folder as it is), e.g. code to document.
+  contextProjectIds String[]    @default([]) @map("context_project_ids")
   /// Concludes by itself when it finishes, without waiting for the user.
-  autoConclude Boolean     @default(false) @map("auto_conclude")
+  autoConclude      Boolean     @default(false) @map("auto_conclude")
   /// Merges its own PR/MR right after opening it (e.g. documentation the next workflow step reads).
-  autoMerge    Boolean     @default(false) @map("auto_merge")
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  autoMerge         Boolean     @default(false) @map("auto_merge")
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agents    Agent[]
@@ -709,4 +720,24 @@ model AgentVariable {
 
   @@unique([workspaceId, key])
   @@map("agent_variables")
+}
+
+/// ClickUp account (personal API token encrypted); agents only read tasks through it.
+model ClickupAccount {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  ownerId        String   @map("owner_id") @db.Uuid
+  label          String
+  tokenEncrypted String   @map("token_encrypted")
+  tokenHint      String   @map("token_hint")
+  /// ClickUp user the token belongs to, reported when it was checked.
+  username       String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspaceSettings WorkspaceSettings[]
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId])
+  @@map("clickup_accounts")
 }

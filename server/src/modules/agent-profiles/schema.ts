@@ -12,6 +12,8 @@ export const profileSchema = z
     instructions: z.string().max(20_000).default(''),
     model: z.enum(AGENT_MODELS).default('sonnet'),
     projectIds: z.array(z.uuid()).max(50).default([]),
+    /** Projects it can only read, mounted read-only as they are on disk (e.g. code to document). */
+    contextProjectIds: z.array(z.uuid()).max(20).default([]),
     output: z.enum(['PULL_REQUEST', 'RESULT']).default('PULL_REQUEST'),
     tools: z.array(z.enum(PROFILE_TOOLS)).default([]),
     autoConclude: z.boolean().default(false),

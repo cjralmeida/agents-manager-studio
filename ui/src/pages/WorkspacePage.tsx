@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router';
-import { useState } from 'react';
-import { type GitProvider, type Project, type WorkspaceDetail, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
+import { useEffect, useState } from 'react';
+import { type GitProvider, type Project, type WorkspaceDetail, useSetProjectBaseBranch, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { AgentProfilesTab } from '../components/agent-profiles/AgentProfilesTab';
@@ -102,12 +102,41 @@ function ProjectsTab({ workspace }: { workspace: WorkspaceDetail }) {
       </div>
       {form === 'new' && <NewProjectForm workspaceId={workspace.id} onClose={close} />}
       {form === 'clone' && <CloneRepositoryForm workspaceId={workspace.id} onClose={close} />}
-      <ProjectsTable projects={workspace.projects} />
+      <ProjectsTable workspaceId={workspace.id} projects={workspace.projects} />
     </div>
   );
 }
 
-function ProjectsTable({ projects }: { projects: Project[] }) {
+/** Branch agents start from and open PRs/MRs into; empty follows the folder's current branch. */
+function BaseBranchInput({ workspaceId, project }: { workspaceId: string; project: Project }) {
+  const [value, setValue] = useState(project.baseBranch ?? '');
+  const save = useSetProjectBaseBranch(workspaceId);
+  useEffect(() => setValue(project.baseBranch ?? ''), [project.baseBranch]);
+  const commit = () => {
+    if (value.trim() !== (project.baseBranch ?? '')) save.mutate({ projectId: project.id, baseBranch: value.trim() || null });
+  };
+  return (
+    <div>
+      <label className="sr-only" htmlFor={`base-${project.id}`}>
+        Branch base de {project.name}
+      </label>
+      <input
+        id={`base-${project.id}`}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => event.key === 'Enter' && (event.target as HTMLInputElement).blur()}
+        placeholder="branch atual da pasta"
+        title="Branch de onde os agentes partem e para onde abrem os PRs/MRs (ex.: a de homologação)"
+        className="w-40 rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs outline-none focus:border-accent"
+        disabled={save.isPending}
+      />
+      {save.error && <p className="mt-1 max-w-xs text-xs text-red-300">{save.error.message}</p>}
+    </div>
+  );
+}
+
+function ProjectsTable({ workspaceId, projects }: { workspaceId: string; projects: Project[] }) {
   if (projects.length === 0) {
     return <p className="mt-4 text-sm text-muted">Nenhum projeto nesta pasta.</p>;
   }
@@ -119,6 +148,7 @@ function ProjectsTable({ projects }: { projects: Project[] }) {
           <tr>
             <th className="px-4 py-2 font-medium">Projeto</th>
             <th className="px-4 py-2 font-medium">Repositório</th>
+            <th className="px-4 py-2 font-medium">Branch base</th>
             <th className="px-4 py-2 font-medium">Situação</th>
           </tr>
         </thead>
@@ -138,6 +168,7 @@ function ProjectsTable({ projects }: { projects: Project[] }) {
                 )}
                 {project.isGitRepo && !project.gitProvider && <span className="text-xs text-muted">Sem remote</span>}
               </td>
+              <td className="px-4 py-2">{project.isGitRepo && !project.isMissing && <BaseBranchInput workspaceId={workspaceId} project={project} />}</td>
               <td className="px-4 py-2">
                 {project.isMissing ? (
                   <Badge tone="warning">Pasta não encontrada</Badge>

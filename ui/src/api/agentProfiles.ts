@@ -17,6 +17,8 @@ export interface AgentProfile {
   model: AgentModel;
   /** Empty: works without a repository. */
   projectIds: string[];
+  /** Projects it only reads (mounted read-only as they are on disk). */
+  contextProjectIds: string[];
   output: AgentOutput;
   tools: ProfileTool[];
   autoConclude: boolean;
@@ -29,7 +31,7 @@ export interface AgentProfile {
 
 export type AgentProfileInput = Pick<
   AgentProfile,
-  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
+  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'contextProjectIds' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
 >;
 
 export const outputLabels: Record<AgentOutput, string> = {

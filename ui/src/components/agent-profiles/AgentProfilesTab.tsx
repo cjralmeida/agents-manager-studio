@@ -29,6 +29,7 @@ const empty: AgentProfileInput = {
   instructions: '',
   model: 'sonnet',
   projectIds: [],
+  contextProjectIds: [],
   output: 'PULL_REQUEST',
   tools: [],
   autoConclude: false,
@@ -107,6 +108,7 @@ export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) 
 function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: WorkspaceDetail; profile: AgentProfile; onEdit: () => void; onRun: () => void }) {
   const remove = useDeleteAgentProfile(workspace.id);
   const projectNames = profile.projectIds.map((id) => workspace.projects.find((project) => project.id === id)?.name ?? '?');
+  const contextNames = profile.contextProjectIds.map((id) => workspace.projects.find((project) => project.id === id)?.name ?? '?');
 
   const handleDelete = () => {
     if (window.confirm(`Excluir o agente "${profile.name}"? As execuções que ele já fez continuam existindo.`)) remove.mutate(profile.id);
@@ -130,6 +132,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         {profile.tools.includes('render_read') && <Badge>HOM leitura</Badge>}
         {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
         {profile.autoMerge && <Badge tone="success">merge automático</Badge>}
+        {contextNames.length > 0 && <Badge>lê: {contextNames.join(', ')}</Badge>}
       </div>
       {profile.instructions && <p className="mt-3 line-clamp-3 text-xs whitespace-pre-line text-gray-300">{profile.instructions}</p>}
       <p className="mt-auto pt-3 text-[11px] text-muted">
@@ -215,6 +218,20 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
         />
         <p className="text-xs text-muted">
           {withoutRepository ? 'Nenhum marcado: o agente trabalha sem repositório e entrega um resultado.' : 'Ao executar, você escolhe um destes projetos.'}
+        </p>
+      </div>
+
+      <div className="mt-4 max-w-2xl space-y-1">
+        <span className="text-xs font-medium text-muted">Projetos de consulta (só leitura)</span>
+        <MultiSelect
+          options={workspace.projects.filter((project) => !project.isMissing).map((project) => ({ value: project.id, label: project.name }))}
+          selected={form.contextProjectIds}
+          onChange={(next) => set('contextProjectIds', next)}
+          placeholder="Nenhum"
+        />
+        <p className="text-xs text-muted">
+          O agente lê a pasta como está no seu disco (inclusive arquivos fora do git), sem poder alterar. Útil para documentar ou planejar a partir
+          do código de outros projetos.
         </p>
       </div>
 

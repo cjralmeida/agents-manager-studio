@@ -36,7 +36,7 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind
   return [...new Set([...agent.tools, ...(agent.output === 'RESULT' || agent.kind === 'TASK' ? ['result'] : [])])];
 }
 
-function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null) {
+function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = []) {
   // Órbi has its own guide (always the current version, also for resumed conversations).
   if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
@@ -85,6 +85,19 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null)
       '- Para testes que precisam de banco, use SOMENTE TEST_DATABASE_URL (PostgreSQL vazio e exclusivo desta execução) e, se precisar de Redis, TEST_REDIS_URL. Nunca use outro banco ou serviço real nos testes.',
     );
   }
+  if (contextProjects.length > 0) {
+    lines.push(
+      '- Projetos de consulta, SOMENTE LEITURA (a pasta local como está no disco, incluindo arquivos fora do git): ' +
+        contextProjects
+          .map((project) => {
+            const branch = project.branch ? `branch atual "${project.branch}"` : 'sem git';
+            const warning = project.baseBranch && project.branch && project.branch !== project.baseBranch ? `; ATENÇÃO: a branch base do projeto é "${project.baseBranch}"` : '';
+            return `${contextMount(project.name)} (${branch}${warning})`;
+          })
+          .join(', ') +
+        '. Leia à vontade (git log/show/diff funcionam); não tente gravar nelas.',
+    );
+  }
   if (variableNames) {
     lines.push(
       `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Conectores → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
@@ -113,10 +126,24 @@ export interface StartAgentInput {
   env?: Record<string, string>;
   /** Names in the workspace variables file mounted at /run/studio (null: no file, e.g. Órbi). */
   variableNames?: string[] | null;
+  /** Projects mounted read-only at /context/<name>, as they are on disk. */
+  contextProjects?: ContextProject[];
 }
 
+export interface ContextProject {
+  name: string;
+  hostPath: string;
+  /** Branch checked out in the folder (null: not a git repository). */
+  branch: string | null;
+  /** The project's base branch, when set (warned about when the folder is on another one). */
+  baseBranch: string | null;
+}
+
+/** Folder names are safe for a mount path; anything else is replaced. */
+const contextMount = (name: string) => `/context/${name.replace(/[^\w.-]/g, '_')}`;
+
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [] }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
 
@@ -131,6 +158,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       `${agentVolumeName(agent.id)}:/home/node/.claude`,
       ...skillBinds(skillIds),
       ...(variableNames ? [`${variablesHostDir(agent.id)}:/run/studio:ro`] : []),
+      ...contextProjects.map((project) => `${project.hostPath}:${contextMount(project.name)}:ro`),
     ],
     env: {
       AGENT_ID: agent.id,
@@ -138,7 +166,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       SERVER_URL: config.serverInternalUrl,
       MODEL: agent.model,
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
-      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames),
+      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects),
       STUDIO_TOOLS: runnerTools(agent).join(','),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),

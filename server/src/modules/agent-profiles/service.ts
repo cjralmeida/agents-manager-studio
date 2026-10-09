@@ -11,6 +11,7 @@ export interface AgentProfileInput {
   instructions: string;
   model: AgentModel;
   projectIds: string[];
+  contextProjectIds: string[];
   output: 'PULL_REQUEST' | 'RESULT';
   tools: (typeof PROFILE_TOOLS)[number][];
   autoConclude: boolean;
@@ -33,6 +34,7 @@ async function toResponse(profile: AgentProfile & { workspace?: { name: string }
     instructions: profile.instructions,
     model: profile.model,
     projectIds: profile.projectIds,
+    contextProjectIds: profile.contextProjectIds,
     // Without projects there is no code to deliver.
     output: profile.projectIds.length === 0 ? 'RESULT' : profile.output,
     tools: profile.tools,
@@ -49,6 +51,14 @@ async function validateProjects(workspaceId: string, projectIds: string[]) {
   const unique = [...new Set(projectIds)];
   const valid = await prisma.project.count({ where: { id: { in: unique }, workspaceId, isGitRepo: true, missingAt: null } });
   if (valid !== unique.length) throw new HttpError(422, 'Um ou mais projetos não são projetos com git deste workspace.');
+  return unique;
+}
+
+/** Reference projects only need to exist in the workspace (git or not). */
+async function validateContextProjects(workspaceId: string, projectIds: string[]) {
+  const unique = [...new Set(projectIds)];
+  const valid = await prisma.project.count({ where: { id: { in: unique }, workspaceId, missingAt: null } });
+  if (valid !== unique.length) throw new HttpError(422, 'Um ou mais projetos de consulta não são deste workspace.');
   return unique;
 }
 
@@ -75,8 +85,9 @@ export async function createAgentProfile(workspaceId: string, input: AgentProfil
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) throw notFound('Workspace não encontrado.');
   const projectIds = await validateProjects(workspaceId, input.projectIds);
+  const contextProjectIds = await validateContextProjects(workspaceId, input.contextProjectIds ?? []);
   try {
-    const profile = await prisma.agentProfile.create({ data: { workspaceId, ...input, projectIds } });
+    const profile = await prisma.agentProfile.create({ data: { workspaceId, ...input, projectIds, contextProjectIds } });
     return toResponse(profile);
   } catch (error) {
     if (duplicateName(error)) throw new HttpError(409, `Já existe um agente chamado "${input.name}" neste workspace.`);
@@ -87,8 +98,12 @@ export async function createAgentProfile(workspaceId: string, input: AgentProfil
 export async function updateAgentProfile(id: string, input: Partial<AgentProfileInput>) {
   const current = await findOrThrow(id);
   const projectIds = input.projectIds ? await validateProjects(current.workspaceId, input.projectIds) : undefined;
+  const contextProjectIds = input.contextProjectIds ? await validateContextProjects(current.workspaceId, input.contextProjectIds) : undefined;
   try {
-    const profile = await prisma.agentProfile.update({ where: { id }, data: { ...input, ...(projectIds && { projectIds }) } });
+    const profile = await prisma.agentProfile.update({
+      where: { id },
+      data: { ...input, ...(projectIds && { projectIds }), ...(contextProjectIds && { contextProjectIds }) },
+    });
     return toResponse(profile);
   } catch (error) {
     if (duplicateName(error)) throw new HttpError(409, `Já existe um agente chamado "${input.name}" neste workspace.`);

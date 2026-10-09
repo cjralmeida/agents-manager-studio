@@ -1,4 +1,5 @@
 import { config } from '../../config.js';
+import { git } from '../../lib/git.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { prisma } from '../../db.js';
 import type { Project, Workspace } from '../../generated/prisma/client.js';
@@ -171,6 +172,26 @@ function toProjectResponse(project: Project, workspaceName: string) {
     isGitRepo: project.isGitRepo,
     gitRemoteUrl: project.gitRemoteUrl,
     gitProvider: project.gitProvider,
+    baseBranch: project.baseBranch,
     isMissing: project.missingAt !== null,
   };
+}
+
+/**
+ * Branch agents start from and open PRs/MRs into (e.g. the homologation branch); null goes back to the folder's
+ * current branch. It must exist in the local repository, which agents clone.
+ */
+export async function setProjectBaseBranch(workspaceId: string, projectId: string, baseBranch: string | null) {
+  const project = await prisma.project.findFirst({ where: { id: projectId, workspaceId } });
+  if (!project) throw new HttpError(404, 'Projeto não encontrado.');
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+  if (baseBranch) {
+    const exists = await git(toContainerPath(workspace.name, project.name), ['rev-parse', '--verify', '--quiet', `refs/heads/${baseBranch}`]).then(
+      () => true,
+      () => false,
+    );
+    if (!exists) throw new HttpError(422, `A branch "${baseBranch}" não existe no repositório local do projeto. Faça checkout ou fetch dela antes.`);
+  }
+  const saved = await prisma.project.update({ where: { id: projectId }, data: { baseBranch } });
+  return toProjectResponse(saved, workspace.name);
 }

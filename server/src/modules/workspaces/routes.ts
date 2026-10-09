@@ -10,6 +10,7 @@ import {
   getWorkspace,
   listWorkspaces,
   scanWorkspaces,
+  setProjectBaseBranch,
   setWorkspaceIgnored,
 } from './service.js';
 
@@ -44,6 +45,11 @@ const projectBody = z
 const createBody = z.object({ name: z.string().max(200) }).strict();
 
 const idParams = z.object({ id: z.uuid() });
+const projectParams = z.object({ id: z.uuid(), projectId: z.uuid() });
+const baseBranchBody = z
+  .object({ baseBranch: z.string().trim().max(200).regex(/^[\w./-]*$/, 'Nome de branch inválido.').nullable() })
+  .strict()
+  .transform((body) => ({ baseBranch: body.baseBranch || null }));
 
 const updateBody = z.object({ isIgnored: z.boolean() }).strict();
 
@@ -71,6 +77,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.post('/workspaces/:id/projects', async (request, reply) => {
     const { id } = parseInput(idParams, request.params);
     return reply.code(201).send(await createProject(id, parseInput(projectBody, request.body)));
+  });
+
+  /** Branch agents start from and open PRs/MRs into (null: the folder's current branch). */
+  app.put('/workspaces/:id/projects/:projectId/base-branch', async (request) => {
+    const { id, projectId } = parseInput(projectParams, request.params);
+    return setProjectBaseBranch(id, projectId, parseInput(baseBranchBody, request.body).baseBranch);
   });
 
   app.get('/workspaces/:id/clones', async (request) => listCloneJobs(parseInput(idParams, request.params).id));
