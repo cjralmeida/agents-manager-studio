@@ -335,13 +335,13 @@ function StepEditor({ step, index, steps, profiles, onChange, onKindChange, onMo
               />
               Continuar do trabalho do passo anterior
             </label>
-            <label className="flex items-center gap-2" title="Começa do PR/MR aberto que cita a tarefa (feito por uma pessoa), ex.: para publicá-lo em homologação">
+            <label className="flex items-center gap-2" title="Começa do PR/MR aberto que cita a tarefa (feito fora do Studio, ex.: por um agente externo), ex.: para publicá-lo em homologação">
               <input
                 type="checkbox"
                 checked={step.fromTaskPullRequest}
                 onChange={(event) => onChange({ fromTaskPullRequest: event.target.checked, ...(event.target.checked && { continueFromPrevious: false }) })}
               />
-              Publicar o PR/MR da tarefa (feito por uma pessoa)
+              Publicar o PR/MR da tarefa (feito fora do Studio)
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">

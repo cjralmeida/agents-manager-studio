@@ -411,7 +411,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       autoConclude: true,
       confirmHighUsage: true,
       // Only the step that picks the task moves its card (to "in progress", then review on the PR).
-      // A person's PR keeps its card where the person left it until the run ends.
+      // Work done outside the Studio keeps its card where it was left until the run ends.
       ...(taskItemId && !pullRequest && (index === 0 || index === fanOut) && { taskItemId }),
       ...(sourceAgentId && { sourceAgentId }),
       ...(pullRequest && { pullRequest: { url: pullRequest.url, branch: pullRequest.branch, baseBranch: pullRequest.baseBranch } }),

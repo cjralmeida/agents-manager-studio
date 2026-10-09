@@ -46,7 +46,7 @@ export const stepSchema = z.discriminatedUnion('kind', [
       maxParallel: z.number().int().min(1).max(5).default(1),
       /** Starts from the previous agent's copy and branch (e.g. a tester checking the executor's work). */
       continueFromPrevious: z.boolean().default(false),
-      /** Starts from the open PR/MR that cites the run's task (work a person did), e.g. to publish it. */
+      /** Starts from the open PR/MR that cites the run's task (work done outside the Studio), e.g. to publish it. */
       fromTaskPullRequest: z.boolean().default(false),
       /** Extra instructions for this step, on top of the agent's role. */
       instructions: z.string().max(10_000).default(''),

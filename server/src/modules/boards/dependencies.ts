@@ -2,7 +2,7 @@ import type { BoardItem, StatusMap } from './types.js';
 
 /**
  * Task dependencies written by the task agent: a task blocked in the "blocked" column carries a line
- * "Depende de: org/repo#12, org/repo#15". When every task it names is done, it is released to "todo".
+ * "Depende de: org/repo#12, org/repo#15". When every task it names is delivered, it is released to "todo".
  */
 
 const DEPENDS_LINE = /^\s*(?:[-*]\s*)?\**depende de\**:?\**\s*(.+)$/im;
@@ -16,7 +16,8 @@ export function dependencyRefs(body: string): string[] {
 export const itemRef = (item: Pick<BoardItem, 'repository' | 'number'>) => (item.repository && item.number ? `${item.repository}#${item.number}` : null);
 
 /**
- * Blocked tasks whose dependencies are all done (in the "done" column or closed). A dependency that is not on the
+ * Blocked tasks whose dependencies are all delivered: done, closed, or in homologation (merged and published, waiting
+ * for the whole feature to be tested — which needs the dependent tasks too). A dependency that is not on the
  * board keeps the task blocked: it may be on another board, or the ref may be wrong.
  */
 export function releasableItems(items: BoardItem[], statusMap: StatusMap): BoardItem[] {
@@ -28,7 +29,8 @@ export function releasableItems(items: BoardItem[], statusMap: StatusMap): Board
     if (refs.length === 0) return false;
     return refs.every((ref) => {
       const dependency = byRef.get(ref.toLowerCase());
-      return Boolean(dependency && (dependency.isClosed || dependency.columnId === statusMap.done));
+      if (!dependency) return false;
+      return dependency.isClosed || dependency.columnId === statusMap.done || (Boolean(statusMap.homologation) && dependency.columnId === statusMap.homologation);
     });
   });
 }

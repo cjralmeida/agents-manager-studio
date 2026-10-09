@@ -397,7 +397,8 @@ export async function moveItem(workspaceId: string, itemId: string, columnId: st
   await (await adapterFor(board)).moveItem(refOf(board), snapshot, itemId, columnId);
   item.columnId = columnId;
   if (board.provider === 'GITLAB') item.isClosed = columnId === 'closed';
-  if (columnId === (board.statusMap as StatusMap).done) await releaseDependents(board, snapshot);
+  const statusMap = board.statusMap as StatusMap;
+  if (columnId === statusMap.done || columnId === statusMap.homologation) await releaseDependents(board, snapshot);
 }
 
 /** New title and/or description of a task (the task agent keeps tasks that did not start up to date). */

@@ -38,6 +38,12 @@ describe('releasableItems', () => {
     assert.deepEqual(releasableItems(items, statusMap), []);
   });
 
+  it('counts a dependency in homologation as delivered', () => {
+    const items = [item('org/api', 1, 'hom'), item('org/ui', 3, 'blocked', 'Depende de: org/api#1')];
+    assert.deepEqual(releasableItems(items, { ...statusMap, homologation: 'hom' }).map((entry) => entry.id), ['org/ui#3']);
+    assert.deepEqual(releasableItems(items, statusMap), []);
+  });
+
   it('does nothing without the roles it needs', () => {
     assert.deepEqual(releasableItems([item('org/ui', 3, 'blocked', 'Depende de: org/api#1')], { todo: 'todo' }), []);
   });

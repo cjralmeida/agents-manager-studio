@@ -50,7 +50,7 @@ export interface LaunchAgentInput {
   /** Overrides the profile: conclude without waiting for the user. */
   autoConclude?: boolean;
   autoMerge?: boolean;
-  /** Starts on a person's open PR/MR (its branch, merging into its base) instead of a new branch. */
+  /** Starts on an open PR/MR made outside the Studio (its branch, merging into its base) instead of a new branch. */
   pullRequest?: { url: string; branch: string; baseBranch: string };
   /** Board item the agent will solve; it is moved across the board columns as the agent progresses. */
   taskItemId?: string;
@@ -270,7 +270,7 @@ async function prepareAndStart(
   remoteUrl: string | null,
   followRemoteBase: boolean,
   cloneBranch?: string,
-  /** The agent's branch is a person's PR branch that only exists on the remote. */
+  /** The agent's branch is the branch of a PR made outside the Studio that only exists on the remote. */
   onRemoteBranch = false,
 ) {
   try {
@@ -316,7 +316,7 @@ async function prepareAndStart(
   }
 }
 
-/** Puts the copy on a branch that only exists on the remote (a person's PR/MR), with the workspace credentials. */
+/** Puts the copy on a branch that only exists on the remote (a PR/MR made outside the Studio), with the workspace credentials. */
 async function checkoutFromRemote(agent: Agent, remoteUrl: string) {
   const remote = parseRemote(remoteUrl);
   if (!remote) throw new HttpError(422, 'O projeto não tem um remote válido.');
