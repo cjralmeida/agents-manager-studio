@@ -124,3 +124,54 @@ body {
     animation: none;
   }
 }
+
+/* Card of an agent that is working: a purple light running around its border. */
+@property --working-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes working-spin {
+  to {
+    --working-angle: 360deg;
+  }
+}
+
+.glow-working {
+  position: relative;
+  border-color: rgb(168 85 247 / 0.35);
+  box-shadow: 0 0 14px rgb(168 85 247 / 0.18);
+}
+
+.glow-working::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--working-angle),
+    transparent 0deg,
+    transparent 230deg,
+    rgb(192 132 252 / 0.6) 290deg,
+    rgb(168 85 247) 335deg,
+    rgb(233 213 255) 352deg,
+    transparent 360deg
+  );
+  /* Only the border ring shows the gradient. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: working-spin 2.8s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-working::before {
+    animation: none;
+    background: rgb(168 85 247 / 0.8);
+  }
+}

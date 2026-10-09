@@ -101,7 +101,7 @@ function AgentCard({ summary, showWorkspace, onRun }: { summary: AgentSummary; s
     <article
       onClick={() => navigate(agentPagePath(summary))}
       className={`flex cursor-pointer flex-col rounded-lg border bg-panel p-4 transition-colors hover:border-accent/60 ${
-        summary.state === 'waiting' ? 'glow-question border-amber-400/70' : 'border-border'
+        summary.state === 'waiting' ? 'glow-question border-amber-400/70' : summary.state === 'working' ? 'glow-working' : 'border-border'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
