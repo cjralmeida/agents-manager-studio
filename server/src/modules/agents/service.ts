@@ -11,7 +11,7 @@ import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { openPullRequest } from './pull-requests.js';
-import { authenticatedPushUrl, closingReference, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
+import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import {
   NO_CHANGES_MESSAGE,
@@ -548,10 +548,6 @@ export async function onAgentIdle(id: string) {
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent || agent.status !== 'READY_FOR_REVIEW' || !agent.autoConclude) return;
   await finalizeAgent(id).catch((error: unknown) => addEvent(id, 'error', { message: errorMessage(error) }));
-}
-
-function defaultAuthorEmail(provider: 'GITHUB' | 'GITLAB', username: string, host: string) {
-  return provider === 'GITHUB' ? `${username}@users.noreply.github.com` : `${username}@noreply.${host}`;
 }
 
 // ---------------------------------------------------------------- helpers

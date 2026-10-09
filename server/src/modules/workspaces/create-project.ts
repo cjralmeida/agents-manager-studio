@@ -5,7 +5,7 @@ import { HttpError, notFound } from '../../lib/errors.js';
 import { GitError, git } from '../../lib/git.js';
 import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
-import { authenticatedPushUrl, parseRemote } from '../agents/remote.js';
+import { authenticatedPushUrl, defaultAuthorEmail, parseRemote } from '../agents/remote.js';
 import { workspaceNameProblem } from './names.js';
 import { scanWorkspaces } from './service.js';
 
@@ -95,6 +95,8 @@ interface CreatedRemote {
   cloneUrl: string;
   webUrl: string;
   fullPath: string;
+  /** What the provider actually set: GitLab caps it at the group's visibility. */
+  visibility: 'private' | 'public';
 }
 
 async function createRemote(
@@ -134,8 +136,18 @@ async function createRemote(
   if (!answer.ok) throw new HttpError(502, `${account.host} não criou o repositório (erro ${answer.status}).`);
 
   return account.provider === 'GITHUB'
-    ? { cloneUrl: String(answer.data.clone_url), webUrl: String(answer.data.html_url), fullPath: String(answer.data.full_name) }
-    : { cloneUrl: String(answer.data.http_url_to_repo), webUrl: String(answer.data.web_url), fullPath: String(answer.data.path_with_namespace) };
+    ? {
+        cloneUrl: String(answer.data.clone_url),
+        webUrl: String(answer.data.html_url),
+        fullPath: String(answer.data.full_name),
+        visibility: answer.data.private ? 'private' : 'public',
+      }
+    : {
+        cloneUrl: String(answer.data.http_url_to_repo),
+        webUrl: String(answer.data.web_url),
+        fullPath: String(answer.data.path_with_namespace),
+        visibility: answer.data.visibility === 'public' ? 'public' : 'private',
+      };
 }
 
 const exists = (target: string) =>
@@ -144,15 +156,29 @@ const exists = (target: string) =>
     () => false,
   );
 
+/**
+ * Removes a folder the Studio just created. On the Windows mount a fresh file can be held for a moment (antivirus,
+ * indexer) and the removal then reports success while leaving it, so it is checked and retried.
+ */
+async function removeFolder(target: string) {
+  for (let attempt = 0; attempt < 5 && (await exists(target)); attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await rm(target, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /** Commit author: the chosen account, else any account of the workspace with an author set, else the Studio. */
-async function authorFor(workspaceId: string, account: { username: string; authorName: string | null; authorEmail: string | null } | null) {
+async function authorFor(
+  workspaceId: string,
+  account: { provider: string; host: string; username: string; authorName: string | null; authorEmail: string | null } | null,
+) {
   const fallback =
     account ??
     (await prisma.workspaceGitAccount.findFirst({ where: { workspaceId, gitAccount: { authorEmail: { not: null } } }, include: { gitAccount: true } }))?.gitAccount ??
     null;
   return {
     name: fallback?.authorName || fallback?.username || 'Agents Manager Studio',
-    email: fallback?.authorEmail || (fallback ? `${fallback.username}@users.noreply.github.com` : 'studio@agents-manager.local'),
+    email: fallback?.authorEmail || (fallback ? defaultAuthorEmail(fallback.provider as Provider, fallback.username, fallback.host) : 'studio@agents-manager.local'),
   };
 }
 
@@ -209,7 +235,7 @@ export async function createProject(workspaceId: string, input: CreateProjectInp
     }
   } catch (error) {
     // The folder was created here, so a failure removes it; the remote repository is kept (never deleted by the Studio).
-    await rm(dest, { recursive: true, force: true }).catch(() => undefined);
+    await removeFolder(dest);
     const raw = error instanceof GitError ? error.stderr || error.message : error instanceof Error ? error.message : String(error);
     const message = redact(raw).trim().split('\n').slice(-2).join(' ');
     const created = remote ? ` O repositório ${remote.webUrl} já foi criado; apague-o lá ou clone-o pelo Studio.` : '';
@@ -218,5 +244,5 @@ export async function createProject(workspaceId: string, input: CreateProjectInp
 
   await scanWorkspaces();
   const project = await prisma.project.findFirst({ where: { workspaceId, name: folder } });
-  return { projectId: project?.id ?? null, folder, remoteUrl: remote?.webUrl ?? null, remotePath: remote?.fullPath ?? null };
+  return { projectId: project?.id ?? null, folder, remoteUrl: remote?.webUrl ?? null, remotePath: remote?.fullPath ?? null, remoteVisibility: remote?.visibility ?? null };
 }

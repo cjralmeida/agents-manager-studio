@@ -33,6 +33,11 @@ export function remoteHostname(remote: RemoteInfo) {
 }
 
 /** Authenticated https url for a single push; never stored in git config. */
+/** Commit e-mail when the git account has none set. */
+export function defaultAuthorEmail(provider: 'GITHUB' | 'GITLAB', username: string, host: string) {
+  return provider === 'GITHUB' ? `${username}@users.noreply.github.com` : `${username}@noreply.${host}`;
+}
+
 export function authenticatedPushUrl(remote: RemoteInfo, provider: 'GITHUB' | 'GITLAB', token: string) {
   const user = provider === 'GITHUB' ? 'x-access-token' : 'oauth2';
   return `https://${user}:${encodeURIComponent(token)}@${remote.host}/${remote.path}.git`;

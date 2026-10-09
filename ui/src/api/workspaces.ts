@@ -187,7 +187,7 @@ export function useCreateProject(workspaceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: NewProjectInput) =>
-      api.post<{ projectId: string | null; folder: string; remoteUrl: string | null; remotePath: string | null }>(`/workspaces/${workspaceId}/projects`, input),
+      api.post<{ projectId: string | null; folder: string; remoteUrl: string | null; remotePath: string | null; remoteVisibility: 'private' | 'public' | null }>(`/workspaces/${workspaceId}/projects`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKeys.detail(workspaceId) }),
   });
 }

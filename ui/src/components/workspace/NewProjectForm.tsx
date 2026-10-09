@@ -128,6 +128,12 @@ export function NewProjectForm({ workspaceId, onClose }: { workspaceId: string; 
           )}
         </p>
       )}
+      {create.data?.remoteVisibility && create.variables?.remote && create.data.remoteVisibility !== create.variables.remote.visibility && (
+        <p className="text-xs text-amber-300">
+          O repositório ficou {create.data.remoteVisibility === 'private' ? 'privado' : 'público'}: o grupo onde ele foi criado não permite outra
+          visibilidade.
+        </p>
+      )}
     </form>
   );
 }
