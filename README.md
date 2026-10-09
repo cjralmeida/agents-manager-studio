@@ -68,6 +68,10 @@ Cada pasta da **pasta central** (`PROJECTS_HOST_DIR` no `.env`) é um workspace.
   - Escolha o repositório na lista das contas git do workspace (no GitLab, a busca é pelo nome do projeto) ou cole a URL, https ou ssh.
   - Os privados usam o token da conta apenas durante o clone; o `origin` fica com a URL sem credenciais.
   - O clone roda em segundo plano, e o projeto aparece sozinho quando termina.
+- **Criar um projeto do zero:** use **Novo projeto** na aba Projetos do workspace.
+  - O Studio cria a pasta com git: branch `main`, um README e o primeiro commit.
+  - Se você escolher uma conta GitHub/GitLab do workspace e onde criar (seu usuário, uma organização ou um grupo), ele também cria o repositório remoto (privado por padrão), liga como `origin` sem credenciais e faz o push.
+  - O nome do repositório vem do nome da pasta, sem acentos e com `-` no lugar de espaços. O token precisa do escopo `repo` no GitHub (ou "Administration: write" num token fine-grained) e `api` no GitLab.
 - **Permissões:** o Studio só escreve na pasta central, porque ela é montada com escrita no server, e não no disco inteiro.
 - **Trocar a pasta central:** em **Configurações → Geral**, informe a pasta (e as pastas ignoradas) e clique em aplicar. O ajudante do Windows (`studio.ps1`) confere se a pasta existe e não é a raiz de um disco nem pasta do sistema, atualiza o `.env` e recria o server. Enquanto isso, o Studio mostra uma tela de espera e relê os workspaces quando volta. Sem o ajudante rodando, a tela mostra o comando para colar no PowerShell. Pedidos, estado e log do ajudante ficam em `host-helper/`, que não é versionada.
 

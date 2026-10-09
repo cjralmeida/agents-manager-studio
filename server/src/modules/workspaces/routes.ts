@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
 import { listCloneJobs, startClone } from './clone.js';
+import { createProject, listRepositoryOwners } from './create-project.js';
 import { listAccountRepositories } from './repositories.js';
 import {
   createWorkspace,
@@ -32,6 +33,14 @@ const cloneBody = z
   })
   .strict();
 
+const projectBody = z
+  .object({
+    name: z.string().max(200),
+    description: z.string().trim().max(300).optional(),
+    remote: z.object({ accountId: z.uuid(), owner: z.string().trim().min(1).max(200), visibility: z.enum(['private', 'public']) }).strict().nullable(),
+  })
+  .strict();
+
 const createBody = z.object({ name: z.string().max(200) }).strict();
 
 const idParams = z.object({ id: z.uuid() });
@@ -53,6 +62,15 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.post('/workspaces/:id/clones', async (request, reply) => {
     const { id } = parseInput(idParams, request.params);
     return reply.code(202).send(await startClone(id, parseInput(cloneBody, request.body), request.log));
+  });
+
+  /** Where the workspace git accounts can create repositories (user, organizations, groups). */
+  app.get('/workspaces/:id/repository-owners', async (request) => listRepositoryOwners(parseInput(idParams, request.params).id));
+
+  /** New project folder with git, optionally with a new GitHub/GitLab repository as origin. */
+  app.post('/workspaces/:id/projects', async (request, reply) => {
+    const { id } = parseInput(idParams, request.params);
+    return reply.code(201).send(await createProject(id, parseInput(projectBody, request.body)));
   });
 
   app.get('/workspaces/:id/clones', async (request) => listCloneJobs(parseInput(idParams, request.params).id));

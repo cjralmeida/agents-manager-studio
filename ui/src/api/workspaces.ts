@@ -159,3 +159,35 @@ export function useStartClone(workspaceId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [...workspaceKeys.all, workspaceId, 'clones'] }),
   });
 }
+
+export interface RepositoryOwnerAccount {
+  accountId: string;
+  label: string;
+  provider: 'GITHUB' | 'GITLAB';
+  host: string;
+  owners: { path: string; kind: 'user' | 'org' | 'group'; id: number | null }[];
+}
+
+/** Where the workspace git accounts can create a repository (own user, organizations, groups). */
+export function useRepositoryOwners(workspaceId: string) {
+  return useQuery({
+    queryKey: [...workspaceKeys.all, workspaceId, 'repository-owners'] as const,
+    queryFn: () => api.get<{ accounts: RepositoryOwnerAccount[]; warnings: string[] }>(`/workspaces/${workspaceId}/repository-owners`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export interface NewProjectInput {
+  name: string;
+  description?: string;
+  remote: { accountId: string; owner: string; visibility: 'private' | 'public' } | null;
+}
+
+export function useCreateProject(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NewProjectInput) =>
+      api.post<{ projectId: string | null; folder: string; remoteUrl: string | null; remotePath: string | null }>(`/workspaces/${workspaceId}/projects`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workspaceKeys.detail(workspaceId) }),
+  });
+}

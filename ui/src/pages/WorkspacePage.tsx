@@ -9,6 +9,7 @@ import { Dashboard } from '../components/dashboard/Dashboard';
 import { WorkflowsTab } from '../components/workflows/WorkflowsTab';
 import { Tabs, useTabParam } from '../components/Tabs';
 import { CloneRepositoryForm } from '../components/workspace/CloneRepositoryForm';
+import { NewProjectForm } from '../components/workspace/NewProjectForm';
 import { WorkspaceConnectorsTab } from '../components/workspace/WorkspaceConnectorsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
@@ -82,18 +83,25 @@ export function WorkspacePage() {
 }
 
 function ProjectsTab({ workspace }: { workspace: WorkspaceDetail }) {
-  const [cloning, setCloning] = useState(false);
+  const [form, setForm] = useState<'clone' | 'new' | null>(null);
+  const close = () => setForm(null);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted">Cada pasta do workspace é um projeto. Agentes só podem ser lançados em projetos com git.</p>
-        {!cloning && (
-          <Button variant="primary" onClick={() => setCloning(true)} disabled={workspace.isMissing}>
-            Clonar repositório
-          </Button>
+        {!form && (
+          <div className="flex gap-2">
+            <Button onClick={() => setForm('new')} disabled={workspace.isMissing}>
+              Novo projeto
+            </Button>
+            <Button variant="primary" onClick={() => setForm('clone')} disabled={workspace.isMissing}>
+              Clonar repositório
+            </Button>
+          </div>
         )}
       </div>
-      {cloning && <CloneRepositoryForm workspaceId={workspace.id} onClose={() => setCloning(false)} />}
+      {form === 'new' && <NewProjectForm workspaceId={workspace.id} onClose={close} />}
+      {form === 'clone' && <CloneRepositoryForm workspaceId={workspace.id} onClose={close} />}
       <ProjectsTable projects={workspace.projects} />
     </div>
   );
