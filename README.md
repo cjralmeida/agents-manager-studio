@@ -82,6 +82,14 @@ Cada workspace pode vincular um quadro próprio (aba **Quadro**):
 - **GitHub:** um GitHub Project (v2). O token fine-grained da conta precisa de *Projects: leitura e escrita* na organização e *Issues: leitura e escrita* nos repositórios.
 - **GitLab:** um board de grupo. As colunas são labels `Status: …` e os campos são labels `Campo: valor`. "A fazer" corresponde às issues abertas sem coluna, e "Concluído" às fechadas.
 
+**Tarefas de todos os workspaces:** em **Quadro de tarefas → Tarefas**, as tarefas de todos os quadros aparecem nas colunas do modelo, em quadro ou tabela.
+- Dá para filtrar por workspace e buscar.
+- Arrastar um card move a tarefa no quadro do próprio workspace. No GitLab, levar para "Concluído" fecha a issue.
+- Clicar num card abre a tarefa na aba Quadro do workspace.
+- Dentro de cada workspace, a aba Quadro mostra só as tarefas dele.
+- Quadros ainda não convertidos para o modelo ficam de fora, com um aviso.
+- Uma mesma issue que esteja em dois quadros aparece uma vez só, com "+N" ao lado do workspace.
+
 **Modelo de quadro:** em **Quadro de tarefas → Modelo** fica a estrutura que vale para todos os workspaces: colunas, com o papel de cada uma para os agentes, e campos de escolha com suas opções. O primeiro modelo é o template do Studio (`server/src/modules/boards/template.ts`).
 - O editor é visual: as colunas ficam lado a lado e se arrastam pelo ⠿, e cada coluna ou opção tem cor e descrição. Os papéis "A fazer" e "Concluído" são obrigatórios.
 - **Revisar mudanças** mostra o que vai mudar e pede para onde vão os cards das colunas removidas. Ao salvar, a mudança é aplicada em todos os quadros que estão no modelo, e o resultado de cada um aparece na tela.

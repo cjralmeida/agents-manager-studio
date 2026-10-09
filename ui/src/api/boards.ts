@@ -72,6 +72,9 @@ export interface Board {
   repositories: BoardRepository[];
 }
 
+/** What the kanban/table views need: a workspace board, or the model for all workspaces. */
+export type BoardLayout = Pick<Board, 'columns' | 'fields'> & { link: Pick<BoardLink, 'statusMap'> };
+
 export interface BoardCandidate {
   provider: BoardProvider;
   host: string;
@@ -413,6 +416,52 @@ export function useApplyConversion(workspaceId: string) {
     onSuccess: () => {
       void invalidate();
       void queryClient.invalidateQueries({ queryKey: modelKey });
+    },
+  });
+}
+
+// ---------------------------------------------------------------- tasks of every workspace
+
+export interface OverviewItem extends BoardItem {
+  /** "<workspaceId>:<item id>", unique over all workspaces. */
+  id: string;
+  /** The task id on its own board. */
+  itemId: string;
+  workspaceId: string;
+  workspaceName: string;
+  /** Other workspaces whose board has this same task (listed once). */
+  alsoIn: string[];
+}
+
+export interface Overview {
+  columns: BoardOption[];
+  fields: BoardField[];
+  statusMap: StatusMap;
+  items: OverviewItem[];
+  /** Boards left out (not converted to the model, or unreadable). */
+  excluded: { workspaceId: string; workspaceName: string; reason: string }[];
+}
+
+const overviewKey = ['board-overview'] as const;
+
+export function useAllTasks() {
+  return useQuery({ queryKey: overviewKey, queryFn: () => api.get<Overview>('/boards/tasks'), refetchInterval: 60_000 });
+}
+
+export function useMoveOverviewTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { item: OverviewItem; columnId: string }) =>
+      api.post<void>('/boards/tasks/move', { workspaceId: input.item.workspaceId, itemId: input.item.itemId, columnId: input.columnId }),
+    // The card moves at once; the server answer (or the next read) confirms.
+    onMutate: ({ item, columnId }) => {
+      queryClient.setQueryData<Overview>(overviewKey, (data) =>
+        data && { ...data, items: data.items.map((entry) => (entry.id === item.id ? { ...entry, columnId } : entry)) },
+      );
+    },
+    onSettled: (_data, _error, { item }) => {
+      void queryClient.invalidateQueries({ queryKey: overviewKey });
+      void queryClient.invalidateQueries({ queryKey: ['board', item.workspaceId] });
     },
   });
 }

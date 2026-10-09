@@ -1,5 +1,5 @@
 import type { Agent } from '../../api/agents';
-import type { Board, BoardItem } from '../../api/boards';
+import type { BoardItem, BoardLayout } from '../../api/boards';
 
 /** The agent shown on a card: the first non-cancelled one (the server lists agents needing the user first). */
 export function agentsByItem(agents: Agent[]) {
@@ -17,7 +17,7 @@ export function itemRef(item: BoardItem) {
   return item.isDraft ? 'Rascunho' : '';
 }
 
-function priorityRank(board: Board, item: BoardItem) {
+function priorityRank(board: BoardLayout, item: BoardItem) {
   const field = board.fields.find((entry) => /priori/i.test(entry.name));
   const optionId = field ? item.fields[field.id] : undefined;
   const index = field && optionId ? field.options.findIndex((option) => option.id === optionId) : -1;
@@ -25,7 +25,7 @@ function priorityRank(board: Board, item: BoardItem) {
 }
 
 /** Tasks whose agent waits for the user first, then by priority, then most recently updated. */
-export function sortItems(board: Board, items: BoardItem[], agents: Map<string, Agent>) {
+export function sortItems<T extends BoardItem>(board: BoardLayout, items: T[], agents: Map<string, Agent>): T[] {
   const waiting = (item: BoardItem) => (agents.get(item.id)?.status === 'WAITING_INPUT' ? 0 : 1);
   return [...items].sort(
     (a, b) =>

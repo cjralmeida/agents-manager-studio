@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
+import { listAllTasks, moveOverviewTask } from './overview.js';
 import { applyConversion, applyModel, getConversion, getModelState, previewConversion, previewModel } from './model-service.js';
 import {
   createBoard,
@@ -46,6 +47,8 @@ const createBody = z
   })
   .strict();
 
+const overviewMoveBody = z.object({ workspaceId: z.uuid(), itemId: z.string().min(1).max(200), columnId: z.string().min(1).max(200) }).strict();
+
 const modelPreviewBody = z.object({ model }).strict();
 /** For each removed model column, the model column its cards move to. */
 const modelApplyBody = z.object({ model, columnMoves: z.record(z.string(), z.string()).default({}) }).strict();
@@ -82,6 +85,15 @@ const moveBody = z.object({ columnId: z.string().min(1) }).strict();
 const fieldBody = z.object({ fieldId: z.string().min(1), optionId: z.string().min(1).nullable() }).strict();
 
 export async function boardRoutes(app: FastifyInstance) {
+  /** Tasks of every workspace on the model's columns. */
+  app.get('/boards/tasks', async () => listAllTasks());
+
+  app.post('/boards/tasks/move', async (request, reply) => {
+    const { workspaceId, itemId, columnId } = parseInput(overviewMoveBody, request.body);
+    await moveOverviewTask(workspaceId, itemId, columnId);
+    return reply.code(204).send();
+  });
+
   /** The Studio board model, the boards that follow it and how many cards use each part. */
   app.get('/board-model', async () => getModelState());
 

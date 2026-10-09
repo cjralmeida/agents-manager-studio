@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useAgents } from '../../api/agents';
 import { type Board, boardProviderLabels, useBoard, useBoardLink, useMoveTask, useRefreshBoard } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
@@ -49,7 +49,16 @@ function SyncStatus({ board }: { board: Board }) {
 function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Board }) {
   const [view, setView] = usePersistedView('board');
   const [search, setSearch] = useState('');
-  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  // The board of all workspaces links here with ?task=<id> to open that task.
+  const [openItemId, setOpenItemIdState] = useState<string | null>(params.get('task'));
+  const setOpenItemId = (id: string | null) => {
+    setOpenItemIdState(id);
+    if (!id && params.has('task')) {
+      params.delete('task');
+      setParams(params, { replace: true });
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [converting, setConverting] = useState(false);
   const agents = useAgents(workspace.id);

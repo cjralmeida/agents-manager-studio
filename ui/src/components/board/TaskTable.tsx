@@ -1,23 +1,25 @@
 import type { Agent } from '../../api/agents';
-import type { Board, BoardItem } from '../../api/boards';
+import type { BoardItem, BoardLayout } from '../../api/boards';
 import { timeAgo } from '../../lib/time';
 import { AgentStatusBadge } from '../agents/AgentStatusBadge';
 import { itemRef, sortItems } from './boardUtils';
 import { OptionChip } from './OptionChip';
 
-interface TaskTableProps {
-  board: Board;
-  items: BoardItem[];
+interface TaskTableProps<T extends BoardItem> {
+  board: BoardLayout;
+  items: T[];
   agents: Map<string, Agent>;
-  onOpen: (item: BoardItem) => void;
+  onOpen: (item: T) => void;
+  /** Extra first column (the workspace, on the board of all workspaces). */
+  label?: { title: string; value: (item: T) => string };
 }
 
 /** Same tasks as the board, one row each, grouped by column order. */
-export function TaskTable({ board, items, agents, onOpen }: TaskTableProps) {
+export function TaskTable<T extends BoardItem>({ board, items, agents, onOpen, label }: TaskTableProps<T>) {
   if (items.length === 0) return <p className="text-sm text-muted">Nenhuma tarefa.</p>;
 
   // Items without a column (-1) come first, like the "Sem status" column of the board.
-  const columnIndex = (item: BoardItem) => board.columns.findIndex((column) => column.id === item.columnId);
+  const columnIndex = (item: T) => board.columns.findIndex((column) => column.id === item.columnId);
   const rows = sortItems(board, items, agents).sort((a, b) => columnIndex(a) - columnIndex(b));
 
   return (
@@ -25,6 +27,7 @@ export function TaskTable({ board, items, agents, onOpen }: TaskTableProps) {
       <table className="w-full text-left text-sm">
         <thead className="bg-panel text-xs text-muted">
           <tr>
+            {label && <th className="px-3 py-2 font-medium">{label.title}</th>}
             <th className="px-3 py-2 font-medium">Tarefa</th>
             <th className="px-3 py-2 font-medium">Status</th>
             {board.fields.map((field) => (
@@ -48,6 +51,7 @@ export function TaskTable({ board, items, agents, onOpen }: TaskTableProps) {
                   agent?.status === 'WAITING_INPUT' ? 'bg-amber-400/5' : ''
                 }`}
               >
+                {label && <td className="px-3 py-2 whitespace-nowrap text-accent">{label.value(item)}</td>}
                 <td className="px-3 py-2">
                   <div className="font-medium">{item.title}</div>
                   <div className="font-mono text-xs text-muted">{itemRef(item)}</div>

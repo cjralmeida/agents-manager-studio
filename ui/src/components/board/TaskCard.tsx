@@ -1,17 +1,18 @@
 import type { Agent } from '../../api/agents';
-import type { Board, BoardItem } from '../../api/boards';
+import type { BoardItem, BoardLayout } from '../../api/boards';
 import { AgentStatusBadge } from '../agents/AgentStatusBadge';
 import { itemRef } from './boardUtils';
 import { OptionChip } from './OptionChip';
 
 interface TaskCardProps {
-  board: Board;
+  board: BoardLayout;
   item: BoardItem;
   agent: Agent | undefined;
   onOpen: () => void;
+  label?: string | null;
 }
 
-export function TaskCard({ board, item, agent, onOpen }: TaskCardProps) {
+export function TaskCard({ board, item, agent, onOpen, label }: TaskCardProps) {
   const waiting = agent?.status === 'WAITING_INPUT';
   const values = board.fields.flatMap((field) => {
     const option = field.options.find((entry) => entry.id === item.fields[field.id]);
@@ -32,7 +33,10 @@ export function TaskCard({ board, item, agent, onOpen }: TaskCardProps) {
       }`}
     >
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span className="truncate font-mono">{itemRef(item)}</span>
+        <span className="truncate font-mono">
+          {label && <span className="mr-1.5 font-sans font-medium text-accent">{label}</span>}
+          {itemRef(item)}
+        </span>
         {item.pullRequests.length > 0 && <span title="Pull requests vinculados">PR ×{item.pullRequests.length}</span>}
       </div>
       <p className="mt-1 text-sm leading-snug font-medium">{item.title}</p>

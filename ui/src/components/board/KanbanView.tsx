@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import type { Agent } from '../../api/agents';
-import type { Board, BoardItem } from '../../api/boards';
+import type { BoardItem, BoardLayout } from '../../api/boards';
 import { sortItems } from './boardUtils';
 import { ColorDot } from './OptionChip';
 import { TaskCard } from './TaskCard';
 
-interface KanbanViewProps {
-  board: Board;
-  items: BoardItem[];
+interface KanbanViewProps<T extends BoardItem> {
+  board: BoardLayout;
+  items: T[];
   agents: Map<string, Agent>;
-  onOpen: (item: BoardItem) => void;
-  onMove: (item: BoardItem, columnId: string) => void;
+  onOpen: (item: T) => void;
+  onMove: (item: T, columnId: string) => void;
+  /** Extra line on each card (the workspace, on the board of all workspaces). */
+  label?: (item: T) => string | null;
 }
 
 const NO_STATUS = '__none__';
 
-export function KanbanView({ board, items, agents, onOpen, onMove }: KanbanViewProps) {
+export function KanbanView<T extends BoardItem>({ board, items, agents, onOpen, onMove, label }: KanbanViewProps<T>) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const blockedColumn = board.link.statusMap.blocked;
   const withoutStatus = items.filter((item) => !board.columns.some((column) => column.id === item.columnId));
@@ -65,7 +67,7 @@ export function KanbanView({ board, items, agents, onOpen, onMove }: KanbanViewP
             </header>
             <div className="flex min-h-24 flex-col gap-2 p-2">
               {sortItems(board, columnItems, agents).map((item) => (
-                <TaskCard key={item.id} board={board} item={item} agent={agents.get(item.id)} onOpen={() => onOpen(item)} />
+                <TaskCard key={item.id} board={board} item={item} agent={agents.get(item.id)} onOpen={() => onOpen(item)} label={label?.(item)} />
               ))}
             </div>
           </section>
