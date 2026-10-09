@@ -14,6 +14,7 @@ import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { mergePullRequest, openPullRequest } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
+import { testServicesEnv } from './test-services.js';
 import {
   NO_CHANGES_MESSAGE,
   commitAndPush,
@@ -338,6 +339,7 @@ export async function ensureContainer(agentId: string) {
       agent,
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
+      env: await testServicesEnv(agent.id, Boolean(agent.projectId)),
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
   } finally {

@@ -129,7 +129,8 @@ Os papéis das colunas ficam em Configuração do workspace. Tarefas na coluna "
 
 ## Agentes: ambiente, avisos e consumo
 
-- **Imagem do agente** (`agent-runner/`): traz Node.js 24, Python 3 (com pip e venv), git e o Claude Code. Depois de alterá-la, reconstrua com `docker compose --profile tools build agent-runner`.
+- **Imagem do agente** (`agent-runner/`): traz Node.js 24, Python 3 (com pip e venv), Go 1.25, Java 21 com Maven (projetos Gradle usam o `./gradlew` deles), `psql`, git e o Claude Code. Depois de alterá-la, reconstrua com `docker compose --profile tools build agent-runner`.
+- **Banco de testes por execução:** todo agente que trabalha num repositório recebe `TEST_DATABASE_URL`, um PostgreSQL vazio só dele, com usuário próprio. Esse usuário não acessa o banco do Studio nem o de outros agentes. Recebe também `TEST_REDIS_URL`, um índice exclusivo de um Redis sem persistência. Quando o agente termina, o Studio apaga o banco e limpa o Redis; a verificação roda a cada 10 minutos e ao iniciar o server.
 - **Notificações do navegador:** para ativar, use o botão no rodapé do menu lateral. O aviso chega quando um agente faz uma pergunta, fica pronto para revisão, abre o PR/MR ou falha, desde que o Studio esteja aberto em alguma aba e sem foco. O título da aba mostra quantos agentes aguardam você.
 - **Consumo do Studio no Docker:** o Dashboard mostra memória, CPU, containers e disco, considerando só os serviços do Studio e os agentes. Lançar um agente pede confirmação quando a memória ou a CPU passam de `AGENT_LAUNCH_MEMORY_PERCENT` ou `AGENT_LAUNCH_CPU_PERCENT`, que por padrão são 80% e 85%.
 - **Consumo do Claude:** o Dashboard mostra, por conta Claude, as janelas do plano: a sessão de 5 horas e a semanal, em %, com o horário em que reiniciam. Essas janelas vêm junto de cada requisição dos agentes, e o botão "Atualizar" faz uma chamada mínima com o Haiku para lê-las.

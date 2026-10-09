@@ -84,10 +84,12 @@ export interface StartAgentInput {
   agent: RuntimeAgent;
   claudeToken: string;
   skillIds: string[];
+  /** Extra variables, e.g. the URLs of the throwaway test database and Redis. */
+  env?: Record<string, string>;
 }
 
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {} }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
 
@@ -112,6 +114,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds }: Star
       STUDIO_TOOLS: runnerTools(agent).join(','),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
+      ...env,
     },
   });
 

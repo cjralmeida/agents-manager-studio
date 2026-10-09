@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
+import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
 import { scanWorkspaces } from './modules/workspaces/service.js';
@@ -14,6 +15,9 @@ app.addHook('onClose', async () => stopWorkflowScheduler());
 // Follows Render deploys until they finish, also those started before a restart.
 const stopDeploymentMonitor = startDeploymentMonitor(app.log);
 app.addHook('onClose', async () => stopDeploymentMonitor());
+// Drops the test databases and Redis indexes of finished agents; keeps agents out of the Studio databases.
+const stopTestServicesJanitor = startTestServicesJanitor(app.log);
+app.addHook('onClose', async () => stopTestServicesJanitor());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {

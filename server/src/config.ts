@@ -43,6 +43,9 @@ const envSchema = z.object({
   WORKFLOW_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
   // Folder shared with the Windows helper (studio.ps1): requests in, heartbeat and results out.
   HOST_HELPER_DIR: z.string().min(1).default('/data/host-helper'),
+  // Where agent containers reach the throwaway test services (compose service names).
+  TEST_DATABASE_HOST: z.string().min(1).default('postgres'),
+  TEST_REDIS_HOST: z.string().min(1).default('redis'),
   // Marks the session cookie Secure; set to true when the Studio is served over https.
   COOKIE_SECURE: z.stringbool().default(false),
   // Render API base; overridable to point tests at a fake server.
@@ -81,6 +84,8 @@ function loadConfig() {
     workflowPlanLimitPercent: env.WORKFLOW_PLAN_LIMIT_PERCENT,
     hostHelperDir: env.HOST_HELPER_DIR,
     cookieSecure: env.COOKIE_SECURE,
+    testDatabaseHost: env.TEST_DATABASE_HOST,
+    testRedisHost: env.TEST_REDIS_HOST,
     renderApiUrl: env.RENDER_API_URL.replace(/\/+$/, ''),
   };
 }

@@ -278,6 +278,8 @@ model Agent {
   autoConclude    Boolean     @default(false) @map("auto_conclude")
   /// Copied from the workspace agent: merge the PR/MR as soon as it is opened.
   autoMerge       Boolean     @default(false) @map("auto_merge")
+  /// Redis database index (1-15) held for its tests while it is not finished; see test-services.ts.
+  testRedisDb     Int?        @map("test_redis_db")
   /// Outcome reported by the agent (studio_report_result) or collected by the Studio (created tasks).
   result          Json?
   title           String

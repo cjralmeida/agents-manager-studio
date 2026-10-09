@@ -43,6 +43,12 @@ services:
       postgres:
         condition: service_healthy
 
+  # Throwaway Redis for the tests of agents (one database index per run, flushed when it ends); nothing persisted.
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
   server:
     build:
       context: ./server
