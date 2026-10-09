@@ -191,7 +191,12 @@ function AgentTable({ summaries, showWorkspace }: { summaries: AgentSummary[]; s
           {summaries.map((summary) => {
             const state = agentStateLabels[summary.state];
             return (
-              <tr key={summary.key} className={`border-t border-border hover:bg-border/30 ${summary.state === 'waiting' ? 'bg-amber-400/5' : ''}`}>
+              <tr
+                key={summary.key}
+                className={`border-t border-border hover:bg-border/30 ${
+                  summary.state === 'waiting' ? 'bg-amber-400/5' : summary.state === 'working' ? 'glow-working-row bg-purple-500/5' : ''
+                }`}
+              >
                 <td className="px-4 py-2">
                   <Link to={agentPagePath(summary)} className="font-medium hover:text-accent">
                     {summary.name}

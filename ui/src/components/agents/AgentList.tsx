@@ -33,7 +33,13 @@ export function AgentList({ agents, showWorkspace = false, live }: AgentListProp
           {agents.map((agent) => (
             <tr
               key={agent.id}
-              className={`border-t border-border hover:bg-border/30 ${agent.status === 'WAITING_INPUT' ? 'bg-amber-400/5' : ''}`}
+              className={`border-t border-border hover:bg-border/30 ${
+                agent.status === 'WAITING_INPUT'
+                  ? 'bg-amber-400/5'
+                  : ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)
+                    ? 'glow-working-row bg-purple-500/5'
+                    : ''
+              }`}
             >
               <td className="px-4 py-2">
                 <Link to={`/agents/${agent.id}`} className="font-medium hover:text-accent">
