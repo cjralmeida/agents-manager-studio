@@ -38,7 +38,7 @@ export function Layout() {
     <div className="flex h-full">
       <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-border bg-panel">
         <NavLink to="/" className="flex items-center gap-2.5 px-4 py-5 text-sm font-semibold tracking-wide">
-          <Logo size={28} alert={waiting > 0} />
+          <Logo size={28} alert={waiting > 0} working={activeIds.size > 0} />
           <span className="leading-tight">Agents Manager Studio</span>
         </NavLink>
         <nav className="flex flex-col gap-1 px-2">

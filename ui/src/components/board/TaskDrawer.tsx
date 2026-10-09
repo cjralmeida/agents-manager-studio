@@ -15,9 +15,11 @@ interface TaskDrawerProps {
   item: BoardItem;
   agent: Agent | undefined;
   onClose: () => void;
+  /** An active workflow run is processing the task. */
+  inWorkflow?: boolean;
 }
 
-export function TaskDrawer({ workspace, board, item, agent, onClose }: TaskDrawerProps) {
+export function TaskDrawer({ workspace, board, item, agent, onClose, inWorkflow = false }: TaskDrawerProps) {
   const [launching, setLaunching] = useState(false);
   const move = useMoveTask(workspace.id);
   const setField = useSetTaskField(workspace.id);
@@ -35,7 +37,9 @@ export function TaskDrawer({ workspace, board, item, agent, onClose }: TaskDrawe
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/50" onClick={onClose}>
       <aside
-        className="flex h-full w-full max-w-2xl flex-col overflow-y-auto border-l border-border bg-surface p-5 shadow-2xl"
+        className={`flex h-full w-full max-w-2xl flex-col overflow-y-auto border-l bg-surface p-5 shadow-2xl ${
+          inWorkflow || (agent && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)) ? 'glow-working' : 'border-border'
+        }`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">

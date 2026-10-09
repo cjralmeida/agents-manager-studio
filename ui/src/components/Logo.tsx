@@ -2,13 +2,14 @@ import { useId } from 'react';
 
 /**
  * The Studio mark ("Órbita"): the core with its agents in orbit, blue working and amber waiting.
- * With `alert`, the amber agent pulses, as it does when an agent is waiting for the user.
+ * With `alert`, the amber agent pulses, as it does when an agent is waiting for the user; with `working`, the mark
+ * glows purple, like the cards of working agents.
  * Same drawing as public/icon.svg.
  */
-export function Logo({ size = 28, alert = false }: { size?: number; alert?: boolean }) {
+export function Logo({ size = 28, alert = false, working = false }: { size?: number; alert?: boolean; working?: boolean }) {
   const gradient = useId();
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className={`shrink-0 ${working ? 'logo-working' : ''}`}>
       <defs>
         <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#1c2130" />

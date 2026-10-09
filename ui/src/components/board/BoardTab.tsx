@@ -182,7 +182,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           inWorkflow={inWorkflow}
         />
       ) : (
-        <TaskTable board={board} items={items} agents={agentMap} onOpen={(item) => setOpenItemId(item.id)} />
+        <TaskTable board={board} items={items} agents={agentMap} onOpen={(item) => setOpenItemId(item.id)} inWorkflow={inWorkflow} />
       )}
 
       {openItem && (
@@ -192,6 +192,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           item={openItem}
           agent={agentMap.get(openItem.id)}
           onClose={() => setOpenItemId(null)}
+          inWorkflow={inWorkflow(openItem)}
         />
       )}
       {creating && <NewTaskForm workspaceId={workspace.id} board={board} onClose={() => setCreating(false)} />}

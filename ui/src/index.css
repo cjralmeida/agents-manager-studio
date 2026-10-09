@@ -192,3 +192,25 @@ body {
     background: rgb(168 85 247 / 0.8);
   }
 }
+
+/* Studio mark in the menu while any agent works: a soft purple glow that breathes. */
+@keyframes logo-working {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgb(168 85 247 / 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 7px rgb(168 85 247 / 0.85));
+  }
+}
+
+.logo-working {
+  animation: logo-working 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-working {
+    animation: none;
+    filter: drop-shadow(0 0 4px rgb(168 85 247 / 0.6));
+  }
+}

@@ -115,7 +115,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
   };
 
   return (
-    <article className="flex flex-col rounded-lg border border-border bg-panel p-4">
+    <article className={`flex flex-col rounded-lg border bg-panel p-4 ${profile.workingAgents > 0 ? 'glow-working' : 'border-border'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{profile.name}</h3>

@@ -12,10 +12,12 @@ interface TaskTableProps<T extends BoardItem> {
   onOpen: (item: T) => void;
   /** Extra first column (the workspace, on the board of all workspaces). */
   label?: { title: string; value: (item: T) => string };
+  /** Whether an active workflow run is processing the task. */
+  inWorkflow?: (item: T) => boolean;
 }
 
 /** Same tasks as the board, one row each, grouped by column order. */
-export function TaskTable<T extends BoardItem>({ board, items, agents, onOpen, label }: TaskTableProps<T>) {
+export function TaskTable<T extends BoardItem>({ board, items, agents, onOpen, label, inWorkflow }: TaskTableProps<T>) {
   if (items.length === 0) return <p className="text-sm text-muted">Nenhuma tarefa.</p>;
 
   // Items without a column (-1) come first, like the "Sem status" column of the board.
@@ -48,7 +50,11 @@ export function TaskTable<T extends BoardItem>({ board, items, agents, onOpen, l
                 key={item.id}
                 onClick={() => onOpen(item)}
                 className={`cursor-pointer border-t border-border hover:bg-border/30 ${
-                  agent?.status === 'WAITING_INPUT' ? 'bg-amber-400/5' : ''
+                  agent?.status === 'WAITING_INPUT'
+                    ? 'bg-amber-400/5'
+                    : inWorkflow?.(item) || (agent && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status))
+                      ? 'glow-working-row bg-purple-500/5'
+                      : ''
                 }`}
               >
                 {label && <td className="px-3 py-2 whitespace-nowrap text-accent">{label.value(item)}</td>}

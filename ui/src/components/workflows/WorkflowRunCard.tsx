@@ -93,7 +93,11 @@ export function WorkflowRunCard({ workspaceId, run }: { workspaceId: string; run
                   const step = latest(definition.id, lane);
                   if (!step) return <td key={definition.id} />;
                   const content = (
-                    <span className={`flex items-center justify-between gap-1 rounded border px-2 py-1 ${cellTone(step)}`}>
+                    <span
+                      className={`flex items-center justify-between gap-1 rounded border px-2 py-1 ${cellTone(step)} ${
+                        step.status === 'RUNNING' ? 'glow-working-row' : ''
+                      }`}
+                    >
                       <span>{cellLabel(step)}</span>
                       {step.attempt > 1 && <span title="Tentativas">×{step.attempt}</span>}
                     </span>

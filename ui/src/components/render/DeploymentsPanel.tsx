@@ -14,7 +14,7 @@ export function DeploymentsPanel({ workspaceId }: { workspaceId: string }) {
   return (
     <ul className="divide-y divide-border/60">
       {deployments.data.slice(0, 6).map((deployment) => (
-        <li key={deployment.id} className="py-1.5 text-xs">
+        <li key={deployment.id} className={`py-1.5 text-xs ${deployment.isFinished ? '' : 'glow-working-row -mx-2 rounded-md px-2'}`}>
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-medium">{deployment.serviceName}</span>
             <Badge tone={deployment.isSuccess ? 'success' : deployment.isFinished ? 'danger' : 'info'}>{deployment.statusLabel}</Badge>
