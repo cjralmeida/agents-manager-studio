@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAgent } from '../api/agents';
+import { useAgent, useAgents } from '../api/agents';
 import { NavLink, Outlet } from 'react-router';
 import { useMe } from '../api/auth';
 import { useWorkspaces } from '../api/workspaces';
@@ -23,6 +23,10 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 export function Layout() {
   const me = useMe();
   const workspaces = useWorkspaces();
+  const agents = useAgents();
+  /** Workspaces with an agent working / waiting for the user, to light up their menu entries. */
+  const activeIds = new Set(agents.data?.filter((agent) => ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)).map((agent) => agent.workspaceId));
+  const waitingIds = new Set(agents.data?.filter((agent) => agent.status === 'WAITING_INPUT').map((agent) => agent.workspaceId));
   const items = me.data?.role === 'ADMIN' ? [...navItems, { to: '/users', label: 'Usuários', end: false }] : navItems;
   const activeWorkspaces = workspaces.data?.filter((workspace) => !workspace.isMissing) ?? [];
   const notifications = useNotificationSettings();
@@ -57,7 +61,14 @@ export function Layout() {
           <nav className="mt-6 flex flex-col gap-1 px-2">
             <h2 className="px-3 pb-1 text-xs font-medium tracking-wider text-muted uppercase">Workspaces</h2>
             {activeWorkspaces.map((workspace) => (
-              <NavLink key={workspace.id} to={`/workspaces/${workspace.id}`} className={navLinkClass}>
+              <NavLink
+                key={workspace.id}
+                to={`/workspaces/${workspace.id}`}
+                className={(state) =>
+                  `${navLinkClass(state)} ${waitingIds.has(workspace.id) ? 'glow-question' : activeIds.has(workspace.id) ? 'glow-working-row' : ''}`
+                }
+                title={waitingIds.has(workspace.id) ? 'Agente aguardando você' : activeIds.has(workspace.id) ? 'Agentes trabalhando' : undefined}
+              >
                 {workspace.name}
               </NavLink>
             ))}
