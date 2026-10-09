@@ -6,7 +6,9 @@ import { prepareTaskByNames } from '../agent-tools/service.js';
 import { profileSchema } from '../agent-profiles/schema.js';
 import { createAgentProfile, deleteAgentProfile, updateAgentProfile } from '../agent-profiles/service.js';
 import { addEvent, sendMessage } from '../agents/service.js';
-import { createTask } from '../boards/service.js';
+import { createBoard, createLocalBoard, createTask, linkBoard } from '../boards/service.js';
+import { setProjectService } from '../render/service.js';
+import { getWorkspaceSettings, updateWorkspaceSettings } from '../workspace-settings/service.js';
 import { workflowSchema } from '../workflows/definition.js';
 import { cancelWorkflowRun, createWorkflow, deleteWorkflow, startWorkflow, updateWorkflow, validateWorkflow } from '../workflows/service.js';
 
@@ -20,6 +22,11 @@ export const PROPOSAL_KINDS = [
   'start_workflow',
   'cancel_run',
   'create_task',
+  'update_workspace_settings',
+  'create_board',
+  'link_board',
+  'create_local_board',
+  'set_render_service',
 ] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 
@@ -43,6 +50,29 @@ const payloadSchemas: Record<ProposalKind, z.ZodType> = {
       column: z.string().optional(),
       fields: z.record(z.string(), z.string()).optional(),
     })
+    .strict(),
+  // Only the parts that change; the rest of the settings is kept.
+  update_workspace_settings: z
+    .object({
+      agentAccountId: z.uuid().nullable().optional(),
+      gitAccountIds: z.array(z.uuid()).max(20).optional(),
+      renderAccountId: z.uuid().nullable().optional(),
+      enabledSkillIds: z.array(z.string().min(1).max(300)).max(200).optional(),
+    })
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, 'informe ao menos uma configuração'),
+  create_board: z
+    .object({
+      provider: z.enum(['GITHUB', 'GITLAB']),
+      host: z.string().trim().min(1).max(200),
+      owner: z.string().trim().min(1).max(300),
+      title: z.string().trim().min(1).max(100),
+    })
+    .strict(),
+  link_board: z.object({ url: z.url().max(500) }).strict(),
+  create_local_board: z.object({}).strict(),
+  set_render_service: z
+    .object({ projectId: z.uuid(), environment: z.enum(['HOMOLOGACAO', 'PRODUCAO']), serviceId: z.string().min(1).max(100).nullable() })
     .strict(),
 };
 
@@ -79,6 +109,16 @@ async function validateProposal(workspaceId: string, kind: ProposalKind, payload
     });
   }
   if (kind === 'create_task') await prepareTaskByNames(workspaceId, data);
+  if (kind === 'update_workspace_settings') {
+    const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+    const ids = (data.gitAccountIds as string[] | undefined) ?? [];
+    if (ids.length > 0 && (await prisma.gitAccount.count({ where: { id: { in: ids }, ownerId } })) !== new Set(ids).size) {
+      throw new HttpError(422, 'Conta git não encontrada. Use os ids de accounts.git do studio_context.');
+    }
+  }
+  if (kind === 'set_render_service' && !(await prisma.project.count({ where: { id: String(data.projectId), workspaceId } }))) {
+    throw new HttpError(422, 'Projeto não encontrado neste workspace.');
+  }
   return data;
 }
 
@@ -121,6 +161,26 @@ async function apply(workspaceId: string, kind: ProposalKind, payload: Record<st
     case 'create_task': {
       const task = await createTask(workspaceId, await prepareTaskByNames(workspaceId, payload));
       return { taskId: task.id };
+    }
+    case 'update_workspace_settings': {
+      const current = await getWorkspaceSettings(workspaceId);
+      const saved = await updateWorkspaceSettings(workspaceId, { ...current, ...payload } as never);
+      return { settings: saved };
+    }
+    case 'create_board': {
+      const created = await createBoard(workspaceId, payload as never);
+      return { board: created.link.title, modelStatus: created.link.modelStatus, warnings: created.warnings };
+    }
+    case 'link_board': {
+      const linked = await linkBoard(workspaceId, String(payload.url));
+      const note = linked.modelStatus === 'pending' ? 'O quadro não segue o modelo: o usuário precisa convertê-lo na aba Quadro de tarefas.' : null;
+      return { board: linked.title, modelStatus: linked.modelStatus, ...(note && { note }) };
+    }
+    case 'create_local_board':
+      return { board: (await createLocalBoard(workspaceId)).title };
+    case 'set_render_service': {
+      const render = await setProjectService(workspaceId, payload as never);
+      return { services: render.services.length };
     }
   }
 }

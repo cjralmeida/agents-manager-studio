@@ -3,8 +3,12 @@ import { HttpError } from '../../lib/errors.js';
 import { listAgentProfiles } from '../agent-profiles/service.js';
 import { getAgent, listAgentEvents, listAgents } from '../agents/service.js';
 import { PROPOSAL_KINDS, type ProposalKind, createProposal } from '../assistant/proposals.js';
-import { boardContext, hasBoard } from '../boards/service.js';
-import { getRenderSettings } from '../render/service.js';
+import { listAgentAccounts } from '../agent-accounts/service.js';
+import { boardContext, detectBoards, hasBoard } from '../boards/service.js';
+import { listGitAccounts } from '../git-accounts/service.js';
+import { getRenderSettings, listAvailableServices, listRenderAccounts } from '../render/service.js';
+import { listSkills } from '../skills/service.js';
+import { getWorkspaceSettings } from '../workspace-settings/service.js';
 import { getUsageSummary } from '../usage/service.js';
 import { listRuns, listWorkflows } from '../workflows/service.js';
 
@@ -18,17 +22,30 @@ async function context(workspaceId: string) {
     where: { id: workspaceId },
     include: { projects: { where: { missingAt: null }, orderBy: { name: 'asc' } }, settings: true },
   });
-  const [linked, profiles, workflows, render] = await Promise.all([
+  const [linked, profiles, workflows, render, settings, claudeAccounts, gitAccounts, renderAccounts, skills] = await Promise.all([
     hasBoard(workspaceId),
     listAgentProfiles(workspaceId),
     listWorkflows(workspaceId),
     getRenderSettings(workspaceId),
+    getWorkspaceSettings(workspaceId),
+    listAgentAccounts(workspace.ownerId),
+    listGitAccounts(workspace.ownerId),
+    listRenderAccounts(workspace.ownerId),
+    listSkills(),
   ]);
   const board = linked ? await boardContext(workspaceId).catch(() => null) : null;
   const projectName = (id: string) => workspace.projects.find((project) => project.id === id)?.name ?? id;
 
   return {
     workspace: { id: workspace.id, name: workspace.name, hasClaudeAccount: Boolean(workspace.settings?.agentAccountId) },
+    // What update_workspace_settings changes, and the user's accounts and skills it can choose from.
+    settings,
+    accounts: {
+      claude: claudeAccounts.map((account) => ({ id: account.id, label: account.label })),
+      git: gitAccounts.map((account) => ({ id: account.id, provider: account.provider, host: account.host, username: account.username, label: account.label })),
+      render: renderAccounts.map((account) => ({ id: account.id, label: account.label, owner: account.ownerName })),
+    },
+    skills: skills.map((skill) => ({ id: skill.id, name: skill.name })),
     projects: workspace.projects.map((project) => ({
       id: project.id,
       name: project.name,
@@ -55,7 +72,12 @@ async function context(workspaceId: string) {
     render: {
       connected: Boolean(render.connection),
       account: render.connection?.label ?? null,
-      services: render.services.map((service: { projectId: string; environment: string; serviceName: string }) => ({ project: projectName(service.projectId), environment: service.environment, service: service.serviceName })),
+      services: render.services.map((service: { projectId: string; environment: string; serviceName: string }) => ({
+        projectId: service.projectId,
+        project: projectName(service.projectId),
+        environment: service.environment,
+        service: service.serviceName,
+      })),
     },
     agents: profiles.map((profile) => ({
       id: profile.id,
@@ -154,6 +176,33 @@ export async function runStudioTool(agentId: string, workspaceId: string, name: 
 
     case 'studio_usage':
       return getUsageSummary(workspaceId);
+
+    case 'studio_board_options': {
+      const found = await detectBoards(workspaceId);
+      return {
+        // Boards of the workspace repositories not linked yet (link_board with the url).
+        existing: found.candidates.map((candidate) => ({
+          provider: candidate.provider,
+          title: candidate.title,
+          url: candidate.url,
+          owner: candidate.ownerPath,
+          looksLikeStudioModel: candidate.matchesTemplate,
+        })),
+        // Where a new board can be created (create_board with provider, host and owner).
+        createIn: found.createOptions,
+        warnings: found.warnings,
+      };
+    }
+
+    case 'studio_render_services':
+      return (await listAvailableServices(workspaceId)).map((service) => ({
+        id: service.id,
+        name: service.name,
+        type: service.type,
+        repo: service.repo,
+        branch: service.branch,
+        url: service.url,
+      }));
 
     case 'studio_propose': {
       const kind = String(args.kind) as ProposalKind;

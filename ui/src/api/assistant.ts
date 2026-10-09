@@ -34,6 +34,11 @@ export const proposalKindLabels: Record<string, string> = {
   start_workflow: 'Iniciar workflow',
   cancel_run: 'Cancelar execução',
   create_task: 'Criar tarefa',
+  update_workspace_settings: 'Configurar o workspace',
+  create_board: 'Criar quadro',
+  link_board: 'Vincular quadro',
+  create_local_board: 'Tarefas do Studio no quadro',
+  set_render_service: 'Serviço do Render',
 };
 
 const keys = {

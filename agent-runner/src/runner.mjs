@@ -163,6 +163,8 @@ const STUDIO_TOOL_LABELS = {
   studio_list_executions: () => 'Lendo execuções de agentes',
   studio_get_execution: () => 'Lendo uma execução',
   studio_usage: () => 'Lendo o consumo',
+  studio_board_options: () => 'Procurando quadros',
+  studio_render_services: () => 'Lendo os serviços do Render',
   studio_propose: (input) => `Proposta: ${input.summary ?? input.kind ?? ''}`,
 };
 

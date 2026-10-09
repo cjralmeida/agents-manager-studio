@@ -170,6 +170,18 @@ export function createStudioTools(call, groups) {
       ),
       tool('studio_usage', 'Mostra o consumo do Claude no workspace: limites do plano, custo estimado e tokens.', {}, run('studio_usage')),
       tool(
+        'studio_board_options',
+        'Procura quadros (GitHub Projects, boards do GitLab) dos repositórios do workspace ainda não vinculados e onde dá para criar um novo. Precisa das contas git do workspace escolhidas.',
+        {},
+        run('studio_board_options'),
+      ),
+      tool(
+        'studio_render_services',
+        'Lista os serviços que a conta do Render do workspace enxerga (id, nome, repositório, branch), para escolher o de cada projeto.',
+        {},
+        run('studio_render_services'),
+      ),
+      tool(
         'studio_propose',
         'Propõe uma mudança ao usuário (ele vê um cartão e decide se aplica). O Studio valida antes; se vier erro, corrija o payload.',
         {
@@ -183,6 +195,11 @@ export function createStudioTools(call, groups) {
             'start_workflow',
             'cancel_run',
             'create_task',
+            'update_workspace_settings',
+            'create_board',
+            'link_board',
+            'create_local_board',
+            'set_render_service',
           ]),
           summary: z.string().describe('Uma frase dizendo o que a proposta faz, para o cartão.'),
           payload: z.record(z.string(), z.unknown()).describe('Dados da mudança, no formato descrito nas suas instruções.'),

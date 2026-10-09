@@ -73,6 +73,32 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
   if (proposal.kind === 'start_workflow' && payload.message) {
     return <p className="line-clamp-3 text-xs text-gray-300">"{String(payload.message)}"</p>;
   }
+
+  if (proposal.kind === 'update_workspace_settings') {
+    const parts = [
+      'agentAccountId' in payload ? (payload.agentAccountId ? 'conta Claude' : 'sem conta Claude') : null,
+      Array.isArray(payload.gitAccountIds) ? `${payload.gitAccountIds.length} conta(s) git` : null,
+      'renderAccountId' in payload ? (payload.renderAccountId ? 'conta do Render' : 'sem Render') : null,
+      Array.isArray(payload.enabledSkillIds) ? `skills: ${(payload.enabledSkillIds as string[]).join(', ') || 'nenhuma'}` : null,
+    ].filter(Boolean);
+    return <p className="text-xs text-muted">{parts.join(' · ')}</p>;
+  }
+
+  if (proposal.kind === 'create_board') {
+    const provider = payload.provider === 'GITHUB' ? 'GitHub' : 'GitLab';
+    return (
+      <p className="text-xs text-muted">
+        "{String(payload.title)}" em {provider} · {String(payload.owner)}, com as colunas e campos do modelo
+      </p>
+    );
+  }
+
+  if (proposal.kind === 'link_board') return <p className="truncate text-xs text-muted">{String(payload.url)}</p>;
+
+  if (proposal.kind === 'set_render_service') {
+    const environment = payload.environment === 'PRODUCAO' ? 'produção' : 'homologação';
+    return <p className="text-xs text-muted">{payload.serviceId ? `Serviço ${String(payload.serviceId)} em ${environment}` : `Sem serviço em ${environment}`}</p>;
+  }
   return null;
 }
 

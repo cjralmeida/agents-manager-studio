@@ -20,6 +20,8 @@ export const AGENT_TOOL_NAMES = [
   'studio_get_execution',
   'studio_usage',
   'studio_propose',
+  'studio_board_options',
+  'studio_render_services',
   ...RENDER_TOOL_NAMES,
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
