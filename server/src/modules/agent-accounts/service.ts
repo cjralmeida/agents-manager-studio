@@ -13,8 +13,9 @@ export interface AgentAccountInput {
 
 const NOT_FOUND_MESSAGE = 'Conta de agente não encontrada.';
 
-export async function listAgentAccounts() {
+export async function listAgentAccounts(ownerId: string) {
   const accounts = await prisma.agentAccount.findMany({
+    where: { ownerId },
     orderBy: { label: 'asc' },
     include: { _count: { select: { workspaceSettings: true } } },
   });
@@ -24,9 +25,10 @@ export async function listAgentAccounts() {
   }));
 }
 
-export async function createAgentAccount(input: Required<AgentAccountInput>) {
+export async function createAgentAccount(ownerId: string, input: Required<AgentAccountInput>) {
   const account = await prisma.agentAccount.create({
     data: {
+      ownerId,
       label: input.label,
       tokenEncrypted: secrets.encrypt(input.token),
       tokenHint: secretHint(input.token),

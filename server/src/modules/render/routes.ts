@@ -29,9 +29,11 @@ const deployBody = z.object({ projectId: z.uuid(), environment: environment.defa
 
 export async function renderRoutes(app: FastifyInstance) {
   // Global Render accounts (Conectores page); workspaces pick one in their settings.
-  app.get('/render-accounts', async () => listRenderAccounts());
+  app.get('/render-accounts', async (request) => listRenderAccounts(request.user.id));
 
-  app.post('/render-accounts', async (request, reply) => reply.code(201).send(await createRenderAccount(parseInput(accountBody, request.body))));
+  app.post('/render-accounts', async (request, reply) =>
+    reply.code(201).send(await createRenderAccount(request.user.id, parseInput(accountBody, request.body))),
+  );
 
   app.patch('/render-accounts/:id', async (request) => {
     const { id } = parseInput(idParams, request.params);
@@ -45,7 +47,7 @@ export async function renderRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  app.get('/render/connections', async () => listRenderConnections());
+  app.get('/render/connections', async (request) => listRenderConnections(request.user.id));
 
   // Per workspace: the chosen account and which service runs each project.
   app.get('/workspaces/:id/render', async (request) => getRenderSettings(parseInput(idParams, request.params).id));

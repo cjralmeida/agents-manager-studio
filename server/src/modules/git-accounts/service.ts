@@ -23,8 +23,9 @@ export interface UpdateGitAccountInput {
 
 const NOT_FOUND_MESSAGE = 'Conta git não encontrada.';
 
-export async function listGitAccounts() {
+export async function listGitAccounts(ownerId: string) {
   const accounts = await prisma.gitAccount.findMany({
+    where: { ownerId },
     orderBy: [{ provider: 'asc' }, { label: 'asc' }],
     include: { _count: { select: { workspaces: true } } },
   });
@@ -32,10 +33,11 @@ export async function listGitAccounts() {
 }
 
 /** The token is verified with the provider before saving; the username comes from that check. */
-export async function createGitAccount(input: CreateGitAccountInput) {
+export async function createGitAccount(ownerId: string, input: CreateGitAccountInput) {
   const username = await fetchGitUsername(input.provider, input.host, input.token);
   const account = await prisma.gitAccount.create({
     data: {
+      ownerId,
       provider: input.provider,
       label: input.label,
       host: input.host,

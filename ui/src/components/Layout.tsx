@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
+import { useMe } from '../api/auth';
 import { useWorkspaces } from '../api/workspaces';
 import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
+import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
 import { OrbiPanel } from './orbi/OrbiPanel';
 
@@ -18,7 +20,9 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 }
 
 export function Layout() {
+  const me = useMe();
   const workspaces = useWorkspaces();
+  const items = me.data?.role === 'ADMIN' ? [...navItems, { to: '/users', label: 'Usuários', end: false }] : navItems;
   const activeWorkspaces = workspaces.data?.filter((workspace) => !workspace.isMissing) ?? [];
   const notifications = useNotificationSettings();
   const waiting = useAgentNotifications(notifications.enabled);
@@ -32,7 +36,7 @@ export function Layout() {
           <span className="leading-tight">Agents Manager Studio</span>
         </NavLink>
         <nav className="flex flex-col gap-1 px-2">
-          {navItems.map((item) => (
+          {items.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
               {item.label}
               {item.to === '/' && waiting > 0 && (
@@ -61,6 +65,11 @@ export function Layout() {
         <div className="mt-auto border-t border-border px-4 py-3 text-xs">
           <NotificationControl {...notifications} />
         </div>
+        {me.data && (
+          <div className="border-t border-border p-2">
+            <UserMenu user={me.data} />
+          </div>
+        )}
       </aside>
       <main className="flex-1 overflow-auto p-6">
         <Outlet />

@@ -60,10 +60,10 @@ const updateBody = z
   .refine((body) => Object.values(body).some((value) => value !== undefined), 'Nada para atualizar.');
 
 export async function gitAccountRoutes(app: FastifyInstance) {
-  app.get('/git-accounts', async () => listGitAccounts());
+  app.get('/git-accounts', async (request) => listGitAccounts(request.user.id));
 
   app.post('/git-accounts', async (request, reply) => {
-    const account = await createGitAccount(parseInput(createBody, request.body));
+    const account = await createGitAccount(request.user.id, parseInput(createBody, request.body));
     return reply.code(201).send(account);
   });
 

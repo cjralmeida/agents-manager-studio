@@ -2,7 +2,7 @@ import { prisma } from '../../db.js';
 import type { TaskBoard } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { BoardModel } from './model.js';
-import { getModel } from './model-store.js';
+import { getModel, getWorkspaceModel } from './model-store.js';
 import { type ModelMap, fixedColumnOf } from './model-sync.js';
 import { boardContext, findBoard, moveItem } from './service.js';
 import { GITHUB_COLORS } from './template.js';
@@ -47,10 +47,10 @@ export interface OverviewItem extends BoardItem {
   alsoIn: string[];
 }
 
-export async function listAllTasks() {
-  const model = await getModel();
+export async function listAllTasks(userId: string) {
+  const model = await getModel(userId);
   const boards = await prisma.taskBoard.findMany({
-    where: { workspace: { isIgnored: false, missingAt: null } },
+    where: { workspace: { ownerId: userId, isIgnored: false, missingAt: null } },
     include: { workspace: { select: { name: true } } },
     orderBy: { workspace: { name: 'asc' } },
   });
@@ -112,7 +112,7 @@ export async function listAllTasks() {
 /** Moves a task to a model column, translated to the column of its own board. */
 export async function moveOverviewTask(workspaceId: string, itemId: string, modelColumnId: string) {
   const board = await findBoard(workspaceId);
-  const model = await getModel();
+  const model = await getWorkspaceModel(workspaceId);
   const column = model.columns.find((entry) => entry.id === modelColumnId);
   if (!column) throw new HttpError(404, 'Coluna não encontrada no modelo.');
   let target: string | undefined;

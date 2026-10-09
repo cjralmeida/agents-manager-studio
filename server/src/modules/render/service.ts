@@ -30,15 +30,15 @@ async function ownerNameOf(apiKey: string) {
   return owners.map((owner) => owner.name).join(', ') || 'Render';
 }
 
-export async function listRenderAccounts() {
-  const accounts = await prisma.renderAccount.findMany({ include: withUsage, orderBy: { label: 'asc' } });
+export async function listRenderAccounts(ownerId: string) {
+  const accounts = await prisma.renderAccount.findMany({ where: { ownerId }, include: withUsage, orderBy: { label: 'asc' } });
   return accounts.map(accountResponse);
 }
 
-export async function createRenderAccount(input: { label: string; apiKey: string }) {
+export async function createRenderAccount(ownerId: string, input: { label: string; apiKey: string }) {
   const ownerName = await ownerNameOf(input.apiKey);
   const account = await prisma.renderAccount.create({
-    data: { label: input.label, apiKeyEncrypted: secrets.encrypt(input.apiKey), apiKeyHint: secretHint(input.apiKey), ownerName },
+    data: { ownerId, label: input.label, apiKeyEncrypted: secrets.encrypt(input.apiKey), apiKeyHint: secretHint(input.apiKey), ownerName },
     include: withUsage,
   });
   return accountResponse(account);
@@ -103,9 +103,9 @@ export async function getRenderSettings(workspaceId: string) {
 }
 
 /** Workspaces that use a Render account, for the Connectors page. */
-export async function listRenderConnections() {
+export async function listRenderConnections(ownerId: string) {
   const settings = await prisma.workspaceSettings.findMany({
-    where: { renderAccountId: { not: null } },
+    where: { renderAccountId: { not: null }, workspace: { ownerId } },
     include: { renderAccount: true, workspace: { select: { name: true, _count: { select: { renderServices: true } } } } },
     orderBy: { workspace: { name: 'asc' } },
   });

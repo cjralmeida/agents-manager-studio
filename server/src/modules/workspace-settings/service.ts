@@ -20,7 +20,8 @@ export async function getWorkspaceSettings(workspaceId: string): Promise<Workspa
 
 export async function updateWorkspaceSettings(workspaceId: string, input: WorkspaceSettingsData) {
   await ensureWorkspacesExist([workspaceId]);
-  await validateSettings(input);
+  const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+  await validateSettings(ownerId, input);
   await prisma.$transaction((tx) => writeSettings(tx, workspaceId, input));
   return readSettings(prisma, workspaceId);
 }
@@ -29,6 +30,10 @@ export async function updateWorkspaceSettings(workspaceId: string, input: Worksp
 export async function copyWorkspaceSettings(sourceId: string, targetIds: string[]) {
   const targets = [...new Set(targetIds)].filter((id) => id !== sourceId);
   await ensureWorkspacesExist([sourceId, ...targets]);
+  const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: sourceId }, select: { ownerId: true } });
+  if ((await prisma.workspace.count({ where: { id: { in: targets }, ownerId } })) !== targets.length) {
+    throw new HttpError(404, 'Workspace não encontrado.');
+  }
 
   await prisma.$transaction(async (tx) => {
     const settings = await readSettings(tx, sourceId);
@@ -65,18 +70,18 @@ async function writeSettings(tx: Tx, workspaceId: string, settings: WorkspaceSet
   });
 }
 
-async function validateSettings(input: WorkspaceSettingsData) {
+async function validateSettings(ownerId: string, input: WorkspaceSettingsData) {
   if (input.agentAccountId) {
-    const exists = await prisma.agentAccount.count({ where: { id: input.agentAccountId } });
+    const exists = await prisma.agentAccount.count({ where: { id: input.agentAccountId, ownerId } });
     if (!exists) throw new HttpError(422, 'Conta de agente não encontrada.');
   }
 
-  if (input.renderAccountId && !(await prisma.renderAccount.count({ where: { id: input.renderAccountId } }))) {
+  if (input.renderAccountId && !(await prisma.renderAccount.count({ where: { id: input.renderAccountId, ownerId } }))) {
     throw new HttpError(422, 'Conta do Render não encontrada.');
   }
 
   const gitAccounts = await prisma.gitAccount.findMany({
-    where: { id: { in: input.gitAccountIds } },
+    where: { id: { in: input.gitAccountIds }, ownerId },
     select: { host: true },
   });
   if (gitAccounts.length !== new Set(input.gitAccountIds).size) {

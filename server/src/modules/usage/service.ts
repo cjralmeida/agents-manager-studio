@@ -71,17 +71,18 @@ function toTotals(sum: Sum | undefined) {
   };
 }
 
-/** Without a workspace, usage of every workspace; with one, only its agents. */
-export async function getUsageSummary(workspaceId?: string) {
+/** Without a workspace, usage of every workspace of the user; with one, only its agents. */
+export async function getUsageSummary(ownerId: string, workspaceId?: string) {
   const since30 = new Date(Date.now() - 30 * DAY_MS);
   const since14 = new Date(startOfToday().getTime() - 13 * DAY_MS);
-  const scope = workspaceId ? { workspaceId } : {};
+  const workspaceIds = workspaceId ? [workspaceId] : (await prisma.workspace.findMany({ where: { ownerId }, select: { id: true } })).map((entry) => entry.id);
+  const scope = { workspaceId: { in: workspaceIds } };
   const periodTotals = async (since: Date) =>
     toTotals((await prisma.agentUsage.aggregate({ where: { ...scope, createdAt: { gte: since } }, _sum: usageSum }))._sum);
 
   // Plan limits belong to the Claude account; a workspace shows only the account it uses.
   const settings = workspaceId ? await prisma.workspaceSettings.findUnique({ where: { workspaceId } }) : null;
-  const accountFilter = workspaceId ? { id: { in: settings?.agentAccountId ? [settings.agentAccountId] : [] } } : {};
+  const accountFilter = workspaceId ? { id: { in: settings?.agentAccountId ? [settings.agentAccountId] : [] } } : { ownerId };
 
   const [accounts, today, week, month, byWorkspace, byModel, byAgent, daily] = await Promise.all([
     prisma.agentAccount.findMany({
@@ -107,7 +108,8 @@ export async function getUsageSummary(workspaceId?: string) {
              SUM(cost_usd)::float AS cost,
              SUM(input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens) AS tokens
       FROM agent_usage
-      WHERE created_at >= ${since14} ${workspaceId ? Prisma.sql`AND workspace_id = ${workspaceId}::uuid` : Prisma.empty}
+      WHERE created_at >= ${since14}
+        AND ${workspaceIds.length > 0 ? Prisma.sql`workspace_id IN (${Prisma.join(workspaceIds.map((id) => Prisma.sql`${id}::uuid`))})` : Prisma.sql`false`}
       GROUP BY 1 ORDER BY 1`,
   ]);
 

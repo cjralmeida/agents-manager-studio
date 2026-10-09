@@ -16,7 +16,7 @@ const idParams = z.object({ id: z.uuid() });
 const profileBody = profileSchema;
 
 export async function agentProfileRoutes(app: FastifyInstance) {
-  app.get('/agent-profiles', async () => listAllAgentProfiles());
+  app.get('/agent-profiles', async (request) => listAllAgentProfiles(request.user.id));
 
   app.get('/workspaces/:id/agent-profiles', async (request) => listAgentProfiles(parseInput(workspaceParams, request.params).id));
 

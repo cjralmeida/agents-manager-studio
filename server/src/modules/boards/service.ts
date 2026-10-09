@@ -10,7 +10,7 @@ import { createGitHubClient } from './github.js';
 import { createGitLabClient } from './gitlab.js';
 import { createLocalAdapter } from './local.js';
 import { asStructure } from './model.js';
-import { getModel } from './model-store.js';
+import { getWorkspaceModel } from './model-store.js';
 import { type ModelMap, followsModel, mapByName, modelAsProviderStructure, statusMapFrom } from './model-sync.js';
 import { detectStatusMap } from './roles.js';
 import { type FieldOrder, GITLAB_FIXED_COLUMNS, fieldOrderOf, structureOf } from './structure.js';
@@ -81,7 +81,7 @@ async function clientsFor(workspaceId: string, provider: BoardProvider, host: st
 }
 
 export async function adapterFor(board: TaskBoard) {
-  if (board.provider === 'STUDIO') return createLocalAdapter(board.workspaceId, await getModel());
+  if (board.provider === 'STUDIO') return createLocalAdapter(board.workspaceId, await getWorkspaceModel(board.workspaceId));
   const clients = await clientsFor(board.workspaceId, board.provider as BoardProvider, board.host);
   return (clients.github ?? clients.gitlab)!.adapter;
 }
@@ -174,11 +174,16 @@ export async function detectBoards(workspaceId: string) {
 async function saveLink(workspaceId: string, provider: BoardProvider, host: string, candidate: BoardCandidate, readme: string | null) {
   const other = await prisma.taskBoard.findFirst({
     where: { provider, host, externalId: candidate.externalId, NOT: { workspaceId } },
-    include: { workspace: { select: { name: true } } },
+    include: { workspace: { select: { name: true, ownerId: true } } },
   });
-  if (other) throw new HttpError(409, `Este quadro já está vinculado ao workspace "${other.workspace.name}". Um quadro só pode ser usado por um workspace.`);
+  if (other) {
+    const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+    // The name of another user's workspace is not shown.
+    const where = other.workspace.ownerId === ownerId ? `ao workspace "${other.workspace.name}"` : 'a outro workspace';
+    throw new HttpError(409, `Este quadro já está vinculado ${where}. Um quadro só pode ser usado por um workspace.`);
+  }
 
-  const model = await getModel();
+  const model = await getWorkspaceModel(workspaceId);
   const data = {
     provider,
     host,
@@ -232,10 +237,11 @@ export async function linkBoard(workspaceId: string, url: string) {
 export async function createBoard(workspaceId: string, input: CreateOption & { title: string }) {
   await ensureWorkspace(workspaceId);
   const clients = await clientsFor(workspaceId, input.provider, input.host);
-  const structure = modelAsProviderStructure(await getModel(), input.provider);
+  const structure = modelAsProviderStructure(await getWorkspaceModel(workspaceId), input.provider);
 
   if (clients.github) {
-    const settings = await getStudioSettings();
+    const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+    const settings = await getStudioSettings(ownerId);
     const templateUrl = settings.githubBoardTemplateUrl ? parseBoardUrl(settings.githubBoardTemplateUrl) : null;
     const template = templateUrl?.provider === 'GITHUB' ? await clients.github.resolve(templateUrl) : null;
     const repositories = (await workspaceRepos(workspaceId))
@@ -256,7 +262,7 @@ export async function createBoard(workspaceId: string, input: CreateOption & { t
 export async function createLocalBoard(workspaceId: string) {
   const workspace = await ensureWorkspace(workspaceId);
   if (await prisma.taskBoard.findUnique({ where: { workspaceId } })) throw new HttpError(409, 'Este workspace já tem um quadro. Desvincule-o antes.');
-  const model = await getModel();
+  const model = await getWorkspaceModel(workspaceId);
   const statusMap = Object.fromEntries(model.columns.filter((column) => column.role).map((column) => [column.role!, column.id]));
   const board = await prisma.taskBoard.create({
     data: {
@@ -294,7 +300,7 @@ export async function loadSnapshot(board: TaskBoard, force: boolean) {
   const adapter = await adapterFor(board);
   const snapshot = await adapter.load(refOf(board));
   if (board.provider === 'GITLAB') {
-    const model = await getModel();
+    const model = await getWorkspaceModel(board.workspaceId);
     for (const column of snapshot.columns) {
       const role = column.id === GITLAB_FIXED_COLUMNS.first ? 'todo' : column.id === GITLAB_FIXED_COLUMNS.last ? 'done' : null;
       const modelColumn = role && model.columns.find((entry) => entry.role === role);
@@ -331,7 +337,7 @@ async function modelStatusOf(board: TaskBoard, snapshot: BoardSnapshot) {
   if (board.provider === 'STUDIO') return 'synced';
   if (board.modelStatus === 'pending') return 'pending';
   const provider = board.provider as BoardProvider;
-  const model = await getModel();
+  const model = await getWorkspaceModel(board.workspaceId);
   const current = structureOf(snapshot.columns, snapshot.fields, provider);
   return followsModel(model, current, board.modelMap as unknown as ModelMap | null, provider) ? 'synced' : 'drift';
 }

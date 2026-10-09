@@ -48,9 +48,9 @@ const idParams = z.object({ id: z.uuid() });
 const updateBody = z.object({ isIgnored: z.boolean() }).strict();
 
 export async function workspaceRoutes(app: FastifyInstance) {
-  app.get('/workspaces', async (request) => listWorkspaces(parseInput(listQuery, request.query)));
+  app.get('/workspaces', async (request) => listWorkspaces(request.user.id, parseInput(listQuery, request.query)));
 
-  app.post('/workspaces/scan', async () => scanWorkspaces());
+  app.post('/workspaces/scan', async (request) => scanWorkspaces(request.user.id));
 
   /** Repositories the workspace git accounts can reach, to pick one to clone. */
   app.get('/workspaces/:id/repositories', async (request) => {
@@ -78,7 +78,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
   /** Creates a new workspace folder in the central folder. */
   app.post('/workspaces', async (request, reply) => {
     const { name } = parseInput(createBody, request.body);
-    return reply.code(201).send(await createWorkspace(name));
+    return reply.code(201).send(await createWorkspace(request.user.id, name));
   });
 
   app.get('/workspaces/:id', async (request) => getWorkspace(parseInput(idParams, request.params).id));

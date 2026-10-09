@@ -1,11 +1,70 @@
 @import 'tailwindcss';
 
+/* Dark is the base theme; the light one redefines the same tokens (see below). */
 @theme {
   --color-surface: #0f1115;
   --color-panel: #171a21;
   --color-border: #262b36;
   --color-muted: #8b93a7;
   --color-accent: #7c9cff;
+  --color-fg: #e6e9ef;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+/*
+ * Light theme: data-theme="light", or the OS preference when the user follows the system (no data-theme).
+ * Besides the base tokens, it darkens the palette shades the UI uses as text on dark backgrounds (the -200..-400
+ * status colors, gray-200/300 and white as "strong text"), so components need no theme-specific classes.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-surface: #f4f6f9;
+  --color-panel: #ffffff;
+  --color-border: #dde2ea;
+  --color-muted: #5f6878;
+  --color-accent: #4459d6;
+  --color-fg: #1a1f2b;
+  --color-white: #11151d;
+  --color-gray-200: #2b3240;
+  --color-gray-300: #3c4454;
+  --color-gray-400: #555e70;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-amber-400: #b45309;
+  --color-red-200: #7f1d1d;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --color-surface: #f4f6f9;
+    --color-panel: #ffffff;
+    --color-border: #dde2ea;
+    --color-muted: #5f6878;
+    --color-accent: #4459d6;
+    --color-fg: #1a1f2b;
+    --color-white: #11151d;
+    --color-gray-200: #2b3240;
+    --color-gray-300: #3c4454;
+    --color-gray-400: #555e70;
+    --color-emerald-200: #065f46;
+    --color-emerald-300: #047857;
+    --color-emerald-400: #059669;
+    --color-amber-200: #78350f;
+    --color-amber-300: #92400e;
+    --color-amber-400: #b45309;
+    --color-red-200: #7f1d1d;
+    --color-red-300: #b91c1c;
+    --color-red-400: #dc2626;
+  }
 }
 
 html,
@@ -16,7 +75,7 @@ body,
 
 body {
   background-color: var(--color-surface);
-  color: #e6e9ef;
+  color: var(--color-fg);
 }
 
 /* Card of a task whose agent is waiting for the user. */

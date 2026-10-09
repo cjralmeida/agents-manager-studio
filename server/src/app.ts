@@ -5,6 +5,8 @@ import { HttpError } from './lib/errors.js';
 import { agentAccountRoutes } from './modules/agent-accounts/routes.js';
 import { agentProfileRoutes } from './modules/agent-profiles/routes.js';
 import { assistantRoutes } from './modules/assistant/routes.js';
+import { installAuthGuard } from './modules/auth/guard.js';
+import { authRoutes } from './modules/auth/routes.js';
 import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
 import { boardRoutes } from './modules/boards/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
@@ -14,6 +16,7 @@ import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
 import { systemRoutes } from './modules/system/routes.js';
 import { usageRoutes } from './modules/usage/routes.js';
+import { userRoutes } from './modules/users/routes.js';
 import { workflowRoutes } from './modules/workflows/routes.js';
 import { workspaceSettingsRoutes } from './modules/workspace-settings/routes.js';
 import { workspaceRoutes } from './modules/workspaces/routes.js';
@@ -50,7 +53,10 @@ export async function buildApp() {
 
   await app.register(
     async (api) => {
+      installAuthGuard(api);
       await api.register(healthRoutes);
+      await api.register(authRoutes);
+      await api.register(userRoutes);
       await api.register(systemRoutes);
       await api.register(usageRoutes);
       await api.register(workspaceRoutes);

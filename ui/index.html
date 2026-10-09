@@ -9,6 +9,13 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#0f1115" />
+    <script>
+      // The theme chosen on this browser is applied before the page paints (no flash); the account confirms it.
+      try {
+        var theme = localStorage.getItem('ams.theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

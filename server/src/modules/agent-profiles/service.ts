@@ -55,9 +55,9 @@ function duplicateName(error: unknown) {
 }
 
 /** Agents of every workspace, for the general dashboard. */
-export async function listAllAgentProfiles() {
+export async function listAllAgentProfiles(ownerId: string) {
   const profiles = await prisma.agentProfile.findMany({
-    where: { workspace: { isIgnored: false, missingAt: null } },
+    where: { workspace: { ownerId, isIgnored: false, missingAt: null } },
     include: { workspace: { select: { name: true } } },
     orderBy: [{ workspace: { name: 'asc' } }, { name: 'asc' }],
   });

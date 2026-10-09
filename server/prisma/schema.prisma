@@ -26,8 +26,69 @@ enum BoardProvider {
 }
 
 /// A top-level folder of the projects root (e.g. D:\Projetos\GlobalFarm).
+/// Studio users. Everything a user creates (workspaces, accounts, board model) is theirs alone.
+enum UserRole {
+  ADMIN
+  MEMBER
+
+  @@map("user_role")
+}
+
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @unique
+  name         String
+  /// scrypt hash with its salt and cost (lib/password.ts).
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(MEMBER)
+  /// "system" follows the OS; "light" or "dark" pins it.
+  theme        String    @default("system")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions       Session[]
+  settings       UserSetting[]
+  workspaces     Workspace[]
+  gitAccounts    GitAccount[]
+  agentAccounts  AgentAccount[]
+  renderAccounts RenderAccount[]
+
+  @@map("users")
+}
+
+/// Login session; the cookie holds a random token and only its SHA-256 is stored here.
+model Session {
+  id         String   @id
+  userId     String   @map("user_id") @db.Uuid
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Per-user key/value settings (board model, GitHub board template).
+model UserSetting {
+  userId    String   @map("user_id") @db.Uuid
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+  @@map("user_settings")
+}
+
 model Workspace {
   id        String    @id @default(uuid(7)) @db.Uuid
+  /// The user the workspace belongs to; other users do not see it.
+  ownerId   String    @map("owner_id") @db.Uuid
   /// Folder name; unique because it identifies the folder on disk.
   name      String    @unique
   isIgnored Boolean   @default(false) @map("is_ignored")
@@ -36,17 +97,19 @@ model Workspace {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  projects    Project[]
-  settings    WorkspaceSettings?
-  gitAccounts WorkspaceGitAccount[]
-  agents      Agent[]
-  taskBoard   TaskBoard?
-  localTasks  LocalTask[]
-  workflows   Workflow[]
-  agentProfiles AgentProfile[]
+  projects       Project[]
+  settings       WorkspaceSettings?
+  gitAccounts    WorkspaceGitAccount[]
+  agents         Agent[]
+  taskBoard      TaskBoard?
+  localTasks     LocalTask[]
+  workflows      Workflow[]
+  agentProfiles  AgentProfile[]
   renderServices RenderService[]
-  deployments   Deployment[]
+  deployments    Deployment[]
+  owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
+  @@index([ownerId])
   @@map("workspaces")
 }
 
@@ -81,6 +144,8 @@ enum AgentProvider {
 /// GitHub/GitLab credentials used by agents to push and open PRs/MRs.
 model GitAccount {
   id             String      @id @default(uuid(7)) @db.Uuid
+  /// The user the account belongs to.
+  ownerId        String      @map("owner_id") @db.Uuid
   /// GITHUB or GITLAB (OTHER is not accepted for accounts).
   provider       GitProvider
   label          String
@@ -99,12 +164,17 @@ model GitAccount {
 
   workspaces WorkspaceGitAccount[]
 
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId])
   @@map("git_accounts")
 }
 
 /// Agent provider credentials (Claude subscription token from `claude setup-token`).
 model AgentAccount {
   id             String        @id @default(uuid(7)) @db.Uuid
+  /// The user the account belongs to.
+  ownerId        String        @map("owner_id") @db.Uuid
   provider       AgentProvider @default(CLAUDE)
   label          String
   tokenEncrypted String        @map("token_encrypted")
@@ -117,6 +187,9 @@ model AgentAccount {
 
   workspaceSettings WorkspaceSettings[]
 
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId])
   @@map("agent_accounts")
 }
 
@@ -130,7 +203,7 @@ model WorkspaceSettings {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agentAccount  AgentAccount?  @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
   renderAccount RenderAccount? @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
 
@@ -241,14 +314,14 @@ model Agent {
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project   Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  profile   AgentProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  workflowRun WorkflowRun? @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
-  events    AgentEvent[]
-  inbox     AgentInbox[]
-  usage     AgentUsage[]
-  proposals AssistantProposal[]
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  profile     AgentProfile?       @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  workflowRun WorkflowRun?        @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  events      AgentEvent[]
+  inbox       AgentInbox[]
+  usage       AgentUsage[]
+  proposals   AssistantProposal[]
 
   @@index([workspaceId])
   @@index([projectId])
@@ -291,36 +364,36 @@ model AgentInbox {
 
 /// Task board (GitHub Project v2 or GitLab group issue board) linked to a workspace.
 model TaskBoard {
-  workspaceId String      @id @map("workspace_id") @db.Uuid
-  provider    BoardProvider
+  workspaceId        String        @id @map("workspace_id") @db.Uuid
+  provider           BoardProvider
   /// API host; the workspace git account for this host is used to talk to the board.
-  host        String
+  host               String
   /// GitHub: project node id. GitLab: "<groupId>:<boardId>".
-  externalId  String      @map("external_id")
+  externalId         String        @map("external_id")
   /// GitHub owner login or GitLab group path.
-  ownerPath   String      @map("owner_path")
-  title       String
-  url         String
+  ownerPath          String        @map("owner_path")
+  title              String
+  url                String
   /// Board guidelines; GitHub reads them from the project README, GitLab keeps them here.
-  readme      String?
+  readme             String?
   /// Column id for each role (todo, inProgress, review, done, blocked) used by agent automation.
-  statusMap   Json        @default("{}") @map("status_map")
+  statusMap          Json          @default("{}") @map("status_map")
   /// GitLab lists labels alphabetically: order of the fields and their options set in the Studio editor
   /// ({ fields: string[], options: { [field]: string[] } }); null keeps the template order.
-  fieldOrder  Json?       @map("field_order")
+  fieldOrder         Json?         @map("field_order")
   /// How the provider board matches the Studio board model (provider id -> model id for columns, fields
   /// and options); null until the board is converted to the model.
-  modelMap    Json?       @map("model_map")
+  modelMap           Json?         @map("model_map")
   /// "synced" (follows the model), "drift" (changed on the provider) or "pending" (never converted).
-  modelStatus String      @default("pending") @map("model_status")
+  modelStatus        String        @default("pending") @map("model_status")
   /// Why the last sync with the model failed.
-  modelSyncError String?  @map("model_sync_error")
+  modelSyncError     String?       @map("model_sync_error")
   /// The server reads the board from the provider this often (and then runs the sentinels).
-  refreshIntervalSec Int       @default(120) @map("refresh_interval_sec")
-  lastSyncedAt       DateTime? @map("last_synced_at") @db.Timestamptz(3)
-  lastSyncError      String?   @map("last_sync_error")
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  refreshIntervalSec Int           @default(120) @map("refresh_interval_sec")
+  lastSyncedAt       DateTime?     @map("last_synced_at") @db.Timestamptz(3)
+  lastSyncError      String?       @map("last_sync_error")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -385,7 +458,6 @@ model AgentUsage {
   @@map("agent_usage")
 }
 
-
 /// A fixed agent of the workspace (e.g. "Documentador", "Testador"); each run of it is an Agent.
 model AgentProfile {
   id           String      @id @default(uuid(7)) @db.Uuid
@@ -423,6 +495,8 @@ enum DeployEnvironment {
 /// Render account (API key encrypted like the other tokens); workspaces pick one in their settings.
 model RenderAccount {
   id              String   @id @default(uuid(7)) @db.Uuid
+  /// The user the account belongs to.
+  ownerId         String   @map("owner_id") @db.Uuid
   label           String
   apiKeyEncrypted String   @map("api_key_encrypted")
   apiKeyHint      String   @map("api_key_hint")
@@ -433,6 +507,9 @@ model RenderAccount {
 
   workspaceSettings WorkspaceSettings[]
 
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId])
   @@map("render_accounts")
 }
 

@@ -12,8 +12,8 @@ export interface ScanSummary {
   projects: { total: number; added: number; missing: number };
 }
 
-/** Creates the workspace folder in the central folder and registers it (with a scan). */
-export async function createWorkspace(name: string) {
+/** Creates the workspace folder in the central folder and registers it for the user (with a scan). */
+export async function createWorkspace(ownerId: string, name: string) {
   const trimmed = name.trim();
   const problem = workspaceNameProblem(trimmed, config.scanExclude);
   if (problem) throw new HttpError(422, problem);
@@ -36,13 +36,17 @@ export async function createWorkspace(name: string) {
     }
     throw error;
   }
-  await scanWorkspaces();
+  await scanWorkspaces(ownerId);
   const workspace = await prisma.workspace.findUniqueOrThrow({ where: { name: trimmed } });
   return getWorkspace(workspace.id);
 }
 
-/** Syncs the database with the folders on disk. Folders that disappeared are flagged, never deleted. */
-export async function scanWorkspaces(): Promise<ScanSummary> {
+/**
+ * Syncs the database with the folders on disk. Folders that disappeared are flagged, never deleted. A new folder
+ * becomes a workspace of `ownerId` (the user who asked for the scan); scans without one (startup, after a clone)
+ * only update the workspaces that already exist. The summary counts the owner's workspaces only.
+ */
+export async function scanWorkspaces(ownerId?: string): Promise<ScanSummary> {
   const scanned = await scanProjectsRoot(config.projectsDir, config.scanExclude);
   const now = new Date();
 
@@ -50,17 +54,18 @@ export async function scanWorkspaces(): Promise<ScanSummary> {
     const existing = await tx.workspace.findMany({ include: { projects: { select: { name: true } } } });
     const existingByName = new Map(existing.map((workspace) => [workspace.name, workspace]));
     const summary: ScanSummary = {
-      workspaces: { total: scanned.length, added: 0, missing: 0 },
+      workspaces: { total: 0, added: 0, missing: 0 },
       projects: { total: 0, added: 0, missing: 0 },
     };
 
     for (const scannedWorkspace of scanned) {
       const current = existingByName.get(scannedWorkspace.name);
-      const workspace = await tx.workspace.upsert({
-        where: { name: scannedWorkspace.name },
-        create: { name: scannedWorkspace.name },
-        update: { missingAt: null },
-      });
+      if (!current && !ownerId) continue;
+      const workspace = current
+        ? await tx.workspace.update({ where: { id: current.id }, data: { missingAt: null } })
+        : await tx.workspace.create({ data: { name: scannedWorkspace.name, ownerId: ownerId! } });
+      const counts = !ownerId || workspace.ownerId === ownerId;
+      if (counts) summary.workspaces.total++;
       if (!current) summary.workspaces.added++;
 
       const knownProjects = new Set(current?.projects.map((project) => project.name));
@@ -75,9 +80,9 @@ export async function scanWorkspaces(): Promise<ScanSummary> {
           create: { workspaceId: workspace.id, name: project.name, ...gitInfo },
           update: { ...gitInfo, missingAt: null },
         });
-        if (!knownProjects.has(project.name)) summary.projects.added++;
+        if (counts && !knownProjects.has(project.name)) summary.projects.added++;
       }
-      summary.projects.total += scannedWorkspace.projects.length;
+      if (counts) summary.projects.total += scannedWorkspace.projects.length;
 
       const missingProjects = await tx.project.updateMany({
         where: {
@@ -87,22 +92,21 @@ export async function scanWorkspaces(): Promise<ScanSummary> {
         },
         data: { missingAt: now },
       });
-      summary.projects.missing += missingProjects.count;
+      if (counts) summary.projects.missing += missingProjects.count;
     }
 
-    const missingWorkspaces = await tx.workspace.updateMany({
-      where: { missingAt: null, name: { notIn: scanned.map((workspace) => workspace.name) } },
-      data: { missingAt: now },
-    });
-    summary.workspaces.missing = missingWorkspaces.count;
+    const missingWhere = { missingAt: null, name: { notIn: scanned.map((workspace) => workspace.name) } };
+    const missingOfOwner = ownerId ? await tx.workspace.count({ where: { ...missingWhere, ownerId } }) : null;
+    const missingWorkspaces = await tx.workspace.updateMany({ where: missingWhere, data: { missingAt: now } });
+    summary.workspaces.missing = missingOfOwner ?? missingWorkspaces.count;
 
     return summary;
   });
 }
 
-export async function listWorkspaces(options: { includeIgnored: boolean }) {
+export async function listWorkspaces(ownerId: string, options: { includeIgnored: boolean }) {
   const workspaces = await prisma.workspace.findMany({
-    where: options.includeIgnored ? {} : { isIgnored: false },
+    where: { ownerId, ...(!options.includeIgnored && { isIgnored: false }) },
     orderBy: [{ missingAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
     include: { projects: { where: { missingAt: null }, select: { isGitRepo: true } } },
   });

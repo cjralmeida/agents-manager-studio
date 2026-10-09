@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { useMe } from '../api/auth';
 import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { Tabs, useTabParam } from '../components/Tabs';
@@ -10,6 +11,8 @@ const tabs = [
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useTabParam(tabs);
+  const me = useMe();
+  const isAdmin = me.data?.role === 'ADMIN';
 
   return (
     <div className="max-w-5xl">
@@ -24,7 +27,15 @@ export function SettingsPage() {
       <div className="mt-4">
         <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       </div>
-      <div className="mt-6 space-y-10">{activeTab === 'general' ? <ProjectsRootSection /> : <SkillsSection />}</div>
+      <div className="mt-6 space-y-10">
+        {activeTab === 'skills' ? (
+          <SkillsSection />
+        ) : isAdmin ? (
+          <ProjectsRootSection />
+        ) : (
+          <p className="text-sm text-muted">A pasta central é a mesma para todos os usuários e só administradores podem trocá-la.</p>
+        )}
+      </div>
     </div>
   );
 }

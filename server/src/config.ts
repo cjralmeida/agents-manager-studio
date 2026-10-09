@@ -43,6 +43,8 @@ const envSchema = z.object({
   WORKFLOW_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
   // Folder shared with the Windows helper (studio.ps1): requests in, heartbeat and results out.
   HOST_HELPER_DIR: z.string().min(1).default('/data/host-helper'),
+  // Marks the session cookie Secure; set to true when the Studio is served over https.
+  COOKIE_SECURE: z.stringbool().default(false),
   // Render API base; overridable to point tests at a fake server.
   RENDER_API_URL: z.url().default('https://api.render.com/v1'),
 });
@@ -78,6 +80,7 @@ function loadConfig() {
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
     workflowPlanLimitPercent: env.WORKFLOW_PLAN_LIMIT_PERCENT,
     hostHelperDir: env.HOST_HELPER_DIR,
+    cookieSecure: env.COOKIE_SECURE,
     renderApiUrl: env.RENDER_API_URL.replace(/\/+$/, ''),
   };
 }

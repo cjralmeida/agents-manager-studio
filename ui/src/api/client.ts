@@ -10,6 +10,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Dispatched on window when the API answers 401 (no valid session). */
+export const UNAUTHORIZED_EVENT = 'ams:unauthorized';
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
@@ -18,6 +21,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
 
   const data: unknown = await response.json().catch(() => null);
+  // Session expired or signed out elsewhere: the app goes back to the login screen.
+  if (response.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!response.ok) {
     const message =
       data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'

@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { AuthGate } from './components/auth/AuthGate';
 import { Layout } from './components/Layout';
 import { AgentPage } from './pages/AgentPage';
 import { AgentProfilePage } from './pages/AgentProfilePage';
@@ -6,12 +7,17 @@ import { BoardPage } from './pages/BoardPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UsersPage } from './pages/UsersPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { WorkspacesPage } from './pages/WorkspacesPage';
 
 export const router = createBrowserRouter([
   {
-    element: <Layout />,
+    element: (
+      <AuthGate>
+        <Layout />
+      </AuthGate>
+    ),
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'workspaces', element: <WorkspacesPage /> },
@@ -21,6 +27,7 @@ export const router = createBrowserRouter([
       { path: 'board', element: <BoardPage /> },
       { path: 'connectors', element: <ConnectorsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'users', element: <UsersPage /> },
     ],
   },
 ]);

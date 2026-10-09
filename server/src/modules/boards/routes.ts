@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
+import { assertOwnsWorkspace } from '../auth/ownership.js';
 import { listAllTasks, moveOverviewTask } from './overview.js';
 import { applyConversion, applyModel, getConversion, getModelState, previewConversion, previewModel } from './model-service.js';
 import {
@@ -86,23 +87,24 @@ const fieldBody = z.object({ fieldId: z.string().min(1), optionId: z.string().mi
 
 export async function boardRoutes(app: FastifyInstance) {
   /** Tasks of every workspace on the model's columns. */
-  app.get('/boards/tasks', async () => listAllTasks());
+  app.get('/boards/tasks', async (request) => listAllTasks(request.user.id));
 
   app.post('/boards/tasks/move', async (request, reply) => {
     const { workspaceId, itemId, columnId } = parseInput(overviewMoveBody, request.body);
+    await assertOwnsWorkspace(workspaceId, request.user.id);
     await moveOverviewTask(workspaceId, itemId, columnId);
     return reply.code(204).send();
   });
 
   /** The Studio board model, the boards that follow it and how many cards use each part. */
-  app.get('/board-model', async () => getModelState());
+  app.get('/board-model', async (request) => getModelState(request.user.id));
 
-  app.post('/board-model/preview', async (request) => previewModel(parseInput(modelPreviewBody, request.body).model));
+  app.post('/board-model/preview', async (request) => previewModel(request.user.id, parseInput(modelPreviewBody, request.body).model));
 
   /** Saves the model and applies it to every board that follows it. */
   app.put('/board-model', async (request) => {
     const body = parseInput(modelApplyBody, request.body);
-    return applyModel(body.model, body.columnMoves);
+    return applyModel(request.user.id, body.model, body.columnMoves);
   });
 
   /** A board only in the Studio (no GitHub/GitLab), following the model. */

@@ -51,6 +51,17 @@ server/     backend: src/modules/<modulo>/routes.ts + service.ts, prisma/
 ui/         frontend: src/api, src/components, src/pages
 ```
 
+## Usuários e login
+
+O Studio pede login. Cada usuário vê só o que é dele: workspaces, conectores (contas Claude, git e Render), agentes, workflows e modelo de quadro. A pasta central é a mesma para todos.
+
+- **Primeiro administrador:** `docker compose exec server npx tsx src/cli/create-user.ts --email voce@exemplo.com --name "Seu Nome" --admin`. A senha é gerada e mostrada uma vez; com `--password-stdin`, ela é lida da entrada padrão.
+- **Outros usuários:** só administradores criam usuários, na tela **Usuários**. A senha é gerada pelo Studio e mostrada uma vez; a pessoa troca depois em **menu do usuário → Alterar senha**. Desativar um usuário encerra as sessões dele; só dá para excluir quem não tem workspaces nem contas.
+- **Sessão:** um cookie HttpOnly guarda um token aleatório, e no banco fica só o hash dele. Ela vale 30 dias, renovados com o uso. Trocar a senha encerra as outras sessões. Com `COOKIE_SECURE=true` no `.env`, o cookie só vai por https.
+- **Pastas novas:** viram workspaces de quem clicou em "Reler diretório" ou criou o workspace.
+- **Só administradores** trocam a pasta central (Configurações → Geral).
+- **Tema:** claro ou escuro no menu do usuário (canto inferior da barra lateral). "Sistema" segue o Windows, e a escolha fica salva na conta.
+
 ## Conectores
 
 As ferramentas que o Studio e os agentes usam ficam em **Conectores** (menu lateral): **Claude**, **GitHub**, **GitLab** e **Render**.

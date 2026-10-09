@@ -2,7 +2,7 @@ import { prisma } from '../../db.js';
 import { Prisma, type TaskBoard } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import { type BoardModel, type ModelInput, type ModelUsage, asStructure, planModel, validateModel } from './model.js';
-import { getModel, saveModel } from './model-store.js';
+import { getModel, getWorkspaceModel, saveModel } from './model-store.js';
 import {
   type ConversionMapping,
   type ModelMap,
@@ -24,9 +24,9 @@ type Provider = 'GITHUB' | 'GITLAB';
 // ---------------------------------------------------------------- the model
 
 /** Cards per model column/field/option, over the boards that follow the model (cached reads). */
-async function modelUsage(model: BoardModel): Promise<ModelUsage> {
+async function modelUsage(userId: string, model: BoardModel): Promise<ModelUsage> {
   const usage: ModelUsage = { columns: {}, options: {}, fields: {} };
-  const boards = await prisma.taskBoard.findMany({ where: { modelStatus: { not: 'pending' } } });
+  const boards = await prisma.taskBoard.findMany({ where: { modelStatus: { not: 'pending' }, workspace: { ownerId: userId } } });
   for (const board of boards) {
     const snapshot = await loadSnapshot(board, false).catch(() => null);
     if (snapshot && board.provider === 'STUDIO') {
@@ -59,12 +59,16 @@ async function modelUsage(model: BoardModel): Promise<ModelUsage> {
   return usage;
 }
 
-export async function getModelState() {
-  const model = await getModel();
-  const boards = await prisma.taskBoard.findMany({ include: { workspace: { select: { name: true } } }, orderBy: { workspace: { name: 'asc' } } });
+export async function getModelState(userId: string) {
+  const model = await getModel(userId);
+  const boards = await prisma.taskBoard.findMany({
+    where: { workspace: { ownerId: userId } },
+    include: { workspace: { select: { name: true } } },
+    orderBy: { workspace: { name: 'asc' } },
+  });
   return {
     model,
-    usage: await modelUsage(model),
+    usage: await modelUsage(userId, model),
     boards: boards.map((board) => ({
       workspaceId: board.workspaceId,
       workspaceName: board.workspace.name,
@@ -77,9 +81,9 @@ export async function getModelState() {
   };
 }
 
-export async function previewModel(input: ModelInput) {
-  const current = await getModel();
-  return planModel(current, validateModel(input, current), await modelUsage(current));
+export async function previewModel(userId: string, input: ModelInput) {
+  const current = await getModel(userId);
+  return planModel(current, validateModel(input, current), await modelUsage(userId, current));
 }
 
 export interface PropagationResult {
@@ -93,18 +97,22 @@ export interface PropagationResult {
  * Saves the model and applies it to every board that follows it. Cards of removed columns go to the column chosen
  * for each (`columnMoves`, model ids). Boards out of the model are skipped: they are synced from their workspace.
  */
-export async function applyModel(input: ModelInput, columnMoves: Record<string, string>) {
-  const current = await getModel();
+export async function applyModel(userId: string, input: ModelInput, columnMoves: Record<string, string>) {
+  const current = await getModel(userId);
   const desired = validateModel(input, current);
-  const plan = planModel(current, desired, await modelUsage(current));
+  const plan = planModel(current, desired, await modelUsage(userId, current));
   const keptIds = new Set(desired.columns.filter((column) => current.columns.some((entry) => entry.id === column.id)).map((column) => column.id));
   for (const removed of plan.removedColumns) {
     if (!keptIds.has(columnMoves[removed.id] ?? '')) throw new HttpError(422, `Escolha para onde vão os cards da coluna "${removed.name}".`);
   }
   if (plan.changes.length === 0) return { model: current, results: [] as PropagationResult[] };
-  await saveModel(desired);
+  await saveModel(userId, desired);
 
-  const boards = await prisma.taskBoard.findMany({ include: { workspace: { select: { name: true } } }, orderBy: { workspace: { name: 'asc' } } });
+  const boards = await prisma.taskBoard.findMany({
+    where: { workspace: { ownerId: userId } },
+    include: { workspace: { select: { name: true } } },
+    orderBy: { workspace: { name: 'asc' } },
+  });
   const results: PropagationResult[] = [];
   for (const board of boards) {
     const base = { workspaceId: board.workspaceId, workspaceName: board.workspace.name };
@@ -206,7 +214,7 @@ export async function getConversion(workspaceId: string) {
   if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
-  const model = await getModel();
+  const model = await getWorkspaceModel(workspaceId);
   const current = structureOf(snapshot.columns, snapshot.fields, provider);
   return {
     link: linkResponse(board),
@@ -227,7 +235,7 @@ async function conversionContext(workspaceId: string) {
   if (board.provider === 'STUDIO') throw new HttpError(422, 'O quadro do Studio já segue o modelo.');
   const snapshot = await loadSnapshot(board, true);
   const provider = board.provider as Provider;
-  return { board, snapshot, provider, model: await getModel(), current: structureOf(snapshot.columns, snapshot.fields, provider) };
+  return { board, snapshot, provider, model: await getWorkspaceModel(workspaceId), current: structureOf(snapshot.columns, snapshot.fields, provider) };
 }
 
 export async function previewConversion(workspaceId: string, mapping: ConversionMapping) {

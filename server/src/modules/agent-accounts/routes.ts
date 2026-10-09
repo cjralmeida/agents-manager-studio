@@ -32,10 +32,10 @@ const updateBody = z
   .refine((body) => body.label !== undefined || body.token !== undefined, 'Informe o nome ou um novo token.');
 
 export async function agentAccountRoutes(app: FastifyInstance) {
-  app.get('/agent-accounts', async () => listAgentAccounts());
+  app.get('/agent-accounts', async (request) => listAgentAccounts(request.user.id));
 
   app.post('/agent-accounts', async (request, reply) => {
-    const account = await createAgentAccount(parseInput(createBody, request.body));
+    const account = await createAgentAccount(request.user.id, parseInput(createBody, request.body));
     return reply.code(201).send(account);
   });
 

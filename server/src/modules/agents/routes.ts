@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { HttpError } from '../../lib/errors.js';
 import { parseInput } from '../../lib/validation.js';
 import { AGENT_TOOL_NAMES, runAgentTool } from '../agent-tools/service.js';
+import { assertOwnsProfile, assertOwnsProject } from '../auth/ownership.js';
 import { applyRunnerEvents, authenticateRunner, type RunnerEvent, takeInbox } from './runner-api.js';
 import {
   AGENT_MODELS,
@@ -58,10 +59,13 @@ const answerBody = z
   .refine((body) => Object.keys(body.answers).length > 0, 'Responda ao menos uma pergunta.');
 
 export async function agentRoutes(app: FastifyInstance) {
-  app.get('/agents', async (request) => listAgents(parseInput(listQuery, request.query)));
+  app.get('/agents', async (request) => listAgents(request.user.id, parseInput(listQuery, request.query)));
 
   app.post('/agents', async (request, reply) => {
-    const agent = await launchAgent(parseInput(launchBody, request.body));
+    const input = parseInput(launchBody, request.body);
+    if (input.projectId) await assertOwnsProject(input.projectId, request.user.id);
+    if (input.profileId) await assertOwnsProfile(input.profileId, request.user.id);
+    const agent = await launchAgent(input);
     return reply.code(201).send(agent);
   });
 

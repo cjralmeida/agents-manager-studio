@@ -115,7 +115,8 @@ export async function runStudioTool(agentId: string, workspaceId: string, name: 
     }
 
     case 'studio_list_executions': {
-      const executions = await listAgents({ workspaceId, ...(typeof args.agentId === 'string' && { profileId: args.agentId }) });
+      const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+      const executions = await listAgents(ownerId, { workspaceId, ...(typeof args.agentId === 'string' && { profileId: args.agentId }) });
       return executions
         .filter((agent) => typeof args.status !== 'string' || agent.status === args.status)
         .slice(0, limitOf(args.limit, 15, 50))
