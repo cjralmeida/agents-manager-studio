@@ -7,10 +7,10 @@ import {
   useUpdateWorkspaceSettings,
   useWorkspaceSettings,
 } from '../../api/workspaceSettings';
-import { Badge } from '../Badge';
 import { BoardBehaviorSection } from '../board/BoardLinkSection';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
+import { MultiSelect } from '../MultiSelect';
 import { groupSkills } from '../settings/SkillsSection';
 
 /** What belongs only to the workspace: skills, how the board is handled, copying the setup. Tools live in Conectores. */
@@ -37,10 +37,6 @@ export function WorkspaceSettingsTab({ workspace }: { workspace: WorkspaceDetail
   );
 }
 
-function toggle(values: string[], value: string) {
-  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
-
 function sameItems(a: string[], b: string[]) {
   return a.length === b.length && a.every((item) => b.includes(item));
 }
@@ -54,29 +50,16 @@ function SkillsForm({ workspace, initial, skills }: { workspace: WorkspaceDetail
     <section className="rounded-lg border border-border bg-panel p-4">
       <h2 className="text-base font-semibold">Skills</h2>
       <p className="mt-1 text-xs text-muted">Disponíveis para os agentes deste workspace, além das que já vêm no Claude Code.</p>
-      {groupSkills(skills).map(([source, items]) => (
-        <div key={source} className="mt-3">
-          <h3 className="text-xs font-medium tracking-wider text-muted uppercase">{skillSourceLabels[source]}</h3>
-          <ul className="mt-2 grid grid-cols-1 gap-1 lg:grid-cols-2">
-            {items.map((skill) => (
-              <li key={skill.id}>
-                <label className="flex items-start gap-2 text-sm" title={skill.description}>
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={enabledSkillIds.includes(skill.id)}
-                    onChange={() => setEnabledSkillIds(toggle(enabledSkillIds, skill.id))}
-                  />
-                  <span>
-                    {skill.name}
-                    <span className="line-clamp-1 text-xs text-muted">{skill.description}</span>
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      <div className="mt-3 max-w-2xl">
+        <MultiSelect
+          options={groupSkills(skills).flatMap(([source, items]) =>
+            items.map((skill) => ({ value: skill.id, label: skill.name, detail: skill.description, group: skillSourceLabels[source] })),
+          )}
+          selected={enabledSkillIds}
+          onChange={setEnabledSkillIds}
+          placeholder="Nenhuma skill extra"
+        />
+      </div>
       <div className="mt-4 flex items-center gap-3">
         <Button variant="primary" onClick={() => update.mutate({ ...initial, enabledSkillIds })} disabled={!isDirty || update.isPending}>
           {update.isPending ? 'Salvando...' : 'Salvar skills'}
@@ -109,18 +92,13 @@ function CopySettingsPanel({ workspaceId, disabled }: { workspaceId: string; dis
         A conta Claude, as contas git (aba Conectores) e as skills substituem as dos workspaces selecionados. O quadro e o
         Render são próprios de cada workspace e não são copiados.
       </p>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-        {targets.map((workspace) => (
-          <label key={workspace.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={targetIds.includes(workspace.id)}
-              onChange={() => setTargetIds(toggle(targetIds, workspace.id))}
-            />
-            {workspace.name}
-            {workspace.isIgnored && <Badge>Ignorado</Badge>}
-          </label>
-        ))}
+      <div className="mt-3 max-w-md">
+        <MultiSelect
+          options={targets.map((workspace) => ({ value: workspace.id, label: workspace.name, detail: workspace.isIgnored ? 'ignorado' : undefined }))}
+          selected={targetIds}
+          onChange={setTargetIds}
+          placeholder="Escolha os workspaces"
+        />
       </div>
       <div className="mt-3 flex items-center gap-3">
         <Button onClick={handleCopy} disabled={disabled || targetIds.length === 0 || copy.isPending}>

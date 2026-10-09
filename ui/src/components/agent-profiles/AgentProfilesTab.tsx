@@ -19,6 +19,7 @@ import { NewAgentForm } from '../agents/NewAgentForm';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Field, Select, TextInput } from '../form';
+import { MultiSelect } from '../MultiSelect';
 
 const modelLabels: Record<AgentModel, string> = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku' };
 
@@ -32,10 +33,6 @@ const empty: AgentProfileInput = {
   tools: [],
   autoConclude: false,
 };
-
-function toggle<T>(values: T[], value: T) {
-  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
 
 /** Fixed agents of the workspace: each has a role and can be run by hand or used in workflows. */
 export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) {
@@ -204,29 +201,20 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
         </Field>
       </div>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-4 max-w-2xl space-y-1">
         <span className="text-xs font-medium text-muted">Projetos em que trabalha</span>
-        <div className="flex flex-wrap gap-1.5">
-          {gitProjects.map((project) => {
-            const active = form.projectIds.includes(project.id);
-            return (
-              <button
-                key={project.id}
-                type="button"
-                onClick={() => set('projectIds', toggle(form.projectIds, project.id))}
-                className={`rounded-full border px-2.5 py-0.5 text-xs ${active ? 'border-accent bg-accent/15 text-white' : 'border-border text-muted hover:text-white'}`}
-              >
-                {project.name}
-              </button>
-            );
-          })}
-        </div>
+        <MultiSelect
+          options={gitProjects.map((project) => ({ value: project.id, label: project.name }))}
+          selected={form.projectIds}
+          onChange={(next) => set('projectIds', next)}
+          placeholder="Nenhum (sem repositório)"
+        />
         <p className="text-xs text-muted">
           {withoutRepository ? 'Nenhum marcado: o agente trabalha sem repositório e entrega um resultado.' : 'Ao executar, você escolhe um destes projetos.'}
         </p>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Field label="Modelo">
           <Select value={form.model} onChange={(event) => set('model', event.target.value as AgentModel)}>
             <option value="sonnet">Sonnet (padrão)</option>
@@ -243,13 +231,15 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
             ))}
           </Select>
         </Field>
+        <Field label="Ferramentas">
+          <MultiSelect
+            options={(Object.keys(toolLabels) as ProfileTool[]).map((tool) => ({ value: tool, label: toolLabels[tool] }))}
+            selected={form.tools}
+            onChange={(next) => set('tools', next as ProfileTool[])}
+            placeholder="Nenhuma"
+          />
+        </Field>
         <div className="flex flex-col justify-end gap-2 pb-1">
-          {(Object.keys(toolLabels) as ProfileTool[]).map((tool) => (
-            <label key={tool} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.tools.includes(tool)} onChange={() => set('tools', toggle(form.tools, tool))} />
-              {toolLabels[tool]}
-            </label>
-          ))}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.autoConclude} onChange={(event) => set('autoConclude', event.target.checked)} />
             Concluir sozinho (sem revisão)

@@ -4,7 +4,7 @@ import type { Board } from '../../api/boards';
 import { type DeployEnvironment, environmentLabels } from '../../api/render';
 import type { AgentStep, Workflow, WorkflowInput, WorkflowStep, WorkflowTrigger } from '../../api/workflows';
 import { Button } from '../Button';
-import { ChipPicker } from '../ChipPicker';
+import { MultiSelect } from '../MultiSelect';
 import { ErrorText, Field, Select, TextInput } from '../form';
 
 const newId = () => Math.random().toString(36).slice(2, 8);
@@ -126,8 +126,9 @@ export function WorkflowForm({ profiles, board, initial, pending, error, onSubmi
             {board.fields.map((field) => (
               <div key={field.id} className="grid grid-cols-1 gap-1 md:grid-cols-[8rem_1fr] md:items-center">
                 <span className="text-xs text-muted">{field.name}</span>
-                <ChipPicker
-                  options={field.options}
+                <MultiSelect
+                  options={field.options.map((option) => ({ value: option.id, label: option.name, color: option.color }))}
+                  placeholder="Qualquer"
                   selected={trigger.fieldFilters[field.id] ?? []}
                   onChange={(next) => setTrigger({ ...trigger, fieldFilters: { ...trigger.fieldFilters, [field.id]: next } })}
                 />
@@ -136,8 +137,9 @@ export function WorkflowForm({ profiles, board, initial, pending, error, onSubmi
             {board.repositories.length > 1 && (
               <div className="grid grid-cols-1 gap-1 md:grid-cols-[8rem_1fr] md:items-center">
                 <span className="text-xs text-muted">Repositório</span>
-                <ChipPicker
-                  options={board.repositories.map((repo) => ({ id: repo.path, name: repo.projectName }))}
+                <MultiSelect
+                  options={board.repositories.map((repo) => ({ value: repo.path, label: repo.projectName }))}
+                  placeholder="Qualquer"
                   selected={trigger.repositories}
                   onChange={(next) => setTrigger({ ...trigger, repositories: next })}
                 />
