@@ -69,7 +69,7 @@ function summarize(
   };
 }
 
-const STATE_ORDER: Record<AgentState, number> = { waiting: 0, working: 1, review: 2, failed: 3, idle: 4 };
+const STATE_ORDER: Record<AgentState, number> = { working: 0, waiting: 1, review: 2, failed: 3, idle: 4 };
 
 /** Link to the page of an agent (or of the "avulsos" of a workspace). */
 export const agentPagePath = (summary: Pick<AgentSummary, 'workspaceId' | 'profile'>) =>
