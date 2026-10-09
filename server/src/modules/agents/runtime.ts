@@ -80,6 +80,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   lines.push(
     '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven (Java 11 em /opt/java/jdk11: use JAVA_HOME=/opt/java/jdk11 em projetos Java 8 a 11), psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
     '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
+    '- Seu trabalho termina quando o seu turno termina: não deixe nada rodando em segundo plano. Se usar subagentes, espere todos terminarem e confira o que fizeram antes de encerrar.',
     '- Ao terminar, resuma o que foi feito.',
     '- Responda em português.',
   );
@@ -171,6 +172,9 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
       SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects),
       STUDIO_TOOLS: runnerTools(agent).join(','),
+      // An agent's work ends with its turn (the Studio concludes it then): nothing may keep running in the
+      // background, or it would be killed with the container (e.g. subagents creating tasks).
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
       // Reference folders belong to the host user: git would refuse them as "dubious ownership".
