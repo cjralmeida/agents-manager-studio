@@ -23,8 +23,8 @@ export async function validateWorkflow(workspaceId: string, input: Pick<Workflow
   const facts: ProfileFacts[] = profiles.map((profile) => ({
     id: profile.id,
     name: profile.name,
-    hasRepository: profile.projectIds.length > 0,
-    deliversCode: profile.projectIds.length > 0 && profile.output === 'PULL_REQUEST',
+    hasRepository: profile.projectIds.length > 0 || profile.anyProject,
+    deliversCode: (profile.projectIds.length > 0 || profile.anyProject) && profile.output === 'PULL_REQUEST',
     usesBoard: profile.tools.includes('board'),
   }));
   const problems = validateSteps(input.steps, facts);

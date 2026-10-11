@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_MODELS } from '../agents/service.js';
 
 /** Studio tool groups a workspace agent can use. */
-export const PROFILE_TOOLS = ['board', 'render', 'render_read', 'clickup_read'] as const;
+export const PROFILE_TOOLS = ['board', 'render', 'render_read', 'clickup_read', 'projects'] as const;
 
 /** A workspace agent as the form (and Órbi's proposals) describe it. */
 export const profileSchema = z
@@ -14,6 +14,8 @@ export const profileSchema = z
     projectIds: z.array(z.uuid()).max(50).default([]),
     /** Projects it can only read, mounted read-only as they are on disk (e.g. code to document). */
     contextProjectIds: z.array(z.uuid()).max(20).default([]),
+    /** Works on the project the workflow is on (e.g. one an earlier step created), not on fixed projects. */
+    anyProject: z.boolean().default(false),
     output: z.enum(['PULL_REQUEST', 'RESULT']).default('PULL_REQUEST'),
     tools: z.array(z.enum(PROFILE_TOOLS)).default([]),
     autoConclude: z.boolean().default(false),

@@ -6,6 +6,7 @@ import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
 import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
 import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
+import { createProject, listRepositoryOwners } from '../workspaces/create-project.js';
 import { runStudioTool } from './studio.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -21,6 +22,8 @@ export const AGENT_TOOL_NAMES = [
   'studio_get_execution',
   'studio_usage',
   'studio_propose',
+  'project_owners',
+  'project_create',
   'studio_board_options',
   'studio_render_services',
   ...RENDER_TOOL_NAMES,
@@ -34,6 +37,8 @@ export interface AgentResult {
   summary?: string;
   details?: string;
   createdTasks?: { id: string; title: string; ref: string | null; url: string | null }[];
+  /** Project the agent created (the next workflow steps work on it). */
+  projectId?: string;
 }
 
 type Args = Record<string, unknown>;
@@ -95,6 +100,30 @@ export async function prepareTaskByNames(workspaceId: string, args: Args) {
   return { title, body: text(args.body) ?? '', repository: repository?.path ?? null, columnId: column?.id ?? null, fields: resolved };
 }
 
+/**
+ * Project tools: where a repository can be created, and creating it (a private repository with the workspace git
+ * account, plus the project folder). The agent asks the user before creating; the new project goes to the result,
+ * so the next workflow steps work on it.
+ */
+async function runProjectTool(agent: { id: string; workspaceId: string }, name: string, args: Args) {
+  const { accounts } = await listRepositoryOwners(agent.workspaceId);
+  if (name === 'project_owners') {
+    return { accounts: accounts.map((account) => ({ account: account.label, provider: account.provider, owners: account.owners.map((owner) => ({ owner: owner.path, kind: owner.kind })) })) };
+  }
+  const projectName = text(args.name, 100)?.trim();
+  if (!projectName) throw new HttpError(400, 'Informe o nome do projeto (será a pasta e o repositório).');
+  const owner = text(args.owner, 200)?.trim();
+  const account = accounts.find((entry) => entry.owners.some((candidate) => candidate.path === owner)) ?? (owner ? undefined : accounts[0]);
+  if (!account) throw new HttpError(422, `"${owner}" não é um lugar onde a conta git do workspace cria repositórios. Use project_owners.`);
+  const created = await createProject(agent.workspaceId, {
+    name: projectName,
+    description: text(args.description, 300),
+    remote: { accountId: account.accountId, owner: owner || account.owners[0]!.path, visibility: 'private' },
+  });
+  if (created.projectId) await mergeResult(agent.id, { projectId: created.projectId });
+  return { ...created, message: 'Projeto criado (repositório privado). Os próximos passos do workflow trabalham nele.' };
+}
+
 /** Runs a tool for an agent. Problems the agent can fix are thrown as messages it will read. */
 export async function runAgentTool(agentId: string, name: AgentToolName, args: Args) {
   const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -104,6 +133,11 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     const summary = text(args.summary, 20_000) ?? '';
     await mergeResult(agentId, { status, summary, details: text(args.details) });
     return { ok: true, message: 'Resultado registrado. Encerre com um resumo curto.' };
+  }
+
+  if (name.startsWith('project_')) {
+    if (!agent.tools.includes('projects')) throw new HttpError(403, 'Este agente não pode criar projetos.');
+    return runProjectTool(agent, name, args);
   }
 
   if (name.startsWith('clickup_')) {

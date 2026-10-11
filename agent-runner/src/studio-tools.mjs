@@ -142,6 +142,22 @@ export function createStudioTools(call, groups) {
     );
   }
 
+  if (groups.includes('projects')) {
+    tools.push(
+      tool('project_owners', 'Lista onde a conta git do workspace pode criar repositórios (seu usuário e organizações).', {}, run('project_owners')),
+      tool(
+        'project_create',
+        'Cria um projeto novo no workspace com repositório PRIVADO no git (pasta + repositório + primeiro commit). Só depois de o usuário confirmar nome e lugar. Os próximos passos do workflow trabalham nele.',
+        {
+          name: z.string().describe('Nome do projeto: pasta e repositório (ex.: neon-runner). Letras minúsculas, números e hífen.'),
+          description: z.string().optional(),
+          owner: z.string().optional().describe('Onde criar (de project_owners): usuário ou organização.'),
+        },
+        run('project_create'),
+      ),
+    );
+  }
+
   if (groups.includes('clickup_read')) {
     tools.push(
       tool(

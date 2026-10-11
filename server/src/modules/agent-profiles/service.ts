@@ -12,6 +12,7 @@ export interface AgentProfileInput {
   model: AgentModel;
   projectIds: string[];
   contextProjectIds: string[];
+  anyProject: boolean;
   output: 'PULL_REQUEST' | 'RESULT';
   tools: (typeof PROFILE_TOOLS)[number][];
   autoConclude: boolean;
@@ -35,11 +36,12 @@ async function toResponse(profile: AgentProfile & { workspace?: { name: string }
     model: profile.model,
     projectIds: profile.projectIds,
     contextProjectIds: profile.contextProjectIds,
+    anyProject: profile.anyProject,
     // Without projects there is no code to deliver.
-    output: profile.projectIds.length === 0 ? 'RESULT' : profile.output,
+    output: profile.projectIds.length === 0 && !profile.anyProject ? 'RESULT' : profile.output,
     tools: profile.tools,
     autoConclude: profile.autoConclude,
-    autoMerge: profile.autoMerge && profile.projectIds.length > 0 && profile.output === 'PULL_REQUEST',
+    autoMerge: profile.autoMerge && (profile.projectIds.length > 0 || profile.anyProject) && profile.output === 'PULL_REQUEST',
     workingAgents: working,
     totalAgents: total,
     createdAt: profile.createdAt,

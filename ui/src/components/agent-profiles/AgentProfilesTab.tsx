@@ -30,6 +30,7 @@ const empty: AgentProfileInput = {
   model: 'sonnet',
   projectIds: [],
   contextProjectIds: [],
+  anyProject: false,
   output: 'PULL_REQUEST',
   tools: [],
   autoConclude: false,
@@ -175,7 +176,7 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
   const [form, setForm] = useState<AgentProfileInput>(initial ?? empty);
   const set = <K extends keyof AgentProfileInput>(key: K, value: AgentProfileInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const gitProjects = workspace.projects.filter((project) => project.isGitRepo && !project.isMissing);
-  const withoutRepository = form.projectIds.length === 0;
+  const withoutRepository = form.projectIds.length === 0 && !form.anyProject;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -211,14 +212,24 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
 
       <div className="mt-4 max-w-2xl space-y-1">
         <span className="text-xs font-medium text-muted">Projetos em que trabalha</span>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.anyProject} onChange={(event) => set('anyProject', event.target.checked)} />
+          No projeto do workflow (qualquer projeto do workspace, ex.: o que um passo anterior criou)
+        </label>
+        {!form.anyProject && (
         <MultiSelect
           options={gitProjects.map((project) => ({ value: project.id, label: project.name }))}
           selected={form.projectIds}
           onChange={(next) => set('projectIds', next)}
           placeholder="Nenhum (sem repositório)"
         />
+        )}
         <p className="text-xs text-muted">
-          {withoutRepository ? 'Nenhum marcado: o agente trabalha sem repositório e entrega um resultado.' : 'Ao executar, você escolhe um destes projetos.'}
+          {form.anyProject
+            ? 'O workflow passa o projeto; ao executar à mão, você escolhe qualquer projeto do workspace.'
+            : withoutRepository
+              ? 'Nenhum marcado: o agente trabalha sem repositório e entrega um resultado.'
+              : 'Ao executar, você escolhe um destes projetos.'}
         </p>
       </div>
 

@@ -267,7 +267,8 @@ async function syncStep(stepRun: WorkflowStepRun) {
   const output: StepOutput = {
     agentId: agent.id,
     deliversCode: agent.output === 'PULL_REQUEST' && agent.projectId !== null,
-    projectId: agent.projectId,
+    // An agent without a repository may have created the project the next steps work on (e.g. a new game).
+    projectId: agent.projectId ?? result.projectId ?? null,
     prUrl: agent.prUrl,
     branch: agent.branch,
     status: result.status,
@@ -398,6 +399,10 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     if (!output.agentId) return fail('O passo anterior não tem agente para continuar.');
     sourceAgentId = output.agentId;
     projectId = output.projectId;
+  } else if (projectId === undefined && profile.anyProject) {
+    // Works on the project the chain is on: the latest one an earlier step worked on or created.
+    projectId = earlier.map((entry) => outputOf(entry.run).projectId).find(Boolean) ?? undefined;
+    if (!projectId) return fail(`Nenhum passo anterior criou ou escolheu o projeto em que o agente "${profile.name}" vai trabalhar.`);
   } else if (projectId === undefined && profile.projectIds.length > 1) {
     // Several projects: follow the project the chain is already working on.
     const chainProject = earlier.map((entry) => outputOf(entry.run).projectId).find((id) => id && profile.projectIds.includes(id));

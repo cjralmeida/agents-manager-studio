@@ -31,8 +31,8 @@ export function NewAgentForm({ workspaceId, projects, onCancel, initial, taskIte
 
   const gitProjects = projects.filter((project) => project.isGitRepo && !project.isMissing);
   // A workspace agent limits the projects; one without projects works without a repository.
-  const available = profile ? gitProjects.filter((project) => profile.projectIds.includes(project.id)) : gitProjects;
-  const withoutRepository = profile !== undefined && profile.projectIds.length === 0;
+  const available = profile && !profile.anyProject ? gitProjects.filter((project) => profile.projectIds.includes(project.id)) : gitProjects;
+  const withoutRepository = profile !== undefined && profile.projectIds.length === 0 && !profile.anyProject;
 
   const [projectId, setProjectId] = useState(initial?.projectId ?? '');
   const [title, setTitle] = useState(initial?.title ?? '');

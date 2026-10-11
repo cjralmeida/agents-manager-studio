@@ -8,7 +8,7 @@ FROM node:24-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates openssh-client \
-    python3 python3-pip python3-venv python-is-python3 postgresql-client \
+    python3 python3-pip python3-venv python-is-python3 python3-pil postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Go, JDK 21 and Maven come from their official images.

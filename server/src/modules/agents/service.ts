@@ -164,11 +164,12 @@ async function resolveProject(input: LaunchAgentInput, profile: AgentProfile | n
   let projectId = input.projectId ?? null;
   if (!projectId && profile?.projectIds.length === 1) projectId = profile.projectIds[0]!;
   if (!projectId) {
+    if (profile?.anyProject) throw new HttpError(422, `Escolha o projeto em que o agente "${profile.name}" vai trabalhar.`);
     if (profile && profile.projectIds.length > 1) throw new HttpError(422, `Escolha um dos projetos do agente "${profile.name}".`);
     if (!profile) throw new HttpError(422, 'Escolha o projeto do agente.');
     return null;
   }
-  if (profile && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) {
+  if (profile && !profile.anyProject && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) {
     throw new HttpError(422, `O agente "${profile.name}" não trabalha neste projeto.`);
   }
 

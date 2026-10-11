@@ -492,6 +492,9 @@ model AgentProfile {
   tools             String[]    @default([])
   /// Projects the agent can read (mounted read-only, local folder as it is), e.g. code to document.
   contextProjectIds String[]    @default([]) @map("context_project_ids")
+  /// Works on whichever project of the workspace the workflow is on (e.g. the game repository an earlier step
+  /// created), instead of fixed projects.
+  anyProject        Boolean     @default(false) @map("any_project")
   /// Concludes by itself when it finishes, without waiting for the user.
   autoConclude      Boolean     @default(false) @map("auto_conclude")
   /// Merges its own PR/MR right after opening it (e.g. documentation the next workflow step reads).

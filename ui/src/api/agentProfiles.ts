@@ -3,7 +3,7 @@ import type { AgentModel } from './agents';
 import { api } from './client';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
-export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read';
+export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects';
 
 /** A fixed agent of the workspace; each run of it is an Agent (execution). */
 export interface AgentProfile {
@@ -19,6 +19,8 @@ export interface AgentProfile {
   projectIds: string[];
   /** Projects it only reads (mounted read-only as they are on disk). */
   contextProjectIds: string[];
+  /** Works on the project the workflow is on (e.g. one an earlier step created). */
+  anyProject: boolean;
   output: AgentOutput;
   tools: ProfileTool[];
   autoConclude: boolean;
@@ -31,7 +33,7 @@ export interface AgentProfile {
 
 export type AgentProfileInput = Pick<
   AgentProfile,
-  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'contextProjectIds' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
+  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'contextProjectIds' | 'anyProject' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
 >;
 
 export const outputLabels: Record<AgentOutput, string> = {
@@ -44,6 +46,7 @@ export const toolLabels: Record<ProfileTool, string> = {
   render: 'Render em homologação (variáveis, deploy e logs)',
   render_read: 'Homologação, só leitura (URLs e logs dos projetos)',
   clickup_read: 'ClickUp, só leitura (tarefas da conta do workspace)',
+  projects: 'Projetos (criar repositório novo, com sua confirmação)',
 };
 
 const key = (workspaceId: string) => ['agent-profiles', workspaceId] as const;
