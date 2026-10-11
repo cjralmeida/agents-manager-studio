@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
+import { patchSchema } from '../../lib/validation.js';
 import { prepareTaskByNames } from '../agent-tools/service.js';
 import { profileSchema } from '../agent-profiles/schema.js';
 import { createAgentProfile, deleteAgentProfile, updateAgentProfile } from '../agent-profiles/service.js';
@@ -35,10 +36,10 @@ const idPayload = z.object({ id: z.uuid() }).strict();
 /** Payload of each kind; the same schemas as the forms, so Órbi cannot propose what the UI would refuse. */
 const payloadSchemas: Record<ProposalKind, z.ZodType> = {
   create_agent: profileSchema,
-  update_agent: profileSchema.partial().extend({ id: z.uuid() }),
+  update_agent: patchSchema(profileSchema).extend({ id: z.uuid() }),
   delete_agent: idPayload,
   create_workflow: workflowSchema,
-  update_workflow: workflowSchema.partial().extend({ id: z.uuid() }),
+  update_workflow: patchSchema(workflowSchema).extend({ id: z.uuid() }),
   delete_workflow: idPayload,
   start_workflow: z.object({ workflowId: z.uuid(), message: z.string().trim().max(20_000).optional() }).strict(),
   cancel_run: z.object({ runId: z.uuid() }).strict(),

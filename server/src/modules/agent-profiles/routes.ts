@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { parseInput } from '../../lib/validation.js';
+import { parseInput, patchSchema } from '../../lib/validation.js';
 import { profileSchema } from './schema.js';
 import {
   createAgentProfile,
@@ -27,7 +27,7 @@ export async function agentProfileRoutes(app: FastifyInstance) {
 
   app.patch('/agent-profiles/:id', async (request) => {
     const { id } = parseInput(idParams, request.params);
-    return updateAgentProfile(id, parseInput(profileBody.partial(), request.body));
+    return updateAgentProfile(id, parseInput(patchSchema(profileBody), request.body));
   });
 
   app.delete('/agent-profiles/:id', async (request, reply) => {

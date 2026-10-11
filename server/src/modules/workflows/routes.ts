@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { parseInput } from '../../lib/validation.js';
+import { parseInput, patchSchema } from '../../lib/validation.js';
 import { workflowSchema } from './definition.js';
 import {
   cancelWorkflowRun,
@@ -33,7 +33,7 @@ export async function workflowRoutes(app: FastifyInstance) {
 
   app.patch('/workflows/:id', async (request) => {
     const { id } = parseInput(idParams, request.params);
-    return updateWorkflow(id, parseInput(workflowBody.partial(), request.body));
+    return updateWorkflow(id, parseInput(patchSchema(workflowBody), request.body));
   });
 
   app.delete('/workflows/:id', async (request, reply) => {
