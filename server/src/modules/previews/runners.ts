@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, readFile, stat, writeFile } from 'node:fs/promises';
 import { config } from '../../config.js';
 import {
   composeNetworks,
@@ -11,6 +11,7 @@ import {
   runOnce,
   startContainer,
 } from '../../lib/docker.js';
+import { renderDotenv } from './variables.js';
 
 /**
  * How each kind of project is checked and served. Every kind ends with a small Caddy container named
@@ -39,6 +40,8 @@ export interface Workspace {
   src: string;
   srcHost: string;
   commit: string;
+  /** The project's variables (build, tests and the running app). */
+  env: Record<string, string>;
 }
 
 const CADDY_IMAGE = 'caddy:2.10-alpine';
@@ -49,6 +52,8 @@ const COMPOSE_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'do
 const OUTPUT_DIRS = ['dist', 'build', 'out'];
 /** Extra compose file the Studio writes: no published ports (they could clash with the machine's) and no fixed names. */
 const OVERRIDE_FILE = '.studio-rodar.yml';
+/** The project's variables for docker compose (every service gets them, and ${VAR} in the file reads them). */
+const ENV_FILE = '.studio-rodar.env';
 
 const exists = (file: string) => stat(file).then(() => true, () => false);
 const output = (result: { stdout: string; stderr: string }) => `${result.stdout}\n${result.stderr}`.trim();
@@ -96,7 +101,7 @@ async function checkStatic(ws: Workspace): Promise<CheckResult> {
     name: `ams-check-${ws.slug}-${Date.now().toString(36)}`,
     cmd: ['sh', '-c', 'cd /app && npm ci --no-audit --no-fund && npm run build && npm test --if-present'],
     user: '0',
-    env: { CI: 'true', npm_config_update_notifier: 'false' },
+    env: { ...ws.env, CI: 'true', npm_config_update_notifier: 'false' },
     labels: { [PREVIEW_LABEL]: ws.projectId },
     binds: [`${ws.srcHost}:/app`],
     timeoutMs: CHECK_TIMEOUT_MS,
@@ -151,7 +156,7 @@ async function checkDockerfile(ws: Workspace): Promise<CheckResult> {
   const ports = candidatePorts(await imageExposedPorts(tag));
   const name = `ams-check-${ws.slug}`;
   await removeContainer(name).catch(() => undefined);
-  const id = await createContainer({ image: tag, name, cmd: [], network: config.agentNetwork, labels: { [PREVIEW_LABEL]: ws.projectId } });
+  const id = await createContainer({ image: tag, name, cmd: [], env: ws.env, network: config.agentNetwork, labels: { [PREVIEW_LABEL]: ws.projectId } });
   try {
     await startContainer(id);
     const answer = await firstAnsweringPort(name, ports);
@@ -192,25 +197,42 @@ export function pickService(services: Record<string, ComposeService>) {
   return null;
 }
 
-async function writeOverride(ws: Workspace, file: string) {
-  const config = await dockerCli(ws, `docker compose -f ${file} config --format json`, 120_000);
+/**
+ * Writes the variables file and the override (no published ports, no fixed names, variables in every service) and
+ * returns the compose flags plus the service to open.
+ */
+async function prepareCompose(ws: Workspace, file: string) {
+  await writeFile(`${ws.src}/${ENV_FILE}`, renderDotenv(ws.env));
+  await chmod(`${ws.src}/${ENV_FILE}`, 0o600);
+  // --env-file replaces the project's own .env, so both are passed (ours wins).
+  const envFiles = `${(await exists(`${ws.src}/.env`)) ? '--env-file .env ' : ''}--env-file ${ENV_FILE}`;
+  const config = await dockerCli(ws, `docker compose ${envFiles} -f ${file} config --format json`, 120_000);
   if (config.exitCode !== 0) return { error: `O docker-compose não é válido.\n\n${output(config)}` };
   const services = (JSON.parse(config.stdout) as { services: Record<string, ComposeService> }).services;
   const target = pickService(services);
   if (!target) {
     return { error: 'Nenhum serviço do compose publica ou expõe uma porta. Marque o serviço que o Rodar deve abrir com o label studio.rodar: "<porta>".' };
   }
-  const lines = ['services:', ...Object.keys(services).flatMap((name) => [`  ${JSON.stringify(name)}:`, '    ports: !reset []', '    container_name: !reset null'])];
+  const withEnv = Object.keys(ws.env).length > 0;
+  const lines = [
+    'services:',
+    ...Object.keys(services).flatMap((name) => [
+      `  ${JSON.stringify(name)}:`,
+      '    ports: !reset []',
+      '    container_name: !reset null',
+      ...(withEnv ? ['    env_file:', `      - ${ENV_FILE}`] : []),
+    ]),
+  ];
   await writeFile(`${ws.src}/${OVERRIDE_FILE}`, `${lines.join('\n')}\n`);
-  return { target };
+  return { target, flags: `${envFiles} -f ${file} -f ${OVERRIDE_FILE}` };
 }
 
 /** docker compose: brings the whole stack up (built, healthy) under a check name, then takes it down. */
 async function checkCompose(ws: Workspace, file: string): Promise<CheckResult> {
-  const prepared = await writeOverride(ws, file);
+  const prepared = await prepareCompose(ws, file);
   if ('error' in prepared) return { passed: false, log: prepared.error ?? '' };
   const project = `ams-check-${ws.slug}`;
-  const compose = `docker compose -p ${project} -f ${file} -f ${OVERRIDE_FILE}`;
+  const compose = `docker compose ${prepared.flags} -p ${project}`;
   const result = await dockerCli(
     ws,
     `${compose} up -d --build --wait --wait-timeout 240; code=$?; ` +
@@ -254,16 +276,25 @@ export async function serve(ws: Workspace, kind: PreviewKind, target: string | n
   if (kind === 'dockerfile') {
     const app = appName(ws.slug);
     await removeContainer(app).catch(() => undefined);
-    const id = await createContainer({ image: imageTag(ws.slug, ws.commit), name: app, cmd: [], network: config.agentNetwork, labels: { [PREVIEW_LABEL]: ws.projectId } });
+    const id = await createContainer({
+      image: imageTag(ws.slug, ws.commit),
+      name: app,
+      cmd: [],
+      env: ws.env,
+      network: config.agentNetwork,
+      labels: { [PREVIEW_LABEL]: ws.projectId },
+    });
     await startContainer(id);
     return startFront(ws, { upstream: `${app}:${target ?? '80'}` });
   }
 
   const file = (await detect(ws.src))?.file;
   if (!file || !target) throw new Error('O build estável não tem o compose ou o serviço a abrir.');
-  if (!(await exists(`${ws.src}/${OVERRIDE_FILE}`))) await writeOverride(ws, file);
+  // Prepared again: the variables may have changed since the check.
+  const prepared = await prepareCompose(ws, file);
+  if ('error' in prepared) throw new Error(prepared.error);
   const project = runName(ws.slug);
-  const up = await dockerCli(ws, `docker compose -p ${project} -f ${file} -f ${OVERRIDE_FILE} up -d --build --wait --wait-timeout 240 --remove-orphans`);
+  const up = await dockerCli(ws, `docker compose ${prepared.flags} -p ${project} up -d --build --wait --wait-timeout 240 --remove-orphans`);
   if (up.timedOut || up.exitCode !== 0) throw new Error(`A stack não subiu.\n\n${output(up).slice(-1500)}`);
   return startFront(ws, { upstream: target, networks: await composeNetworks(project) });
 }

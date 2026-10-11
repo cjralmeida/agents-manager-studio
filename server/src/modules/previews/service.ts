@@ -11,6 +11,7 @@ import { secrets } from '../../lib/secrets.js';
 import { authenticatedPushUrl, parseRemote, remoteHostname } from '../agents/remote.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { type PreviewKind, UNSUPPORTED, type Workspace, detect, runCheck as runKindCheck, serve, unserve } from './runners.js';
+import { deleteProjectVariable, listProjectVariables, projectEnv, setProjectVariable } from './variables.js';
 
 /**
  * "Rodar" a project: the Studio checks each new commit of the base branch in throwaway containers and serves the latest
@@ -66,12 +67,13 @@ async function finish(build: PreviewBuild, status: 'PASSED' | 'FAILED', log: str
   return prisma.previewBuild.update({ where: { id: build.id }, data: { status, log: tail(log), target: target ?? null, finishedAt: new Date() } });
 }
 
-const workspaceOf = (project: Project, commit: string): Workspace => ({
+const workspaceOf = (project: Project, commit: string, env: Record<string, string> = {}): Workspace => ({
   projectId: project.id,
   slug: previewSlug(project.name),
   src: `${buildDir(project.id, commit)}/src`,
   srcHost: `${buildHostDir(project.id, commit)}/src`,
   commit,
+  env,
 });
 
 /** Clones the newest commit and checks it the way its kind runs (see runners.ts); returns the finished build. */
@@ -83,7 +85,7 @@ async function runCheck(project: Project, remote: Awaited<ReturnType<typeof remo
   // A newer commit may have arrived between the look and the clone: the folder is named after what was cloned.
   const actual = (await git(staging, ['rev-parse', 'HEAD'])).trim();
   const message = (await git(staging, ['log', '-1', '--format=%s'])).trim();
-  const ws = workspaceOf(project, actual);
+  const ws = workspaceOf(project, actual, await projectEnv(project.id));
   await rm(buildDir(project.id, actual), { recursive: true, force: true });
   await mkdir(buildDir(project.id, actual), { recursive: true });
   await rename(staging, ws.src);
@@ -149,7 +151,8 @@ async function serveIfWanted(projectId: string) {
   try {
     // Static builds from before the target column name their folder in the log.
     const target = stable.target ?? /^Site em (\w+)\//.exec(stable.log)?.[1] ?? null;
-    const containerId = await serve(workspaceOf(preview.project, stable.commit), stable.kind as PreviewKind, target);
+    const ws = workspaceOf(preview.project, stable.commit, await projectEnv(projectId));
+    const containerId = await serve(ws, stable.kind as PreviewKind, target);
     await prisma.projectPreview.update({ where: { projectId }, data: { containerId, buildId: stable.id, error: null } });
   } catch (error) {
     await prisma.projectPreview.update({
@@ -273,4 +276,24 @@ export function startPreviewMonitor(log: FastifyBaseLogger) {
     stopped = true;
     if (timer) clearTimeout(timer);
   };
+}
+
+export { listProjectVariables };
+
+/** Saves a variable; a project that is up is checked again with it (and swapped when the check passes). */
+export async function saveProjectVariable(projectId: string, key: string, value: string, log?: FastifyBaseLogger) {
+  await setProjectVariable(projectId, key, value);
+  await recheckIfUp(projectId, log);
+  return listProjectVariables(projectId);
+}
+
+export async function removeProjectVariable(projectId: string, key: string, log?: FastifyBaseLogger) {
+  await deleteProjectVariable(projectId, key);
+  await recheckIfUp(projectId, log);
+  return listProjectVariables(projectId);
+}
+
+async function recheckIfUp(projectId: string, log?: FastifyBaseLogger) {
+  const preview = await prisma.projectPreview.findUnique({ where: { projectId } });
+  if (preview?.wantsUp) await checkLatest(projectId, { force: true, log }).catch((err: unknown) => log?.warn({ projectId, err }, 'Re-check failed to start'));
 }

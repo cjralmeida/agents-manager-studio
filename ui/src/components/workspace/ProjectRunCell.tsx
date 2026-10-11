@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type PreviewBuild, useCheckPreview, usePreview, useStartPreview, useStopPreview } from '../../api/previews';
+import { type PreviewBuild, useCheckPreview, usePreview, useProjectVariables, useStartPreview, useStopPreview } from '../../api/previews';
 import type { Project } from '../../api/workspaces';
 import { timeAgo } from '../../lib/time';
 import { Badge } from '../Badge';
@@ -17,13 +17,22 @@ const howItRuns = (build: PreviewBuild) =>
  * "Rodar" of a project: serves its latest stable version (the newest commit of the base branch that installed,
  * built and passed its tests) at http://<projeto>.localhost, and swaps it when a newer one passes.
  */
-export function ProjectRunCell({ project }: { project: Project }) {
+export function ProjectRunCell({
+  project,
+  variablesOpen,
+  onToggleVariables,
+}: {
+  project: Project;
+  variablesOpen: boolean;
+  onToggleVariables: () => void;
+}) {
   const enabled = project.isGitRepo && !project.isMissing && Boolean(project.gitRemoteUrl);
   const preview = usePreview(project.id, enabled);
   const start = useStartPreview(project.id);
   const stop = useStopPreview(project.id);
   const check = useCheckPreview(project.id);
   const [showLog, setShowLog] = useState(false);
+  const variables = useProjectVariables(project.id, enabled);
 
   if (!enabled) return <span className="text-xs text-muted">{project.gitRemoteUrl ? '' : 'Precisa de repositório remoto'}</span>;
   const state = preview.data;
@@ -53,6 +62,9 @@ export function ProjectRunCell({ project }: { project: Project }) {
         )}
         <Button size="sm" onClick={() => check.mutate()} disabled={busy || checking} title="Verifica de novo o commit mais novo da branch base">
           {checking ? 'Verificando...' : 'Verificar agora'}
+        </Button>
+        <Button size="sm" onClick={onToggleVariables} aria-expanded={variablesOpen} title="Variáveis de ambiente do projeto no Rodar">
+          Variáveis{variables.data?.length ? ` (${variables.data.length})` : ''}
         </Button>
       </div>
 

@@ -136,6 +136,7 @@ model Project {
   localTasks     LocalTask[]
   previewBuilds  PreviewBuild[]
   preview        ProjectPreview?
+  variables      ProjectVariable[]
 
   @@unique([workspaceId, name])
   @@map("projects")
@@ -792,4 +793,20 @@ model ClickupAccount {
 
   @@index([ownerId])
   @@map("clickup_accounts")
+}
+
+/// Environment variables of a project for "Rodar" (build, tests and the running app); value encrypted.
+model ProjectVariable {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  projectId      String   @map("project_id") @db.Uuid
+  key            String
+  valueEncrypted String   @map("value_encrypted")
+  valueHint      String   @map("value_hint")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@map("project_variables")
 }

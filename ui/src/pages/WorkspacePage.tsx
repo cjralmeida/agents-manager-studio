@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { type GitProvider, type Project, type WorkspaceDetail, useSetProjectBaseBranch, useSetWorkspaceIgnored, useWorkspace } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -11,6 +11,7 @@ import { Tabs, useTabParam } from '../components/Tabs';
 import { CloneRepositoryForm } from '../components/workspace/CloneRepositoryForm';
 import { NewProjectForm } from '../components/workspace/NewProjectForm';
 import { ProjectRunCell } from '../components/workspace/ProjectRunCell';
+import { ProjectVariablesPanel } from '../components/workspace/ProjectVariablesPanel';
 import { WorkspaceConnectorsTab } from '../components/workspace/WorkspaceConnectorsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
@@ -138,6 +139,8 @@ function BaseBranchInput({ workspaceId, project }: { workspaceId: string; projec
 }
 
 function ProjectsTable({ workspaceId, projects }: { workspaceId: string; projects: Project[] }) {
+  // The Rodar variables of one project open in a full-width row below it.
+  const [variablesFor, setVariablesFor] = useState<string | null>(null);
   if (projects.length === 0) {
     return <p className="mt-4 text-sm text-muted">Nenhum projeto nesta pasta.</p>;
   }
@@ -158,7 +161,8 @@ function ProjectsTable({ workspaceId, projects }: { workspaceId: string; project
         </thead>
         <tbody>
           {projects.map((project) => (
-            <tr key={project.id} className={`border-t border-border ${project.isMissing ? 'opacity-60' : ''}`}>
+            <Fragment key={project.id}>
+              <tr className={`border-t border-border ${project.isMissing ? 'opacity-60' : ''}`}>
               <td className="px-4 py-2">
                 <div className="font-medium">{project.name}</div>
                 <div className="font-mono text-xs text-muted">{project.hostPath}</div>
@@ -183,9 +187,21 @@ function ProjectsTable({ workspaceId, projects }: { workspaceId: string; project
                 )}
               </td>
               <td className="px-4 py-2 align-top">
-                <ProjectRunCell project={project} />
+                <ProjectRunCell
+                  project={project}
+                  variablesOpen={variablesFor === project.id}
+                  onToggleVariables={() => setVariablesFor((current) => (current === project.id ? null : project.id))}
+                />
               </td>
-            </tr>
+              </tr>
+              {variablesFor === project.id && (
+                <tr>
+                  <td colSpan={5} className="px-4 pb-3">
+                    <ProjectVariablesPanel projectId={project.id} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

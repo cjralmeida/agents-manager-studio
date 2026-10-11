@@ -60,3 +60,46 @@ function usePreviewAction(projectId: string, action: 'start' | 'stop' | 'check')
 export const useStartPreview = (projectId: string) => usePreviewAction(projectId, 'start');
 export const useStopPreview = (projectId: string) => usePreviewAction(projectId, 'stop');
 export const useCheckPreview = (projectId: string) => usePreviewAction(projectId, 'check');
+
+export interface ProjectVariable {
+  key: string;
+  /** Start and end of the value; the value itself never comes back. */
+  valueHint: string;
+  updatedAt: string;
+}
+
+const variablesKey = (projectId: string) => ['preview-variables', projectId];
+
+export function useProjectVariables(projectId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: variablesKey(projectId),
+    queryFn: () => api.get<ProjectVariable[]>(`/projects/${projectId}/preview/variables`),
+    enabled,
+  });
+}
+
+function useVariablesChanged(projectId: string) {
+  const queryClient = useQueryClient();
+  return (variables: ProjectVariable[]) => {
+    queryClient.setQueryData(variablesKey(projectId), variables);
+    // Saving re-checks a project that is up.
+    void queryClient.invalidateQueries({ queryKey: key(projectId) });
+  };
+}
+
+export function useSetProjectVariable(projectId: string) {
+  const changed = useVariablesChanged(projectId);
+  return useMutation({
+    mutationFn: ({ name, value }: { name: string; value: string }) =>
+      api.put<ProjectVariable[]>(`/projects/${projectId}/preview/variables/${encodeURIComponent(name)}`, { value }),
+    onSuccess: changed,
+  });
+}
+
+export function useDeleteProjectVariable(projectId: string) {
+  const changed = useVariablesChanged(projectId);
+  return useMutation({
+    mutationFn: (name: string) => api.delete<ProjectVariable[]>(`/projects/${projectId}/preview/variables/${encodeURIComponent(name)}`),
+    onSuccess: changed,
+  });
+}
