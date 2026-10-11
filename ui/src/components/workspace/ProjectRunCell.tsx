@@ -7,6 +7,12 @@ import { Button } from '../Button';
 
 const short = (build: PreviewBuild) => build.commit.slice(0, 7);
 
+const kindLabels: Record<PreviewBuild['kind'], string> = { static: 'site estático', dockerfile: 'Dockerfile', compose: 'docker compose' };
+
+/** "docker compose · web:8080" */
+const howItRuns = (build: PreviewBuild) =>
+  `${kindLabels[build.kind]}${build.kind === 'static' || !build.target ? '' : ` · ${build.kind === 'dockerfile' ? `porta ${build.target}` : build.target}`}`;
+
 /**
  * "Rodar" of a project: serves its latest stable version (the newest commit of the base branch that installed,
  * built and passed its tests) at http://<projeto>.localhost, and swaps it when a newer one passes.
@@ -53,6 +59,7 @@ export function ProjectRunCell({ project }: { project: Project }) {
       {state.running && state.served && (
         <p className="text-xs text-muted">
           <Badge tone="success">Rodando</Badge> <span className="font-mono">{short(state.served)}</span> · {state.served.commitMessage}
+          <span className="block text-[11px]">{howItRuns(state.served)}</span>
         </p>
       )}
       {!state.running && state.stable && (

@@ -157,6 +157,10 @@ model PreviewBuild {
   branch        String
   commit        String
   commitMessage String             @default("") @map("commit_message")
+  /// How the project runs: "static" (Node build served as files), "dockerfile" or "compose".
+  kind          String             @default("static")
+  /// What "Rodar" opens: the site folder (static), the container port (dockerfile) or "service:port" (compose).
+  target        String?
   status        PreviewBuildStatus @default(RUNNING)
   /// Last lines of the check's output (the reason when it failed).
   log           String             @default("")

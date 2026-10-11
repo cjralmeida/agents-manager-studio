@@ -7,6 +7,10 @@ export interface PreviewBuild {
   branch: string;
   commit: string;
   commitMessage: string;
+  /** How the project runs. */
+  kind: 'static' | 'dockerfile' | 'compose';
+  /** Site folder (static), container port (dockerfile) or "service:port" (compose). */
+  target: string | null;
   startedAt: string;
   finishedAt: string | null;
   /** Only on the latest build, when it failed. */

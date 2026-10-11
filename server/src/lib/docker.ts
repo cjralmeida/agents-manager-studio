@@ -166,6 +166,34 @@ export async function containerLogs(id: string, tail = 200) {
   return demuxLogs(logs.body);
 }
 
+/** TCP ports an image declares with EXPOSE, in order (e.g. [3000]). */
+export async function imageExposedPorts(image: string): Promise<number[]> {
+  const info = await call<{ Config: { ExposedPorts?: Record<string, unknown> | null } }>('GET', `/images/${encodeURIComponent(image)}/json`);
+  return Object.keys(info.Config.ExposedPorts ?? {})
+    .filter((key) => key.endsWith('/tcp'))
+    .map((key) => Number(key.split('/')[0]));
+}
+
+/** Networks created by a docker compose project (e.g. "myproject_default"). */
+export async function composeNetworks(project: string): Promise<string[]> {
+  const filters = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${project}`] }));
+  const networks = await call<{ Name: string }[]>('GET', `/networks?filters=${filters}`);
+  return networks.map((network) => network.Name);
+}
+
+/** Connects a container to one more network (already connected is fine). */
+export async function connectNetwork(network: string, containerId: string) {
+  await call('POST', `/networks/${encodeURIComponent(network)}/connect`, { Container: containerId }).catch((error: unknown) => {
+    if (error instanceof DockerError && error.statusCode === 403 && /already exists/i.test(error.message)) return;
+    throw error;
+  });
+}
+
+/** Deletes an image tag (missing or still in use is ignored). */
+export async function removeImage(name: string) {
+  await call('DELETE', `/images/${encodeURIComponent(name)}`).catch(() => undefined);
+}
+
 export async function removeVolume(name: string) {
   await call('DELETE', `/volumes/${encodeURIComponent(name)}?force=1`).catch(ignoreGone);
 }

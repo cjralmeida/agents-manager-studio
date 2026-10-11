@@ -1,28 +1,25 @@
-import { readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import type { PreviewBuild, Project } from '../../generated/prisma/client.js';
-import { createContainer, inspectContainer, removeContainer, runOnce, startContainer } from '../../lib/docker.js';
+import { inspectContainer, removeImage } from '../../lib/docker.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { GitError, git } from '../../lib/git.js';
 import { secrets } from '../../lib/secrets.js';
 import { authenticatedPushUrl, parseRemote, remoteHostname } from '../agents/remote.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
+import { type PreviewKind, UNSUPPORTED, type Workspace, detect, runCheck as runKindCheck, serve, unserve } from './runners.js';
 
 /**
- * "Rodar" a project: the Studio checks each new commit of the base branch (install, build and tests in a throwaway
- * container) and serves the latest one that passed at http://<project>.localhost, swapping it when a newer one passes.
- * Everything happens in its own folder and containers, apart from the agents' copies.
+ * "Rodar" a project: the Studio checks each new commit of the base branch in throwaway containers and serves the latest
+ * one that passed at http://<project>.localhost, swapping it when a newer one passes. Projects run as a docker compose
+ * stack, a Dockerfile image or a static Node build (runners.ts). Everything happens in its own folder and containers,
+ * apart from the agents' copies.
  */
 
 const PREVIEWS_DIR = 'previews';
-const SERVER_IMAGE = 'caddy:2.10-alpine';
-const LABEL = 'studio.preview';
-const CHECK_TIMEOUT_MS = 15 * 60_000;
-/** Folders the build may write the site to, in order. */
-const OUTPUT_DIRS = ['dist', 'build', 'out'];
 const LOG_TAIL = 4_000;
 
 const checking = new Set<string>();
@@ -65,49 +62,39 @@ async function headCommit(url: string, branch: string) {
   return commit;
 }
 
-const exists = (file: string) => stat(file).then(() => true, () => false);
-
-async function finish(build: PreviewBuild, status: 'PASSED' | 'FAILED', log: string) {
-  return prisma.previewBuild.update({ where: { id: build.id }, data: { status, log: tail(log), finishedAt: new Date() } });
+async function finish(build: PreviewBuild, status: 'PASSED' | 'FAILED', log: string, target?: string) {
+  return prisma.previewBuild.update({ where: { id: build.id }, data: { status, log: tail(log), target: target ?? null, finishedAt: new Date() } });
 }
 
-/** Clones the commit, then installs, builds and tests it in a container; returns the finished build. */
+const workspaceOf = (project: Project, commit: string): Workspace => ({
+  projectId: project.id,
+  slug: previewSlug(project.name),
+  src: `${buildDir(project.id, commit)}/src`,
+  srcHost: `${buildHostDir(project.id, commit)}/src`,
+  commit,
+});
+
+/** Clones the newest commit and checks it the way its kind runs (see runners.ts); returns the finished build. */
 async function runCheck(project: Project, remote: Awaited<ReturnType<typeof remoteOf>>, commit: string) {
-  const dir = buildDir(project.id, commit);
-  const src = `${dir}/src`;
-  await rm(dir, { recursive: true, force: true });
-  await git('/tmp', ['clone', '--quiet', '--depth', '1', '--branch', remote.branch, remote.url, src], { timeoutMs: 300_000 });
-  await git(src, ['remote', 'set-url', 'origin', remote.cleanUrl]);
-  const actual = (await git(src, ['rev-parse', 'HEAD'])).trim();
-  const message = (await git(src, ['log', '-1', '--format=%s'])).trim();
+  const staging = buildDir(project.id, `clone-${commit}`);
+  await rm(staging, { recursive: true, force: true });
+  await git('/tmp', ['clone', '--quiet', '--depth', '1', '--branch', remote.branch, remote.url, staging], { timeoutMs: 300_000 });
+  await git(staging, ['remote', 'set-url', 'origin', remote.cleanUrl]);
+  // A newer commit may have arrived between the look and the clone: the folder is named after what was cloned.
+  const actual = (await git(staging, ['rev-parse', 'HEAD'])).trim();
+  const message = (await git(staging, ['log', '-1', '--format=%s'])).trim();
+  const ws = workspaceOf(project, actual);
+  await rm(buildDir(project.id, actual), { recursive: true, force: true });
+  await mkdir(buildDir(project.id, actual), { recursive: true });
+  await rename(staging, ws.src);
+
+  const detected = await detect(ws.src);
   const build = await prisma.previewBuild.create({
-    data: { projectId: project.id, branch: remote.branch, commit: actual, commitMessage: message.slice(0, 300) },
+    data: { projectId: project.id, branch: remote.branch, commit: actual, commitMessage: message.slice(0, 300), kind: detected?.kind ?? 'static' },
   });
-
-  const pkg = await readFile(`${src}/package.json`, 'utf8').then((text) => JSON.parse(text) as { scripts?: Record<string, string> }, () => null);
-  if (!pkg?.scripts?.build) {
-    return finish(build, 'FAILED', 'O Rodar ainda não sabe rodar este projeto: ele precisa de um package.json com o script "build" que gere um site estático (ex.: Vite em dist/).');
-  }
-
-  const result = await runOnce({
-    image: config.agentRunnerImage,
-    name: `ams-check-${previewSlug(project.name)}-${Date.now().toString(36)}`,
-    cmd: ['sh', '-c', 'cd /app && npm ci --no-audit --no-fund && npm run build && npm test --if-present'],
-    user: '0',
-    env: { CI: 'true', npm_config_update_notifier: 'false' },
-    labels: { [LABEL]: project.id },
-    binds: [`${buildHostDir(project.id, actual)}/src:/app`],
-    timeoutMs: CHECK_TIMEOUT_MS,
-  });
-  const output = `${result.stdout}\n${result.stderr}`.trim();
-  if (result.timedOut) return finish(build, 'FAILED', `A verificação passou de ${CHECK_TIMEOUT_MS / 60_000} minutos.\n\n${output}`);
-  if (result.exitCode !== 0) return finish(build, 'FAILED', output || `Saiu com código ${result.exitCode}.`);
-  const outDir = await (async () => {
-    for (const name of OUTPUT_DIRS) if (await exists(`${src}/${name}/index.html`)) return name;
-    return null;
-  })();
-  if (!outDir) return finish(build, 'FAILED', `O build passou, mas não gerou ${OUTPUT_DIRS.map((name) => `${name}/index.html`).join(' nem ')}.\n\n${output}`);
-  return finish(build, 'PASSED', `Site em ${outDir}/.\n\n${output}`);
+  if (!detected) return finish(build, 'FAILED', UNSUPPORTED);
+  const result = await runKindCheck(ws, detected);
+  return finish(build, result.passed ? 'PASSED' : 'FAILED', result.log, result.target);
 }
 
 /**
@@ -146,8 +133,11 @@ export async function checkLatest(projectId: string, options: { force?: boolean;
 const stableBuild = (projectId: string) =>
   prisma.previewBuild.findFirst({ where: { projectId, status: 'PASSED' }, orderBy: { startedAt: 'desc' } });
 
-/** Starts (or swaps) the container serving the stable build, when the user wants the project up. */
+const serving = new Set<string>();
+
+/** Starts (or swaps) what serves the stable build, when the user wants the project up. */
 async function serveIfWanted(projectId: string) {
+  if (serving.has(projectId)) return;
   const preview = await prisma.projectPreview.findUnique({ where: { projectId }, include: { project: true } });
   if (!preview?.wantsUp) return;
   const stable = await stableBuild(projectId);
@@ -155,26 +145,19 @@ async function serveIfWanted(projectId: string) {
   const state = preview.containerId ? await inspectContainer(preview.containerId).catch(() => null) : null;
   if (state?.running && preview.buildId === stable.id) return;
 
-  const name = `ams-run-${previewSlug(preview.project.name)}`;
-  await removeContainer(name).catch(() => undefined);
-  if (preview.containerId) await removeContainer(preview.containerId).catch(() => undefined);
-  const outDir = (/^Site em (\w+)\//.exec(stable.log)?.[1]) ?? 'dist';
+  serving.add(projectId);
   try {
-    const containerId = await createContainer({
-      image: SERVER_IMAGE,
-      name,
-      cmd: ['caddy', 'file-server', '--root', '/srv', '--listen', ':80'],
-      network: config.agentNetwork,
-      labels: { [LABEL]: projectId },
-      binds: [`${buildHostDir(projectId, stable.commit)}/src/${outDir}:/srv:ro`],
-    });
-    await startContainer(containerId);
+    // Static builds from before the target column name their folder in the log.
+    const target = stable.target ?? /^Site em (\w+)\//.exec(stable.log)?.[1] ?? null;
+    const containerId = await serve(workspaceOf(preview.project, stable.commit), stable.kind as PreviewKind, target);
     await prisma.projectPreview.update({ where: { projectId }, data: { containerId, buildId: stable.id, error: null } });
   } catch (error) {
     await prisma.projectPreview.update({
       where: { projectId },
-      data: { containerId: null, error: error instanceof Error ? error.message : String(error) },
+      data: { containerId: null, error: tail(error instanceof Error ? error.message : String(error)) },
     });
+  } finally {
+    serving.delete(projectId);
   }
 }
 
@@ -188,9 +171,13 @@ async function cleanup(projectId: string) {
     const served = await prisma.previewBuild.findUnique({ where: { id: preview.buildId }, select: { commit: true } });
     if (served) keep.add(served.commit.slice(0, 12));
   }
+  const slug = previewSlug((await findProject(projectId)).name);
   const root = path.posix.join(config.agentsDir, PREVIEWS_DIR, projectId);
   for (const entry of await readdir(root).catch(() => [] as string[])) {
-    if (!keep.has(entry)) await rm(path.posix.join(root, entry), { recursive: true, force: true });
+    if (keep.has(entry)) continue;
+    await rm(path.posix.join(root, entry), { recursive: true, force: true });
+    // The image built from that commit (Dockerfile projects) goes with it.
+    await removeImage(`ams-preview-${slug}:${entry}`);
   }
 }
 
@@ -204,9 +191,10 @@ export async function startPreview(projectId: string, log?: FastifyBaseLogger) {
 }
 
 export async function stopPreview(projectId: string) {
-  const preview = await prisma.projectPreview.findUnique({ where: { projectId }, include: { project: true } });
-  if (preview?.containerId) await removeContainer(preview.containerId).catch(() => undefined);
-  if (preview) await removeContainer(`ams-run-${previewSlug(preview.project.name)}`).catch(() => undefined);
+  const project = await findProject(projectId);
+  const preview = await prisma.projectPreview.findUnique({ where: { projectId } });
+  const served = preview?.buildId ? await prisma.previewBuild.findUnique({ where: { id: preview.buildId } }) : null;
+  if (served) await unserve(workspaceOf(project, served.commit), served.kind as PreviewKind);
   await prisma.projectPreview.upsert({ where: { projectId }, create: { projectId }, update: { wantsUp: false, containerId: null } });
   return previewState(projectId);
 }
@@ -218,6 +206,8 @@ const buildView = (build: PreviewBuild | null, withLog = false) =>
     branch: build.branch,
     commit: build.commit,
     commitMessage: build.commitMessage,
+    kind: build.kind,
+    target: build.target,
     startedAt: build.startedAt,
     finishedAt: build.finishedAt,
     ...(withLog && { log: build.log }),
