@@ -214,3 +214,19 @@ body {
     filter: drop-shadow(0 0 4px rgb(168 85 247 / 0.6));
   }
 }
+
+/* Workflow canvas (React Flow) follows the Studio theme. */
+.workflow-canvas .react-flow {
+  --xy-background-color: transparent;
+  --xy-background-pattern-color: var(--color-border);
+  --xy-edge-stroke: var(--color-muted);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-node-border-radius: 0.75rem;
+  --xy-controls-button-background-color: var(--color-panel);
+  --xy-controls-button-background-color-hover: var(--color-surface);
+  --xy-controls-button-color: var(--color-fg);
+  --xy-controls-button-border-color: var(--color-border);
+}
+.workflow-canvas .react-flow__node {
+  color: var(--color-fg);
+}

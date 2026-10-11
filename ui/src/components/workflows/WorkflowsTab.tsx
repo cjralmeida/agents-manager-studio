@@ -17,7 +17,7 @@ import { Badge } from '../Badge';
 import { OptionChip } from '../board/OptionChip';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
-import { WorkflowForm } from './WorkflowForm';
+import { WorkflowEditor } from './WorkflowEditor';
 import { WorkflowRunCard } from './WorkflowRunCard';
 
 export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
@@ -52,11 +52,24 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
       </div>
 
       {editing !== null && (
-        <WorkflowForm
+        <WorkflowEditor
           key={editing === 'new' ? 'new' : editing.id}
           profiles={profiles.data}
           board={boardData}
           initial={editing === 'new' ? undefined : editing}
+          runningStepIds={
+            editing === 'new'
+              ? ''
+              : [
+                  ...new Set(
+                    (runs.data ?? [])
+                      .filter((run) => run.workflowId === editing.id && run.status === 'RUNNING')
+                      .flatMap((run) => run.steps.filter((step) => step.status === 'RUNNING').map((step) => step.stepId)),
+                  ),
+                ]
+                  .sort()
+                  .join(',')
+          }
           pending={create.isPending || update.isPending}
           error={create.error ?? update.error}
           onCancel={() => setEditing(null)}
