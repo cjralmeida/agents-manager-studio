@@ -35,6 +35,8 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const update = useUpdateWorkflow(workspace.id);
   const processes = useProcesses(workspace.id);
   const [editingProcess, setEditingProcess] = useState<WorkflowProcess | 'new' | null>(null);
+  // Finished runs are looked up now and then: collapsed until asked for.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const createProcess = useCreateProcess(workspace.id);
   const updateProcess = useUpdateProcess(workspace.id);
   // The editors open at the top of the tab; a workflow opened from a process canvas below is brought into view.
@@ -49,6 +51,7 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const boardData = hasBoard ? (board.data ?? null) : null;
   const activeRuns = runs.data?.filter((run) => run.status === 'RUNNING') ?? [];
   const finishedRuns = runs.data?.filter((run) => run.status !== 'RUNNING') ?? [];
+  const failedRuns = finishedRuns.filter((run) => run.status === 'FAILED').length;
   const looseWorkflows = workflows.data.filter((workflow) => !processes.data.some((process) => process.id === workflow.processId));
   const renderCards = (list: Workflow[]) => (
     <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -151,8 +154,28 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Histórico</h2>
-        <RunHistory runs={finishedRuns} />
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((value) => !value)}
+          aria-expanded={historyOpen}
+          className="flex w-full items-baseline gap-2 text-left hover:text-accent"
+        >
+          <span className="w-3 text-xs text-muted" aria-hidden>
+            {historyOpen ? '▾' : '▸'}
+          </span>
+          <h2 className="text-sm font-semibold">Histórico</h2>
+          <span className="text-xs text-muted">
+            {finishedRuns.length === 0
+              ? 'nenhuma execução terminada'
+              : [
+                  plural(finishedRuns.filter((run) => run.status === 'COMPLETED').length, 'concluída', 'concluídas'),
+                  failedRuns > 0 && plural(failedRuns, 'falhou', 'falharam'),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+          </span>
+        </button>
+        {historyOpen && <RunHistory runs={finishedRuns} />}
       </section>
     </div>
   );
