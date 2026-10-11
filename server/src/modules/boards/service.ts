@@ -290,6 +290,27 @@ export async function createBoard(workspaceId: string, input: CreateOption & { t
 }
 
 /**
+ * A new GitHub repository gets its own board view (named after the project, filtered to it) on the workspace's
+ * GitHub projects of the same owner. Returns problems as warnings: the project is already created.
+ */
+export async function addProjectBoardViews(workspaceId: string, input: { host: string; repositoryPath: string; name: string }) {
+  const owner = input.repositoryPath.split('/')[0]!.toLowerCase();
+  const sources = (await listSources(workspaceId)).filter(
+    (source) => source.provider === 'GITHUB' && source.host === input.host && source.ownerPath.toLowerCase() === owner,
+  );
+  const warnings: string[] = [];
+  for (const source of sources) {
+    try {
+      const { github } = await clientsFor(workspaceId, 'GITHUB', source.host);
+      await github!.addRepositoryView(source.externalId, input.repositoryPath, input.name);
+    } catch (error) {
+      warnings.push(`Quadro "${source.title}": ${error instanceof Error ? error.message : 'erro'}`);
+    }
+  }
+  return warnings;
+}
+
+/**
  * The Studio's own tasks as a source: it follows the model directly (same ids), so it is always in sync. It holds the
  * projects no provider board holds. Tasks stay in the Studio database, also if the source is removed and added again.
  */

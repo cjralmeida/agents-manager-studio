@@ -134,6 +134,11 @@ export function NewProjectForm({ workspaceId, onClose }: { workspaceId: string; 
           visibilidade.
         </p>
       )}
+      {create.data?.warnings.map((warning) => (
+        <p key={warning} className="text-xs text-amber-300">
+          Visualização do projeto no quadro não criada — {warning}
+        </p>
+      ))}
     </form>
   );
 }

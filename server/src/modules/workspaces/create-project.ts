@@ -6,6 +6,7 @@ import { GitError, git } from '../../lib/git.js';
 import { toContainerPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { authenticatedPushUrl, defaultAuthorEmail, parseRemote } from '../agents/remote.js';
+import { addProjectBoardViews } from '../boards/service.js';
 import { workspaceNameProblem } from './names.js';
 import { scanWorkspaces } from './service.js';
 
@@ -233,5 +234,17 @@ export async function createProject(workspaceId: string, input: CreateProjectInp
 
   await scanWorkspaces();
   const project = await prisma.project.findFirst({ where: { workspaceId, name: folder } });
-  return { projectId: project?.id ?? null, folder, remoteUrl: remote?.webUrl ?? null, remotePath: remote?.fullPath ?? null, remoteVisibility: remote?.visibility ?? null };
+  // A GitHub board of the same owner gets a board view of the new project.
+  const warnings =
+    remote && account?.provider === 'GITHUB'
+      ? await addProjectBoardViews(workspaceId, { host: account.host, repositoryPath: remote.fullPath, name: folder })
+      : [];
+  return {
+    projectId: project?.id ?? null,
+    folder,
+    remoteUrl: remote?.webUrl ?? null,
+    remotePath: remote?.fullPath ?? null,
+    remoteVisibility: remote?.visibility ?? null,
+    warnings,
+  };
 }

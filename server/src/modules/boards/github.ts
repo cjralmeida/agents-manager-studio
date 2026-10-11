@@ -165,6 +165,32 @@ export function createGitHubClient(host: string, token: string) {
   return {
     adapter,
 
+    /**
+     * Links a repository to the project and adds a board view named after it, showing only its cards. Views are
+     * created through the REST API (GraphQL has no mutation for them).
+     */
+    async addRepositoryView(projectId: string, repositoryPath: string, name: string) {
+      await gql(`mutation($p: ID!, $r: ID!) { linkProjectV2ToRepository(input: { projectId: $p, repositoryId: $r }) { clientMutationId } }`, {
+        p: projectId,
+        r: await repositoryId(repositoryPath),
+      });
+      const data = await gql(
+        `query($id: ID!) { node(id: $id) { ... on ProjectV2 { number owner { __typename ... on Organization { login } ... on User { login } } } } }`,
+        { id: projectId },
+      );
+      const project = data.node;
+      if (!project?.owner) throw new HttpError(404, 'Projeto do GitHub não encontrado.');
+      const scope = project.owner.__typename === 'Organization' ? `orgs/${project.owner.login}` : `users/${project.owner.login}`;
+      const api = host === 'github.com' ? 'https://api.github.com' : `https://${host}/api/v3`;
+      const response = await fetch(`${api}/${scope}/projectsV2/${project.number}/views`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'agents-manager-studio', Accept: 'application/vnd.github+json' },
+        body: JSON.stringify({ name, layout: 'board', filter: `repo:${repositoryPath}` }),
+        signal: AbortSignal.timeout(30_000),
+      }).catch(() => null);
+      if (!response?.ok) throw new HttpError(502, `GitHub não criou a visualização (${response?.status ?? 'sem conexão'}).`);
+    },
+
     /** Projects linked to the workspace repositories, plus owner projects named like the workspace. */
     async detect(repositories: string[], workspaceName: string): Promise<BoardCandidate[]> {
       const found = new Map<string, BoardCandidate>();
@@ -225,6 +251,13 @@ export function createGitHubClient(host: string, token: string) {
       }
 
       const warnings: string[] = [];
+      if (!input.template) {
+        try {
+          await addBoardView(host, token, projectId);
+        } catch (error) {
+          warnings.push(`Visualização de quadro: ${error instanceof Error ? error.message : 'erro'}`);
+        }
+      }
       for (const path of input.repositories) {
         try {
           await gql(
@@ -259,6 +292,36 @@ function toCandidate(node: Json): BoardCandidate {
 }
 
 type Gql = <T = Json>(query: string, variables?: Record<string, unknown>) => Promise<T>;
+
+/**
+ * A new project only has a table view ("View 1"); adds a board view grouped by Status. GitHub's API creates views
+ * but cannot delete or reorder them, so the table view stays (the user can delete it on GitHub).
+ */
+async function addBoardView(host: string, token: string, projectId: string) {
+  const api = host === 'github.com' ? 'https://api.github.com' : `https://${host}/api/v3`;
+  const graphql = host === 'github.com' ? 'https://api.github.com/graphql' : `https://${host}/api/graphql`;
+  const headers = { Authorization: `Bearer ${token}`, 'User-Agent': 'agents-manager-studio', Accept: 'application/vnd.github+json' };
+  const project = (await (
+    await fetch(graphql, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        query: `query($id: ID!) { node(id: $id) { ... on ProjectV2 { number owner { __typename ... on Organization { login } ... on User { login } } } } }`,
+        variables: { id: projectId },
+      }),
+    })
+  ).json()) as Json;
+  const node = project.data?.node;
+  if (!node) throw new Error('projeto não encontrado');
+  const scope = node.owner.__typename === 'Organization' ? `orgs/${node.owner.login}` : `users/${node.owner.login}`;
+  const response = await fetch(`${api}/${scope}/projectsV2/${node.number}/views`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ name: 'Quadro', layout: 'board' }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
+}
 
 async function copyTemplate(gql: Gql, templateId: string, ownerId: string, title: string) {
   const copy = await gql(
