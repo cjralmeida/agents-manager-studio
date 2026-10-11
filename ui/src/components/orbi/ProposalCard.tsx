@@ -23,7 +23,9 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
               ? 'Começa com uma mensagem sua.'
               : trigger.type === 'feature_in_homologation'
                 ? 'Começa quando todas as tarefas de uma funcionalidade estão em homologação.'
-                : 'Começa quando aparece uma tarefa no quadro que bate com os filtros.'}
+                : trigger.type === 'task_awaiting_decision'
+                  ? 'Começa quando uma tarefa fica aguardando decisão.'
+                  : 'Começa quando aparece uma tarefa no quadro que bate com os filtros.'}
           </p>
         )}
         <ol className="flex flex-wrap items-center gap-1">

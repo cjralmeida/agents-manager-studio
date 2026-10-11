@@ -16,7 +16,7 @@ import { getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
-import { type ReadyFeature, featurePrompt, featuresReady, pickTasks, taskPrompt } from './match.js';
+import { type ReadyFeature, awaitingDecision, decisionPrompt, featurePrompt, featuresReady, pickTasks, taskPrompt } from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
 export interface StepOutput {
@@ -113,6 +113,9 @@ async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, log?: 
 }
 
 /** Agent states in which a task is still being worked on. */
+/** Edits within this time after a decision run ended are the run's own (e.g. the board's update time lagging). */
+const DECISION_EDIT_MARGIN_MS = 3 * 60_000;
+
 const ACTIVE_AGENT = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
 
 /**
@@ -194,6 +197,32 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       await report(workflow, `Iniciou para: ${candidates.slice(0, slots).map((feature) => feature.featureId).join(', ')}.`);
       continue;
     }
+    if (trigger.type === 'task_awaiting_decision') {
+      if (!statusMap.blocked) {
+        await report(workflow, 'Parado: o quadro não tem coluna "Aguardando aprovação" definida.');
+        continue;
+      }
+      const candidates = awaitingDecision(snapshot.items, statusMap.blocked, trigger.repositories).filter((item) => {
+        if (taken.has(item.id) || !projectOf(item)) return false;
+        // Studied once; again only after someone changed the task (a margin covers the agent's own last edit).
+        const last = lastRun.get(item.id);
+        if (!last) return true;
+        if (last.status === 'RUNNING' || !last.finishedAt) return false;
+        return new Date(item.updatedAt).getTime() > last.finishedAt.getTime() + DECISION_EDIT_MARGIN_MS;
+      });
+      if (candidates.length === 0) {
+        await report(workflow, 'Vigiando: nenhuma tarefa nova aguardando decisão.');
+        continue;
+      }
+      const started: string[] = [];
+      for (const item of candidates.slice(0, slots)) {
+        taken.add(item.id);
+        await startBoardRun(workflow, item, log);
+        started.push(`"${item.title}"`);
+      }
+      await report(workflow, `Iniciou para: ${started.join(', ')}.`);
+      continue;
+    }
     if (trigger.type !== 'board_task') continue;
 
     const columnId = trigger.columnId ?? statusMap.todo ?? null;
@@ -239,6 +268,8 @@ async function completeTask(run: RunWithSteps, lane: string) {
   const trigger = run.trigger as { taskItemId?: string };
   const taskItemId = lane !== 'main' ? lane : (trigger.taskItemId ?? null);
   const workflowTrigger = parseTrigger(run.workflow);
+  // A decision run leaves the card where the agent and the user put it.
+  if (workflowTrigger.type === 'task_awaiting_decision') return;
   const role = workflowTrigger.type === 'board_task' ? workflowTrigger.moveWhenDone : 'done';
   await moveAgentTask({ workspaceId: run.workspaceId, taskItemId }, role);
 }
@@ -353,6 +384,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   const previous = earlier[0];
   const isTaskLane = lane !== 'main';
   const fanOut = fanOutIndex(steps);
+  const decision = parseTrigger(run.workflow).type === 'task_awaiting_decision';
 
   let task: BoardItem | undefined;
   let projectId: string | null | undefined;
@@ -412,7 +444,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   const prompt = [
     `Workflow "${run.workflow.name}" — passo ${index + 1} de ${steps.length}: ${step.name}.`,
     '',
-    task ? taskPrompt(task, '') : index === 0 ? (trigger.message ?? run.title) : `Pedido original: ${trigger.message ?? run.title}`,
+    task ? (decision ? decisionPrompt(task) : taskPrompt(task, '')) : index === 0 ? (trigger.message ?? run.title) : `Pedido original: ${trigger.message ?? run.title}`,
     ...(previous?.run ? ['', previousOutputText(previous.step.name, outputOf(previous.run))] : []),
     ...(step.instructions.trim() ? ['', 'Instruções deste passo:', step.instructions.trim()] : []),
   ].join('\n');
@@ -429,7 +461,8 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       confirmHighUsage: true,
       // Only the step that picks the task moves its card (to "in progress", then review on the PR).
       // Work done outside the Studio keeps its card where it was left until the run ends.
-      ...(taskItemId && !pullRequest && (index === 0 || index === fanOut) && { taskItemId }),
+      // A task awaiting a decision stays put: the agent only reads it and moves it after deciding with the user.
+      ...(taskItemId && !pullRequest && !decision && (index === 0 || index === fanOut) && { taskItemId }),
       ...(sourceAgentId && { sourceAgentId }),
       ...(pullRequest && { pullRequest: { url: pullRequest.url, branch: pullRequest.branch, baseBranch: pullRequest.baseBranch } }),
     });

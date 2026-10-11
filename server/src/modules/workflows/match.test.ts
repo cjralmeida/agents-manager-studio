@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
-import { featureIdOf, featuresReady, matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
+import { awaitingDecision, featureIdOf, featuresReady, matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
 
 const priority: BoardField = {
   id: 'prio',
@@ -117,5 +117,34 @@ describe('featuresReady', () => {
     const before = featuresReady([task('a', '[FUNC-004] Backend', 'hom')], input)[0]!.signature;
     const after = featuresReady([task('a', '[FUNC-004] Backend', 'hom', { body: 'com relatório' })], input)[0]!.signature;
     assert.notEqual(before, after);
+  });
+});
+
+describe('awaitingDecision', () => {
+  const blocked = (overrides: Partial<BoardItem>) => item({ columnId: 'blocked', ...overrides });
+
+  it('picks blocked tasks that wait for a decision', () => {
+    const items = [blocked({ id: 'a' }), item({ id: 'b' })];
+    assert.deepEqual(
+      awaitingDecision(items, 'blocked', []).map((entry) => entry.id),
+      ['a'],
+    );
+  });
+
+  it('leaves out tasks that only wait for their dependencies, closed tasks and drafts', () => {
+    const items = [
+      blocked({ id: 'deps', body: 'Referências\nDepende de: org/repo#3' }),
+      blocked({ id: 'closed', isClosed: true }),
+      blocked({ id: 'draft', repository: null }),
+    ];
+    assert.deepEqual(awaitingDecision(items, 'blocked', []), []);
+  });
+
+  it('filters by repository', () => {
+    const items = [blocked({ id: 'a' }), blocked({ id: 'b', repository: 'org/other' })];
+    assert.deepEqual(
+      awaitingDecision(items, 'blocked', ['ORG/other']).map((entry) => entry.id),
+      ['b'],
+    );
   });
 });

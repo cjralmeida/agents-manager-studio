@@ -55,6 +55,7 @@ interface WorkflowCanvasProps {
 function triggerText(trigger: WorkflowTrigger, board: Board | null) {
   if (trigger.type === 'manual') return { title: 'Mensagem sua', detail: 'Você inicia com uma conversa' };
   if (trigger.type === 'feature_in_homologation') return { title: 'Funcionalidade em homologação', detail: 'Todas as tarefas chegaram lá' };
+  if (trigger.type === 'task_awaiting_decision') return { title: 'Tarefa aguardando decisão', detail: 'Aguardando aprovação, sem dependências' };
   const filters = board
     ? board.fields.flatMap((field) =>
         (trigger.fieldFilters[field.id] ?? []).map((optionId) => field.options.find((option) => option.id === optionId)?.name).filter(Boolean),

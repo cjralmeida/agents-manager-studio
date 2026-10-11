@@ -13,7 +13,8 @@ export type WorkflowTrigger =
       onlyUnassigned: boolean;
       moveWhenDone: 'done' | 'homologation';
     }
-  | { type: 'feature_in_homologation'; repositories: string[] };
+  | { type: 'feature_in_homologation'; repositories: string[] }
+  | { type: 'task_awaiting_decision'; repositories: string[] };
 
 export interface AgentStep {
   id: string;

@@ -2,7 +2,7 @@ import type { Board } from '../../api/boards';
 import type { WorkflowTrigger } from '../../api/workflows';
 import { MultiSelect } from '../MultiSelect';
 import { Field, Select } from '../form';
-import { boardTrigger, featureTrigger } from './workflowModel';
+import { boardTrigger, decisionTrigger, featureTrigger } from './workflowModel';
 
 interface TriggerFieldsProps {
   trigger: WorkflowTrigger;
@@ -31,7 +31,15 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
         <Select
           value={trigger.type}
           onChange={(event) =>
-            onChange(event.target.value === 'manual' ? { type: 'manual' } : event.target.value === 'board_task' ? boardTrigger : featureTrigger)
+            onChange(
+              event.target.value === 'manual'
+                ? { type: 'manual' }
+                : event.target.value === 'board_task'
+                  ? boardTrigger
+                  : event.target.value === 'task_awaiting_decision'
+                    ? decisionTrigger
+                    : featureTrigger,
+            )
           }
         >
           <option value="manual">Você inicia com uma mensagem</option>
@@ -41,6 +49,9 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
           <option value="feature_in_homologation" disabled={!board}>
             Uma funcionalidade inteira chega em homologação{board ? '' : ' (vincule um quadro)'}
           </option>
+          <option value="task_awaiting_decision" disabled={!board}>
+            Uma tarefa fica aguardando decisão{board ? '' : ' (vincule um quadro)'}
+          </option>
         </Select>
       </Field>
 
@@ -49,6 +60,17 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
           <p className="text-xs text-muted">
             Junta as tarefas pelo código no título (ex.: "[FUNC-012] ..."). Quando todas as abertas estão na coluna de homologação, o primeiro
             passo recebe todas elas.
+          </p>
+          {repositories}
+        </>
+      )}
+
+      {trigger.type === 'task_awaiting_decision' && board && (
+        <>
+          <p className="text-xs text-muted">
+            Cada tarefa em "Aguardando aprovação" que espera uma decisão (as com "Depende de:" ficam de fora: o Studio as libera sozinho).
+            O agente estuda a tarefa, decide com você e move o card; o workflow não move nada. Uma tarefa só é estudada de novo depois
+            de alterada.
           </p>
           {repositories}
         </>

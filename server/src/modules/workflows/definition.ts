@@ -5,7 +5,9 @@ import { z } from 'zod';
  * - "manual": a conversation started in the Studio (the message goes to the first step);
  * - "board_task": a task appears on the board matching the filters;
  * - "feature_in_homologation": every open task of a feature ("[FUNC-NNN]" in the title) reached the homologation
- *   column, so the whole feature can be tested there.
+ *   column, so the whole feature can be tested there;
+ * - "task_awaiting_decision": a task waits in the "blocked" column for a decision (not only for its dependencies), so
+ *   an agent can study it and decide it with the user. The run never moves the card; the agent does, after deciding.
  */
 export const triggerSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('manual') }).strict(),
@@ -24,6 +26,12 @@ export const triggerSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('feature_in_homologation'),
+      repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('task_awaiting_decision'),
       repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
     })
     .strict(),

@@ -164,7 +164,9 @@ function WorkflowCard({
           ? 'Começa com uma mensagem sua.'
           : workflow.trigger.type === 'feature_in_homologation'
             ? 'Começa quando todas as tarefas de uma funcionalidade estão em homologação.'
-            : 'Começa quando aparece uma tarefa no quadro:'}
+            : workflow.trigger.type === 'task_awaiting_decision'
+              ? 'Começa quando uma tarefa fica aguardando decisão; o agente decide com você.'
+              : 'Começa quando aparece uma tarefa no quadro:'}
       </p>
       {filters.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">

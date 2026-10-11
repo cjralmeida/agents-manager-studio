@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { dependencyRefs } from '../boards/dependencies.js';
 import type { BoardField, BoardItem } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
@@ -47,6 +48,34 @@ export function taskPrompt(item: BoardItem, instructions: string) {
   const parts = [`Resolva a tarefa ${ref}: ${item.title}`, link, '', item.body.trim()];
   if (instructions.trim()) parts.push('', '---', 'Instruções extras:', instructions.trim());
   return parts.join('\n').trim();
+}
+
+/**
+ * Open tasks in the "blocked" column that wait for a decision: the ones with a "Depende de:" line only wait for their
+ * dependencies (the Studio releases them), so they are left out.
+ */
+export function awaitingDecision(items: BoardItem[], blockedColumnId: string, repositories: string[]) {
+  return items.filter(
+    (item) =>
+      item.columnId === blockedColumnId &&
+      !item.isClosed &&
+      Boolean(item.repository) &&
+      dependencyRefs(item.body).length === 0 &&
+      (repositories.length === 0 || repositories.some((path) => path.toLowerCase() === item.repository!.toLowerCase())),
+  );
+}
+
+/** Message for an agent that studies a task waiting for a decision and decides it with the user. */
+export function decisionPrompt(item: BoardItem) {
+  const ref = item.repository && item.number ? `${item.repository}#${item.number}` : 'do quadro';
+  const link = [item.url, `id no quadro: ${item.id}`].filter(Boolean).join(' — ');
+  return [
+    `A tarefa ${ref} está em "Aguardando aprovação" e precisa de uma decisão: ${item.title}`,
+    link,
+    'Estude a tarefa e decida com o usuário; só mova o card depois da decisão dele.',
+    '',
+    item.body.trim(),
+  ].join('\n');
 }
 
 const FEATURE_ID = /\[(FUNC-\d+)\]/i;

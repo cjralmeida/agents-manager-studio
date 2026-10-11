@@ -30,6 +30,8 @@ export const boardTrigger: Extract<WorkflowTrigger, { type: 'board_task' }> = {
 
 export const featureTrigger: WorkflowTrigger = { type: 'feature_in_homologation', repositories: [] };
 
+export const decisionTrigger: WorkflowTrigger = { type: 'task_awaiting_decision', repositories: [] };
+
 /** The name shown for a step: its own, or its agent's. */
 export function stepLabel(step: WorkflowStep, profiles: AgentProfile[]) {
   if (step.name.trim()) return step.name;
