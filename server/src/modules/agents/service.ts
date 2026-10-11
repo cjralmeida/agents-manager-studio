@@ -505,6 +505,19 @@ export async function finalizeAgent(id: string) {
   return getAgent(id);
 }
 
+/**
+ * Finishing (commit, push, PR/MR, merge) runs inside the server, so a restart in the middle leaves the agent in
+ * FINALIZING. Called at startup: every step can be repeated (nothing new to commit, same push, the PR is reused).
+ */
+export async function resumeFinalizing() {
+  const agents = await prisma.agent.findMany({ where: { status: 'FINALIZING' }, select: { id: true } });
+  for (const { id } of agents) {
+    await addEvent(id, 'status', { message: 'Retomando o envio das alterações (o Studio reiniciou no meio).' });
+    void finalizeInBackground(id);
+  }
+  return agents.length;
+}
+
 async function finalizeInBackground(id: string) {
   try {
     const agent = await prisma.agent.findUniqueOrThrow({ where: { id }, include: { project: true } });

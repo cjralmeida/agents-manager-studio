@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
+import { resumeFinalizing } from './modules/agents/service.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startCapacityMonitor } from './modules/capacity/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
@@ -36,6 +37,14 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 await app.listen({ host: '0.0.0.0', port: config.port });
+
+// Agents whose commit, push or merge was cut by a restart finish now.
+try {
+  const resumed = await resumeFinalizing();
+  if (resumed > 0) app.log.info({ resumed }, 'Resumed agents that were finishing');
+} catch (err) {
+  app.log.error({ err }, 'Resuming finishing agents failed');
+}
 
 // Picks up folders created while the server was down; failures must not stop the server.
 try {
