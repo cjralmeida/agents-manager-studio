@@ -22,15 +22,21 @@ export const itemRef = (item: Pick<BoardItem, 'repository' | 'number'>) => (item
  */
 export function releasableItems(items: BoardItem[], statusMap: StatusMap): BoardItem[] {
   if (!statusMap.blocked || !statusMap.todo) return [];
+  const delivered = dependenciesDelivered(items, statusMap);
+  return items.filter((item) => item.columnId === statusMap.blocked && dependencyRefs(item.body).length > 0 && delivered(item));
+}
+
+/**
+ * Whether every task an item depends on ("Depende de:") is delivered: done, closed, or in homologation. Without the
+ * line, it is. A dependency that is not on the board counts as not delivered (it may be on another board, or the ref
+ * may be wrong).
+ */
+export function dependenciesDelivered(items: BoardItem[], statusMap: StatusMap) {
   const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
-  return items.filter((item) => {
-    if (item.columnId !== statusMap.blocked) return false;
-    const refs = dependencyRefs(item.body);
-    if (refs.length === 0) return false;
-    return refs.every((ref) => {
+  return (item: BoardItem) =>
+    dependencyRefs(item.body).every((ref) => {
       const dependency = byRef.get(ref.toLowerCase());
       if (!dependency) return false;
       return dependency.isClosed || dependency.columnId === statusMap.done || (Boolean(statusMap.homologation) && dependency.columnId === statusMap.homologation);
     });
-  });
 }

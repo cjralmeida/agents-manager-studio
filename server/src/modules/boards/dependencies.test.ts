@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { dependencyRefs, releasableItems } from './dependencies.js';
+import { dependenciesDelivered, dependencyRefs, releasableItems } from './dependencies.js';
 import type { BoardItem } from './types.js';
 
 const item = (repository: string, number: number, columnId: string, body = '', isClosed = false) =>
@@ -46,5 +46,23 @@ describe('releasableItems', () => {
 
   it('does nothing without the roles it needs', () => {
     assert.deepEqual(releasableItems([item('org/ui', 3, 'blocked', 'Depende de: org/api#1')], { todo: 'todo' }), []);
+  });
+});
+
+describe('dependenciesDelivered', () => {
+  const statusMap = { todo: 'todo', blocked: 'blocked', done: 'done', homologation: 'hom' };
+
+  it('lets a task without dependencies, or with all of them delivered, start', () => {
+    const items = [item('org/api', 1, 'done'), item('org/api', 2, 'hom'), item('org/ui', 3, 'todo', 'Depende de: org/api#1, org/api#2'), item('org/ui', 4, 'todo')];
+    const delivered = dependenciesDelivered(items, statusMap);
+    assert.equal(delivered(items[2]!), true);
+    assert.equal(delivered(items[3]!), true);
+  });
+
+  it('holds a task in "todo" while a dependency is open or unknown', () => {
+    const items = [item('org/api', 1, 'inProgress'), item('org/ui', 3, 'todo', 'Depende de: org/api#1'), item('org/ui', 4, 'todo', 'Depende de: org/api#9')];
+    const delivered = dependenciesDelivered(items, statusMap);
+    assert.equal(delivered(items[1]!), false);
+    assert.equal(delivered(items[2]!), false);
   });
 });

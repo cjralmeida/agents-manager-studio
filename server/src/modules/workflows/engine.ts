@@ -10,6 +10,7 @@ import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-r
 import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
+import { dependenciesDelivered } from '../boards/dependencies.js';
 import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
@@ -140,6 +141,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
   }
 
   const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
+  const delivered = dependenciesDelivered(snapshot.items, statusMap);
   const [activeAgents, runs] = await Promise.all([
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({
@@ -226,12 +228,14 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     if (trigger.type !== 'board_task') continue;
 
     const columnId = trigger.columnId ?? statusMap.todo ?? null;
-    // A task sent back after its run (e.g. with a homologation report) keeps the assignee the run gave it.
+    // A task sent back after its run (e.g. with a homologation report) keeps the assignee the run gave it. A task whose
+    // "Depende de:" tasks are not delivered yet waits in its column until they are.
     const candidates = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId, onlyUnassigned: false }).filter(
       (item) =>
         !taken.has(item.id) &&
         projectOf(item) &&
         item.columnId !== statusMap.blocked &&
+        delivered(item) &&
         (!trigger.onlyUnassigned || item.assignees.length === 0 || lastRun.has(item.id)),
     );
     if (candidates.length === 0) {
