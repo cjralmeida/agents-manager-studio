@@ -101,6 +101,8 @@ export interface ContainerSpec {
   /** Volume or bind mounts, e.g. "volume-name:/home/node/.claude" or "D:/path:/workspace". */
   binds?: string[];
   network?: string;
+  /** User inside the container (e.g. "0" for root); empty keeps the image's. */
+  user?: string;
 }
 
 export async function createContainer(spec: ContainerSpec): Promise<string> {
@@ -110,6 +112,7 @@ export async function createContainer(spec: ContainerSpec): Promise<string> {
     Cmd: spec.cmd,
     Env: Object.entries(spec.env ?? {}).map(([key, value]) => `${key}=${value}`),
     Labels: spec.labels ?? {},
+    ...(spec.user && { User: spec.user }),
     Tty: false,
     HostConfig: { Binds: spec.binds ?? [], ...(spec.network && { NetworkMode: spec.network }) },
   });

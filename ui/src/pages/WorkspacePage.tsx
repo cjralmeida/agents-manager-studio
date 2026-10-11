@@ -10,6 +10,7 @@ import { WorkflowsTab } from '../components/workflows/WorkflowsTab';
 import { Tabs, useTabParam } from '../components/Tabs';
 import { CloneRepositoryForm } from '../components/workspace/CloneRepositoryForm';
 import { NewProjectForm } from '../components/workspace/NewProjectForm';
+import { ProjectRunCell } from '../components/workspace/ProjectRunCell';
 import { WorkspaceConnectorsTab } from '../components/workspace/WorkspaceConnectorsTab';
 import { WorkspaceSettingsTab } from '../components/workspace/WorkspaceSettingsTab';
 
@@ -150,6 +151,9 @@ function ProjectsTable({ workspaceId, projects }: { workspaceId: string; project
             <th className="px-4 py-2 font-medium">Repositório</th>
             <th className="px-4 py-2 font-medium">Branch base</th>
             <th className="px-4 py-2 font-medium">Situação</th>
+            <th className="px-4 py-2 font-medium" title="Roda a última versão estável (instalou, compilou e passou nos testes) em http://projeto.localhost">
+              Rodar
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -177,6 +181,9 @@ function ProjectsTable({ workspaceId, projects }: { workspaceId: string; project
                 ) : (
                   <Badge>Sem git</Badge>
                 )}
+              </td>
+              <td className="px-4 py-2 align-top">
+                <ProjectRunCell project={project} />
               </td>
             </tr>
           ))}

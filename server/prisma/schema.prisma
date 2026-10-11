@@ -134,9 +134,54 @@ model Project {
   agents         Agent[]
   renderServices RenderService[]
   localTasks     LocalTask[]
+  previewBuilds  PreviewBuild[]
+  preview        ProjectPreview?
 
   @@unique([workspaceId, name])
   @@map("projects")
+}
+
+enum PreviewBuildStatus {
+  RUNNING
+  PASSED
+  FAILED
+
+  @@map("preview_build_status")
+}
+
+/// A check of one commit of the project's base branch: install, build and tests in a throwaway container.
+/// The latest PASSED build is the project's stable version, the one "Rodar" serves.
+model PreviewBuild {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  projectId     String             @map("project_id") @db.Uuid
+  branch        String
+  commit        String
+  commitMessage String             @default("") @map("commit_message")
+  status        PreviewBuildStatus @default(RUNNING)
+  /// Last lines of the check's output (the reason when it failed).
+  log           String             @default("")
+  startedAt     DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt    DateTime?          @map("finished_at") @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startedAt])
+  @@map("preview_builds")
+}
+
+/// "Rodar" of a project: whether the user wants it up, and the container serving its stable build.
+model ProjectPreview {
+  projectId   String    @id @map("project_id") @db.Uuid
+  wantsUp     Boolean   @default(false) @map("wants_up")
+  containerId String?   @map("container_id")
+  /// Build being served (a PASSED one).
+  buildId     String?   @map("build_id") @db.Uuid
+  error       String?
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_previews")
 }
 
 enum AgentProvider {

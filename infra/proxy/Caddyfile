@@ -15,3 +15,13 @@ http://studio.localhost {
 http://n8n.localhost {
 	reverse_proxy n8n:5678
 }
+
+# "Rodar" of the Studio: http://<projeto>.localhost serves the project's container (ams-run-<projeto>).
+http://*.localhost {
+	reverse_proxy ams-run-{http.request.host.labels.1}:80
+
+	handle_errors {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "Este projeto não está rodando. Abra o Agents Manager Studio (http://studio.localhost), aba Projetos do workspace, e clique em Rodar." 503
+	}
+}

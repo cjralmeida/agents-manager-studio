@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
+import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
 import { scanWorkspaces } from './modules/workspaces/service.js';
@@ -18,6 +19,9 @@ app.addHook('onClose', async () => stopDeploymentMonitor());
 // Drops the test databases and Redis indexes of finished agents; keeps agents out of the Studio databases.
 const stopTestServicesJanitor = startTestServicesJanitor(app.log);
 app.addHook('onClose', async () => stopTestServicesJanitor());
+// "Rodar": checks new commits of the projects that are up and keeps their containers serving the stable version.
+const stopPreviewMonitor = startPreviewMonitor(app.log);
+app.addHook('onClose', async () => stopPreviewMonitor());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {

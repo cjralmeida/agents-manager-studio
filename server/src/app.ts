@@ -18,6 +18,7 @@ import { systemRoutes } from './modules/system/routes.js';
 import { usageRoutes } from './modules/usage/routes.js';
 import { userRoutes } from './modules/users/routes.js';
 import { workflowRoutes } from './modules/workflows/routes.js';
+import { previewRoutes } from './modules/previews/routes.js';
 import { workspaceSettingsRoutes } from './modules/workspace-settings/routes.js';
 import { agentVariableRoutes } from './modules/agent-variables/routes.js';
 import { viewProfileRoutes } from './modules/view-profiles/routes.js';
@@ -74,6 +75,7 @@ export async function buildApp() {
       await api.register(boardRoutes);
       await api.register(renderRoutes);
       await api.register(workflowRoutes);
+      await api.register(previewRoutes);
       await api.register(assistantRoutes);
       await api.register(agentProfileRoutes);
       await api.register(agentRoutes);
