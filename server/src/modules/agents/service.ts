@@ -522,6 +522,12 @@ async function finalizeInBackground(id: string) {
     const body = await pullRequestBody(agent, remote);
     assertPushBranch(agent.project!, agent);
 
+    // An agent that continues another one's open PR (e.g. a tester) finishes on that PR even without changes of its
+    // own, so an approval still merges the work instead of ending as "no changes".
+    const inheritedNumber = agent.prUrl ? pullRequestNumber(agent.prUrl) : null;
+    const continuesOpenPr =
+      inheritedNumber !== null && (await pullRequestState({ provider, remote, token, number: inheritedNumber }).catch(() => 'closed')) === 'open';
+
     await commitAndPush({
       workdir: agent.workdir,
       baseCommit: agent.baseCommit,
@@ -533,6 +539,7 @@ async function finalizeInBackground(id: string) {
       },
       pushUrl: authenticatedPushUrl(remote, provider, token),
       token,
+      allowUnchanged: continuesOpenPr,
     });
     await addEvent(id, 'status', { message: `Branch ${agent.branch} enviada.` });
 
