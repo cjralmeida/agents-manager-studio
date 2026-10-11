@@ -119,6 +119,53 @@ const DECISION_EDIT_MARGIN_MS = 3 * 60_000;
 
 const ACTIVE_AGENT = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
 
+export type BoardTaskState = Awaited<ReturnType<typeof boardTaskState>>;
+
+/**
+ * The board of the workspace and which tasks are taken: an agent works on it, its run is going, or its last run did
+ * not finish well and nobody changed the task since.
+ */
+export async function boardTaskState(workspaceId: string) {
+  const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
+  const delivered = dependenciesDelivered(snapshot.items, statusMap);
+  const [activeAgents, runs] = await Promise.all([
+    prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
+    prisma.workflowRun.findMany({
+      where: { workspaceId, taskItemId: { not: null } },
+      select: { taskItemId: true, status: true, finishedAt: true },
+      orderBy: { startedAt: 'desc' },
+    }),
+  ]);
+  const lastRun = new Map<string, (typeof runs)[number]>();
+  for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
+  const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
+  for (const item of snapshot.items) {
+    const run = lastRun.get(item.id);
+    if (!run) continue;
+    const changedSince = run.finishedAt !== null && new Date(item.updatedAt).getTime() > run.finishedAt.getTime();
+    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince)) taken.add(item.id);
+  }
+  return { snapshot, projectOf, statusMap, delivered, taken, lastRun };
+}
+
+/**
+ * The tasks a "tarefa no quadro" workflow can start now (ready) and the ones in its column still waiting for their
+ * "Depende de:" tasks (waiting). A task sent back after its run (e.g. with a homologation report) keeps the assignee
+ * the run gave it.
+ */
+export function boardTaskQueue(trigger: Extract<WorkflowTrigger, { type: 'board_task' }>, state: BoardTaskState) {
+  const { snapshot, projectOf, statusMap, delivered, taken, lastRun } = state;
+  const columnId = trigger.columnId ?? statusMap.todo ?? null;
+  const matching = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId, onlyUnassigned: false }).filter(
+    (item) =>
+      !taken.has(item.id) &&
+      projectOf(item) &&
+      item.columnId !== statusMap.blocked &&
+      (!trigger.onlyUnassigned || item.assignees.length === 0 || lastRun.has(item.id)),
+  );
+  return { columnId, ready: matching.filter((item) => delivered(item)), waiting: matching.filter((item) => !delivered(item)) };
+}
+
 /**
  * Board triggers: for each enabled workflow watching the board, starts a run per matching task (or per feature
  * ready in homologation), up to its concurrent runs. A task is picked again only when it comes back to the watched
@@ -140,25 +187,8 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     return;
   }
 
-  const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
-  const delivered = dependenciesDelivered(snapshot.items, statusMap);
-  const [activeAgents, runs] = await Promise.all([
-    prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
-    prisma.workflowRun.findMany({
-      where: { workspaceId, taskItemId: { not: null } },
-      select: { taskItemId: true, status: true, finishedAt: true },
-      orderBy: { startedAt: 'desc' },
-    }),
-  ]);
-  const lastRun = new Map<string, (typeof runs)[number]>();
-  for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
-  const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
-  for (const item of snapshot.items) {
-    const run = lastRun.get(item.id);
-    if (!run) continue;
-    const changedSince = run.finishedAt !== null && new Date(item.updatedAt).getTime() > run.finishedAt.getTime();
-    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince)) taken.add(item.id);
-  }
+  const state = await boardTaskState(workspaceId);
+  const { snapshot, projectOf, statusMap, taken, lastRun } = state;
 
   for (const workflow of workflows) {
     const trigger = parseTrigger(workflow);
@@ -227,17 +257,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     }
     if (trigger.type !== 'board_task') continue;
 
-    const columnId = trigger.columnId ?? statusMap.todo ?? null;
-    // A task sent back after its run (e.g. with a homologation report) keeps the assignee the run gave it. A task whose
-    // "Depende de:" tasks are not delivered yet waits in its column until they are.
-    const candidates = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId, onlyUnassigned: false }).filter(
-      (item) =>
-        !taken.has(item.id) &&
-        projectOf(item) &&
-        item.columnId !== statusMap.blocked &&
-        delivered(item) &&
-        (!trigger.onlyUnassigned || item.assignees.length === 0 || lastRun.has(item.id)),
-    );
+    const { ready: candidates, columnId } = boardTaskQueue(trigger, state);
     if (candidates.length === 0) {
       await report(workflow, columnId ? 'Vigiando: nenhuma tarefa nova.' : 'Parado: o quadro não tem coluna "A fazer" definida.');
       continue;

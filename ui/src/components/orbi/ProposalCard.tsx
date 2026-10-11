@@ -44,6 +44,10 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
     );
   }
 
+  if (proposal.kind === 'update_workflow' && typeof payload.maxConcurrentRuns === 'number') {
+    return <p className="text-xs text-muted">Execuções ao mesmo tempo: {payload.maxConcurrentRuns}</p>;
+  }
+
   if (proposal.kind === 'create_agent' || proposal.kind === 'update_agent') {
     const details = [
       payload.model ? modelLabels[String(payload.model)] : null,

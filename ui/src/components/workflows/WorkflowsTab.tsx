@@ -17,6 +17,7 @@ import { Badge } from '../Badge';
 import { OptionChip } from '../board/OptionChip';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
+import { CapacitySuggestions } from './CapacitySuggestions';
 import { WorkflowEditor } from './WorkflowEditor';
 import { WorkflowRunCard } from './WorkflowRunCard';
 
@@ -50,6 +51,8 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
           </Button>
         )}
       </div>
+
+      <CapacitySuggestions workspaceId={workspace.id} />
 
       {editing !== null && (
         <WorkflowEditor

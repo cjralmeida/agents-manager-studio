@@ -98,18 +98,19 @@ model Workspace {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  projects       Project[]
-  settings       WorkspaceSettings?
-  gitAccounts    WorkspaceGitAccount[]
-  agents         Agent[]
-  taskBoards     TaskBoard[]
-  localTasks     LocalTask[]
-  workflows      Workflow[]
-  agentProfiles  AgentProfile[]
-  renderServices RenderService[]
-  deployments    Deployment[]
-  agentVariables AgentVariable[]
-  owner          User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  projects        Project[]
+  settings        WorkspaceSettings?
+  gitAccounts     WorkspaceGitAccount[]
+  agents          Agent[]
+  taskBoards      TaskBoard[]
+  localTasks      LocalTask[]
+  workflows       Workflow[]
+  agentProfiles   AgentProfile[]
+  renderServices  RenderService[]
+  deployments     Deployment[]
+  agentVariables  AgentVariable[]
+  capacityReviews CapacityReview[]
+  owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([ownerId])
   @@map("workspaces")
@@ -130,7 +131,7 @@ model Project {
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agents         Agent[]
   renderServices RenderService[]
   localTasks     LocalTask[]
@@ -176,13 +177,13 @@ model PreviewBuild {
 
 /// "Rodar" of a project: whether the user wants it up, and the container serving its stable build.
 model ProjectPreview {
-  projectId   String    @id @map("project_id") @db.Uuid
-  wantsUp     Boolean   @default(false) @map("wants_up")
-  containerId String?   @map("container_id")
+  projectId   String   @id @map("project_id") @db.Uuid
+  wantsUp     Boolean  @default(false) @map("wants_up")
+  containerId String?  @map("container_id")
   /// Build being served (a PASSED one).
-  buildId     String?   @map("build_id") @db.Uuid
+  buildId     String?  @map("build_id") @db.Uuid
   error       String?
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -378,14 +379,15 @@ model Agent {
   createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project     Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  profile     AgentProfile?       @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  workflowRun WorkflowRun?        @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
-  events      AgentEvent[]
-  inbox       AgentInbox[]
-  usage       AgentUsage[]
-  proposals   AssistantProposal[]
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project         Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  profile         AgentProfile?       @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  workflowRun     WorkflowRun?        @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  events          AgentEvent[]
+  inbox           AgentInbox[]
+  usage           AgentUsage[]
+  proposals       AssistantProposal[]
+  capacityReviews CapacityReview[]
 
   @@index([workspaceId])
   @@index([projectId])
@@ -809,4 +811,21 @@ model ProjectVariable {
 
   @@unique([projectId, key])
   @@map("project_variables")
+}
+
+/// One analysis of the Gestor de Capacidade: what it saw (signals) and the Órbi conversation that studied it.
+model CapacityReview {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  /// Signals summed up; a new analysis starts only when it changes.
+  signature   String
+  signals     Json
+  agentId     String?  @map("agent_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@map("capacity_reviews")
 }
