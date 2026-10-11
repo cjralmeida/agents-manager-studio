@@ -1,6 +1,7 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { type AgentProfile, useAgentProfiles } from '../../api/agentProfiles';
 import { type Board, useBoard, useBoardSources } from '../../api/boards';
+import { type WorkflowProcess, useCreateProcess, useProcesses, useUpdateProcess } from '../../api/processes';
 import { environmentLabels } from '../../api/render';
 import {
   type Workflow,
@@ -18,6 +19,7 @@ import { OptionChip } from '../board/OptionChip';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { CapacitySuggestions } from './CapacitySuggestions';
+import { ProcessForm, ProcessSection } from './ProcessSection';
 import { WorkflowEditor } from './WorkflowEditor';
 import { WorkflowRunCard } from './WorkflowRunCard';
 
@@ -31,11 +33,28 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const [editing, setEditing] = useState<Workflow | 'new' | null>(null);
   const create = useCreateWorkflow(workspace.id);
   const update = useUpdateWorkflow(workspace.id);
+  const processes = useProcesses(workspace.id);
+  const [editingProcess, setEditingProcess] = useState<WorkflowProcess | 'new' | null>(null);
+  const createProcess = useCreateProcess(workspace.id);
+  const updateProcess = useUpdateProcess(workspace.id);
+  // The editors open at the top of the tab; a workflow opened from a process canvas below is brought into view.
+  const editorTop = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editing !== null || editingProcess !== null) editorTop.current?.scrollIntoView({ block: 'start' });
+  }, [editing, editingProcess]);
 
-  const error = workflows.error ?? profiles.error ?? runs.error;
+  const error = workflows.error ?? profiles.error ?? runs.error ?? processes.error;
   if (error) return <ErrorText error={error} />;
-  if (!workflows.data || !profiles.data || sources.isPending) return <p className="text-sm text-muted">Carregando...</p>;
+  if (!workflows.data || !profiles.data || !processes.data || sources.isPending) return <p className="text-sm text-muted">Carregando...</p>;
   const boardData = hasBoard ? (board.data ?? null) : null;
+  const looseWorkflows = workflows.data.filter((workflow) => !processes.data.some((process) => process.id === workflow.processId));
+  const renderCards = (list: Workflow[]) => (
+    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      {list.map((workflow) => (
+        <WorkflowCard key={workflow.id} workspace={workspace} workflow={workflow} profiles={profiles.data} board={boardData} onEdit={() => setEditing(workflow)} />
+      ))}
+    </div>
+  );
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -45,12 +64,16 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
           sozinho; só as perguntas dos agentes esperam a sua resposta. Os workflows continuam de onde pararam quando o
           Studio reinicia.
         </p>
-        {editing === null && (
-          <Button variant="primary" onClick={() => setEditing('new')}>
-            Novo workflow
-          </Button>
+        {editing === null && editingProcess === null && (
+          <div className="flex gap-2">
+            <Button onClick={() => setEditingProcess('new')}>Novo processo</Button>
+            <Button variant="primary" onClick={() => setEditing('new')}>
+              Novo workflow
+            </Button>
+          </div>
         )}
       </div>
+      <div ref={editorTop} className="scroll-mt-4" />
 
       <CapacitySuggestions workspaceId={workspace.id} />
 
@@ -84,19 +107,38 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
         />
       )}
 
+      {editingProcess !== null && (
+        <ProcessForm
+          key={editingProcess === 'new' ? 'new' : editingProcess.id}
+          initial={editingProcess === 'new' ? undefined : editingProcess}
+          workflows={workflows.data}
+          processes={processes.data}
+          pending={createProcess.isPending || updateProcess.isPending}
+          error={createProcess.error ?? updateProcess.error}
+          onCancel={() => setEditingProcess(null)}
+          onSubmit={(input) => {
+            const done = { onSuccess: () => setEditingProcess(null) };
+            if (editingProcess === 'new') createProcess.mutate(input, done);
+            else updateProcess.mutate({ id: editingProcess.id, ...input }, done);
+          }}
+        />
+      )}
+
       {workflows.data.length === 0 && editing === null && <p className="text-sm text-muted">Nenhum workflow neste workspace ainda.</p>}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {workflows.data.map((workflow) => (
-          <WorkflowCard
-            key={workflow.id}
-            workspace={workspace}
-            workflow={workflow}
-            profiles={profiles.data}
-            board={boardData}
-            onEdit={() => setEditing(workflow)}
-          />
-        ))}
-      </div>
+      {processes.data.map((process) => (
+        <ProcessSection
+          key={process.id}
+          process={process}
+          workflows={workflows.data.filter((workflow) => workflow.processId === process.id)}
+          profiles={profiles.data}
+          board={boardData}
+          onEdit={() => setEditingProcess(process)}
+          onOpenWorkflow={setEditing}
+          renderCards={renderCards}
+        />
+      ))}
+      {processes.data.length > 0 && looseWorkflows.length > 0 && <h2 className="text-sm font-semibold">Workflows fora de processos</h2>}
+      {renderCards(looseWorkflows)}
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Execuções</h2>

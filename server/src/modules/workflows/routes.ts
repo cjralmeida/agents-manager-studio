@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput, patchSchema } from '../../lib/validation.js';
 import { workflowSchema } from './definition.js';
+import { createProcess, deleteProcess, listProcesses, processSchema, updateProcess } from './processes.js';
 import {
   cancelWorkflowRun,
   createWorkflow,
@@ -45,6 +46,23 @@ export async function workflowRoutes(app: FastifyInstance) {
   app.post('/workflows/:id/start', async (request) => {
     const { id } = parseInput(idParams, request.params);
     return startWorkflow(id, parseInput(startBody, request.body ?? {}).message, request.log);
+  });
+
+  app.get('/workspaces/:id/processes', async (request) => listProcesses(parseInput(workspaceParams, request.params).id));
+
+  app.post('/workspaces/:id/processes', async (request, reply) => {
+    const { id } = parseInput(workspaceParams, request.params);
+    return reply.code(201).send(await createProcess(id, parseInput(processSchema, request.body)));
+  });
+
+  app.patch('/processes/:id', async (request) => {
+    const { id } = parseInput(idParams, request.params);
+    return updateProcess(id, parseInput(patchSchema(processSchema), request.body));
+  });
+
+  app.delete('/processes/:id', async (request, reply) => {
+    await deleteProcess(parseInput(idParams, request.params).id);
+    return reply.code(204).send();
   });
 
   app.get('/workspaces/:id/workflow-runs', async (request) => {

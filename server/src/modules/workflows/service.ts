@@ -52,6 +52,7 @@ async function toResponse(workflow: Workflow) {
     trigger: parseTrigger(workflow),
     steps: parseSteps(workflow),
     maxConcurrentRuns: workflow.maxConcurrentRuns,
+    processId: workflow.processId,
     lastCheckedAt: workflow.lastCheckedAt,
     statusMessage: workflow.statusMessage,
     runningRuns: running,

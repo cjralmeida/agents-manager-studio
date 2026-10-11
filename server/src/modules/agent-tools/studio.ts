@@ -96,7 +96,7 @@ async function context(workspaceId: string) {
       autoMerge: profile.autoMerge,
       executions: profile.totalAgents,
     })),
-    workflows: workflows.map(({ id, name, description, isEnabled, trigger, steps, maxConcurrentRuns, statusMessage, totalRuns }) => ({
+    workflows: workflows.map(({ id, name, description, isEnabled, trigger, steps, maxConcurrentRuns, processId, statusMessage, totalRuns }) => ({
       id,
       name,
       description,
@@ -104,6 +104,7 @@ async function context(workspaceId: string) {
       trigger,
       steps,
       maxConcurrentRuns,
+      processId,
       statusMessage,
       totalRuns,
     })),

@@ -21,6 +21,7 @@ const OWNER_OF: Record<string, (id: string) => Promise<string | null | undefined
     ownerOfWorkspace((await prisma.assistantProposal.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId),
   '/api/deployments/:id': async (id) => (await prisma.deployment.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,
   '/api/workflows/:id': async (id) => (await prisma.workflow.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,
+  '/api/processes/:id': async (id) => ownerOfWorkspace((await prisma.workflowProcess.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId),
   '/api/projects/:id': async (id) => (await prisma.project.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,
   '/api/workflow-runs/:id': async (id) => ownerOfWorkspace((await prisma.workflowRun.findUnique({ where: { id }, select: { workspaceId: true } }))?.workspaceId),
 };

@@ -49,6 +49,8 @@ export interface Workflow {
   trigger: WorkflowTrigger;
   steps: WorkflowStep[];
   maxConcurrentRuns: number;
+  /** Process the workflow belongs to, if any. */
+  processId: string | null;
   lastCheckedAt: string | null;
   statusMessage: string | null;
   runningRuns: number;

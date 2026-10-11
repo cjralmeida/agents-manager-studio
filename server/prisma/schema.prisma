@@ -110,6 +110,7 @@ model Workspace {
   deployments     Deployment[]
   agentVariables  AgentVariable[]
   capacityReviews CapacityReview[]
+  processes       WorkflowProcess[]
   owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([ownerId])
@@ -670,14 +671,34 @@ model Workflow {
   maxConcurrentRuns Int       @default(1) @map("max_concurrent_runs")
   lastCheckedAt     DateTime? @map("last_checked_at") @db.Timestamptz(3)
   statusMessage     String?   @map("status_message")
+  /// Process the workflow belongs to (only organizes and shows; each workflow keeps its own trigger).
+  processId         String?   @map("process_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  process   WorkflowProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
   runs      WorkflowRun[]
 
   @@unique([workspaceId, name])
+  @@index([processId])
   @@map("workflows")
+}
+
+/// A process groups the workflows that together reach one goal (e.g. "Criação de jogo"), shown as one canvas.
+model WorkflowProcess {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  description String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workflows Workflow[]
+
+  @@unique([workspaceId, name])
+  @@map("workflow_processes")
 }
 
 model WorkflowRun {
