@@ -538,7 +538,8 @@ async function finalizeInBackground(id: string) {
 
     const prUrl = await openOrReusePullRequest(agent, { provider, remote, token, body });
 
-    if (agent.autoMerge) {
+    // A reported failure (e.g. a tester that found problems) keeps the PR open: only approved work is merged.
+    if (agent.autoMerge && (agent.result as { status?: string } | null)?.status !== 'failure') {
       await mergeOwnPullRequest(agent, { provider, remote, token, prUrl, project: agent.project! });
       return;
     }
