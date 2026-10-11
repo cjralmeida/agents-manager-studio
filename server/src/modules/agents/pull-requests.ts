@@ -127,8 +127,28 @@ async function mergeGitHub(input: MergeInput) {
     },
     body: JSON.stringify({ merge_method: 'merge' }),
   });
-  if (response.status === 200 && response.body.merged) return { merged: true, commit: response.body.sha ?? null, reason: '', retry: false };
+  if (response.status === 200 && response.body.merged) {
+    await deleteMergedAgentBranch(apiBase, owner!, repo!, input);
+    return { merged: true, commit: response.body.sha ?? null, reason: '', retry: false };
+  }
   return { merged: false, commit: null, reason: response.body.message ?? `erro ${response.status}`, retry: response.status === 405 };
+}
+
+/**
+ * After a merge, the agent's branch is deleted (GitLab does it with "should_remove_source_branch"). Only the Studio's
+ * own branches ("agent/..."): a branch someone else opened stays for them to delete. Failures are ignored.
+ */
+async function deleteMergedAgentBranch(apiBase: string, owner: string, repo: string, input: MergeInput) {
+  const headers = { Authorization: `Bearer ${input.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agents-manager-studio' };
+  try {
+    const pull = await api<{ head?: { ref?: string; repo?: { full_name?: string } } }>(`${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`, { headers });
+    const branch = pull.body.head?.ref;
+    const sameRepo = pull.body.head?.repo?.full_name?.toLowerCase() === `${owner}/${repo}`.toLowerCase();
+    if (!branch || !sameRepo || !branch.startsWith('agent/')) return;
+    await api(`${apiBase}/repos/${owner}/${repo}/git/refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}`, { method: 'DELETE', headers });
+  } catch {
+    // The branch stays; it is only clutter.
+  }
 }
 
 async function mergeGitLab(input: MergeInput) {
