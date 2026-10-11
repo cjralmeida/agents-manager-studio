@@ -230,3 +230,23 @@ body {
 .workflow-canvas .react-flow__node {
   color: var(--color-fg);
 }
+
+/* Gestor de Capacidade notice rising from the bottom of the screen. */
+@keyframes notice-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.notice-rise {
+  animation: notice-rise 0.35s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice-rise {
+    animation: none;
+  }
+}

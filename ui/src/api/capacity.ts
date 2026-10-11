@@ -17,3 +17,20 @@ export function useCapacity(workspaceId: string) {
     refetchInterval: 30_000,
   });
 }
+
+export interface CapacitySuggestion {
+  id: string;
+  summary: string;
+  createdAt: string;
+  workspaceId: string;
+  workspaceName: string;
+}
+
+/** Pending suggestions of every visible workspace, for the notice shown on every page. */
+export function useCapacitySuggestions() {
+  return useQuery({
+    queryKey: ['capacity', 'suggestions'],
+    queryFn: () => api.get<CapacitySuggestion[]>('/capacity/suggestions'),
+    refetchInterval: 30_000,
+  });
+}

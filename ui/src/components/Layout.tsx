@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useAgent, useAgents } from '../api/agents';
 import { NavLink, Outlet } from 'react-router';
 import { useMe } from '../api/auth';
+import { useCapacitySuggestions } from '../api/capacity';
 import { useWorkspaces } from '../api/workspaces';
 import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
 import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
 import { OrbiPanel } from './orbi/OrbiPanel';
+import { CapacityNotice } from './workflows/CapacityNotice';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -32,6 +34,8 @@ export function Layout() {
   const notifications = useNotificationSettings();
   const waiting = useAgentNotifications(notifications.enabled);
   const [orbiOpen, setOrbiOpen] = useState(false);
+  /** Workspaces where the Gestor de Capacidade waits for a decision. */
+  const capacityIds = new Set(useCapacitySuggestions().data?.map((suggestion) => suggestion.workspaceId));
   const [orbiConversation, setOrbiConversation] = useState<string | null>(null);
 
   return (
@@ -69,7 +73,10 @@ export function Layout() {
                 }
                 title={waitingIds.has(workspace.id) ? 'Agente aguardando você' : activeIds.has(workspace.id) ? 'Agentes trabalhando' : undefined}
               >
-                {workspace.name}
+                <span className="truncate">{workspace.name}</span>
+                {capacityIds.has(workspace.id) && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-accent" title="O Gestor de Capacidade tem uma sugestão para este workspace" />
+                )}
               </NavLink>
             ))}
           </nav>
@@ -87,6 +94,8 @@ export function Layout() {
       <main className="flex-1 overflow-auto p-6">
         <Outlet />
       </main>
+
+      <CapacityNotice />
 
       {orbiOpen ? (
         <OrbiPanel onClose={() => setOrbiOpen(false)} onConversation={setOrbiConversation} />

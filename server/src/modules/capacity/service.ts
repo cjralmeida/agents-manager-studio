@@ -7,6 +7,7 @@ import { launchAgent } from '../agents/service.js';
 import { workdirPath } from '../agents/workdir.js';
 import type { BoardItem } from '../boards/types.js';
 import type { PlanUsage } from '../usage/calc.js';
+import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { type BoardTaskState, boardTaskQueue, boardTaskState, parseTrigger, workspaceBlocker } from '../workflows/engine.js';
 import { type CapacitySignal, type PlanState, type WorkflowLoad, capacitySignals, signalsSignature } from './signals.js';
 
@@ -235,4 +236,19 @@ export async function capacitySummary(workspaceId: string) {
     prisma.capacityReview.findFirst({ where: { workspaceId, agentId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, agentId: true } }),
   ]);
   return { suggestions, lastAnalysisAt: lastAnalysis?.createdAt ?? null, lastConversationId: lastAnalysis?.agentId ?? null };
+}
+
+/** Pending suggestions of every workspace the user sees, for the notice shown on every page. */
+export async function pendingCapacitySuggestions(ownerId: string) {
+  const workspaces = await prisma.workspace.findMany({
+    where: { ownerId, isIgnored: false, ...(await visibleWorkspaceFilter(ownerId)) },
+    select: { id: true, name: true },
+  });
+  const names = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+  const proposals = await prisma.assistantProposal.findMany({
+    where: { status: 'PENDING', workspaceId: { in: [...names.keys()] }, agent: { capacityReviews: { some: {} } } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, summary: true, createdAt: true, workspaceId: true },
+  });
+  return proposals.map((proposal) => ({ ...proposal, workspaceName: names.get(proposal.workspaceId)! }));
 }
