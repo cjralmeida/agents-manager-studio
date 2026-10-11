@@ -21,7 +21,7 @@ import { ErrorText } from '../form';
 import { CapacitySuggestions } from './CapacitySuggestions';
 import { ProcessForm, ProcessSection } from './ProcessSection';
 import { WorkflowEditor } from './WorkflowEditor';
-import { WorkflowRunCard } from './WorkflowRunCard';
+import { RunHistory, WorkflowRunCard } from './WorkflowRunCard';
 
 export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   const workflows = useWorkflows(workspace.id);
@@ -47,6 +47,8 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
   if (error) return <ErrorText error={error} />;
   if (!workflows.data || !profiles.data || !processes.data || sources.isPending) return <p className="text-sm text-muted">Carregando...</p>;
   const boardData = hasBoard ? (board.data ?? null) : null;
+  const activeRuns = runs.data?.filter((run) => run.status === 'RUNNING') ?? [];
+  const finishedRuns = runs.data?.filter((run) => run.status !== 'RUNNING') ?? [];
   const looseWorkflows = workflows.data.filter((workflow) => !processes.data.some((process) => process.id === workflow.processId));
   const renderCards = (list: Workflow[]) => (
     <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -141,9 +143,16 @@ export function WorkflowsTab({ workspace }: { workspace: WorkspaceDetail }) {
       {renderCards(looseWorkflows)}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Execuções</h2>
-        {runs.data?.length === 0 && <p className="text-sm text-muted">Nenhuma execução ainda.</p>}
-        {runs.data?.map((run) => <WorkflowRunCard key={run.id} workspaceId={workspace.id} run={run} />)}
+        <h2 className="text-sm font-semibold">Execuções em andamento</h2>
+        {activeRuns.length === 0 && <p className="text-sm text-muted">Nada em andamento agora.</p>}
+        {activeRuns.map((run) => (
+          <WorkflowRunCard key={run.id} workspaceId={workspace.id} run={run} />
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">Histórico</h2>
+        <RunHistory runs={finishedRuns} />
       </section>
     </div>
   );

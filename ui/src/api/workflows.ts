@@ -71,6 +71,8 @@ export interface StepRun {
   status: StepRunStatus;
   agentId: string | null;
   agentStatus: AgentStatus | null;
+  /** Workspace agent that ran the step (e.g. "game-builder"). */
+  agentName: string | null;
   deploymentId: string | null;
   output: {
     summary?: string;

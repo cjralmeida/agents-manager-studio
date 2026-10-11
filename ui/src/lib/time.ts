@@ -18,3 +18,12 @@ export function formatTime(iso: string) {
 export function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
 }
+
+/** "40 s", "9 min", "1 h 05" — how long something took (or is taking, until now). */
+export function formatDuration(fromIso: string, toIso?: string | null) {
+  const seconds = Math.max(0, Math.round(((toIso ? new Date(toIso).getTime() : Date.now()) - new Date(fromIso).getTime()) / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`;
+}

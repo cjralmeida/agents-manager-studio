@@ -161,7 +161,7 @@ export async function activeRunTasks(userId: string) {
 
 async function runResponse(run: RunWithDetails) {
   const agentIds = run.steps.flatMap((step) => (step.agentId ? [step.agentId] : []));
-  const agents = await prisma.agent.findMany({ where: { id: { in: agentIds } }, select: { id: true, status: true, title: true } });
+  const agents = await prisma.agent.findMany({ where: { id: { in: agentIds } }, select: { id: true, status: true, title: true, profile: { select: { name: true } } } });
   return {
     id: run.id,
     workflowId: run.workflowId,
@@ -183,6 +183,8 @@ async function runResponse(run: RunWithDetails) {
       status: step.status,
       agentId: step.agentId,
       agentStatus: agents.find((agent) => agent.id === step.agentId)?.status ?? null,
+      /** Workspace agent that ran the step (e.g. "game-builder"). */
+      agentName: agents.find((agent) => agent.id === step.agentId)?.profile?.name ?? null,
       deploymentId: step.deploymentId,
       output: step.output,
       error: step.error,
