@@ -130,6 +130,12 @@ function shutdown(reason) {
   prompt.close();
   // If the SDK is waiting on a question, unblock it so the process can end.
   pendingQuestion?.resolve(null);
+  // The SDK can keep the process alive after that (seen on an idle pause while a question waited): the container then
+  // stays up without reading the inbox, and the server never starts a new one for the answer. Exit no matter what.
+  setTimeout(() => {
+    log('Forced exit', { reason });
+    process.exit(0);
+  }, 30_000);
 }
 
 // Idle: no turn running (or only waiting for the user's answer) for too long.
