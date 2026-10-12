@@ -12,6 +12,7 @@ import {
   deleteAgent,
   finalizeAgent,
   getAgent,
+  agentImage,
   getAgentDiff,
   launchAgent,
   listAgentEvents,
@@ -77,6 +78,13 @@ export async function agentRoutes(app: FastifyInstance) {
   });
 
   app.get('/agents/:id/diff', async (request) => getAgentDiff(parseInput(idParams, request.params).id));
+
+  // Images in the agent's copy (e.g. art previews it asks the user to approve), opened from links in its questions.
+  app.get('/agents/:id/files/*', async (request, reply) => {
+    const { id } = parseInput(idParams, { id: (request.params as { id: string }).id });
+    const file = await agentImage(id, (request.params as { '*': string })['*']);
+    return reply.header('Content-Type', file.contentType).header('Cache-Control', 'no-store').send(file.content);
+  });
 
   app.post('/agents/:id/messages', async (request) => {
     const { id } = parseInput(idParams, request.params);

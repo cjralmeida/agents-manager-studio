@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../../db.js';
 import { type Agent, type AgentProfile, type AgentStatus, Prisma } from '../../generated/prisma/client.js';
 import { imageExists, inspectContainer, removeContainer, removeVolume } from '../../lib/docker.js';
@@ -145,6 +147,26 @@ export async function getAgentDiff(id: string) {
   if (agent.baseCommit === NO_REPOSITORY) throw new HttpError(409, 'Este agente não trabalha em um repositório.');
   if (!agent.baseCommit) throw new HttpError(409, 'A cópia do projeto ainda está sendo preparada.');
   return workdirDiff(agent.workdir, agent.baseCommit);
+}
+
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
+
+/** An image from the agent's copy, by path relative to it (only images, never outside the copy). */
+export async function agentImage(id: string, relativePath: string) {
+  const agent = await findOrThrow(id);
+  const root = workdirPath(agent.workdir);
+  const file = path.posix.resolve(root, decodeURIComponent(relativePath ?? ''));
+  const contentType = IMAGE_TYPES[path.posix.extname(file).toLowerCase()];
+  if (!contentType || !file.startsWith(`${root}/`)) throw new HttpError(404, 'Imagem não encontrada.');
+  const content = await readFile(file).catch(() => null);
+  if (!content) throw new HttpError(404, 'Imagem não encontrada (a cópia do agente pode já ter sido removida).');
+  return { contentType, content };
 }
 
 // ---------------------------------------------------------------- launch
