@@ -190,6 +190,19 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
 
     case 'board_create_task': {
       if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      // A retry after an error in the middle of a creation (e.g. the issue was created but setting a field failed)
+      // must not open the same task twice: an open task with the same title in the same repository is returned.
+      const wanted = text(args.title, 250)?.trim().toLowerCase();
+      const repository = text(args.repository)?.toLowerCase();
+      const existing = snapshot.items.find(
+        (item) =>
+          !item.isClosed &&
+          item.title.trim().toLowerCase() === wanted &&
+          (!repository || item.repository?.toLowerCase() === repository),
+      );
+      if (existing) {
+        return { ...describeItem(snapshot, existing), message: 'Já existe uma tarefa aberta com este título; nada foi criado. Use board_update_task para mudá-la.' };
+      }
       const { id } = await createTask(agent.workspaceId, await prepareTaskByNames(agent.workspaceId, args));
       const title = text(args.title, 250)!;
       const created = (await boardContext(agent.workspaceId)).snapshot.items.find((item) => item.id === id);
