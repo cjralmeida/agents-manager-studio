@@ -149,23 +149,26 @@ export async function getAgentDiff(id: string) {
   return workdirDiff(agent.workdir, agent.baseCommit);
 }
 
-const IMAGE_TYPES: Record<string, string> = {
+const MEDIA_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
 };
 
-/** An image from the agent's copy, by path relative to it (only images, never outside the copy). */
-export async function agentImage(id: string, relativePath: string) {
+/** An image or a sound from the agent's copy, by path relative to it (only media, never outside the copy). */
+export async function agentMedia(id: string, relativePath: string) {
   const agent = await findOrThrow(id);
   const root = workdirPath(agent.workdir);
   const file = path.posix.resolve(root, decodeURIComponent(relativePath ?? ''));
-  const contentType = IMAGE_TYPES[path.posix.extname(file).toLowerCase()];
-  if (!contentType || !file.startsWith(`${root}/`)) throw new HttpError(404, 'Imagem não encontrada.');
+  const contentType = MEDIA_TYPES[path.posix.extname(file).toLowerCase()];
+  if (!contentType || !file.startsWith(`${root}/`)) throw new HttpError(404, 'Arquivo não encontrado.');
   const content = await readFile(file).catch(() => null);
-  if (!content) throw new HttpError(404, 'Imagem não encontrada (a cópia do agente pode já ter sido removida).');
+  if (!content) throw new HttpError(404, 'Arquivo não encontrado (a cópia do agente pode já ter sido removida).');
   return { contentType, content };
 }
 
