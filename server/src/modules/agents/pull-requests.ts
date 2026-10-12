@@ -84,6 +84,13 @@ async function openGitLabMergeRequest(input: PullRequestInput) {
   throw new HttpError(502, `GitLab recusou o merge request: ${reason}`);
 }
 
+const CONFLICT_MARK = 'tem conflitos com a branch de destino';
+
+/** Whether a merge failure was a conflict with the base branch (as opposed to a token, permission or API problem). */
+export function isConflictMessage(message: string) {
+  return message.includes(CONFLICT_MARK);
+}
+
 export interface MergeInput {
   provider: 'GITHUB' | 'GITLAB';
   remote: RemoteInfo;
@@ -108,7 +115,7 @@ export async function mergePullRequest(input: MergeInput): Promise<string | null
   throw new HttpError(
     502,
     conflict
-      ? `O PR/MR não pôde ser mesclado: provavelmente tem conflitos com a branch de destino (${lastReason}).`
+      ? `O PR/MR não pôde ser mesclado: provavelmente ${CONFLICT_MARK} (${lastReason}).`
       : `Não foi possível fazer o merge: ${lastReason}`,
   );
 }

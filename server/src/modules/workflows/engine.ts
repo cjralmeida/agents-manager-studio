@@ -4,7 +4,7 @@ import { prisma } from '../../db.js';
 import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
-import { type AgentModel, cancelAgent, launchAgent, sendMessage } from '../agents/service.js';
+import { type AgentModel, cancelAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
@@ -31,6 +31,7 @@ export interface StepOutput {
   summary?: string;
   details?: string;
   createdTasks?: AgentResult['createdTasks'];
+  mergeConflict?: boolean;
   deploymentId?: string;
   deployStatus?: string;
   serviceName?: string;
@@ -330,6 +331,7 @@ async function syncStep(stepRun: WorkflowStepRun) {
     summary: result.summary,
     details: result.details,
     createdTasks: result.createdTasks,
+    mergeConflict: result.mergeConflict,
   };
   if (agent.status === 'COMPLETED') {
     return result.status === 'failure' ? finish('FAILED', output, result.summary ?? 'O agente reportou falha.') : finish('SUCCEEDED', output);
@@ -513,9 +515,13 @@ async function pullRequestOfTask(workspaceId: string, projectId: string, task: B
   });
 }
 
+/** Extra rounds a send-back gets when the work was approved and only its PR/MR conflicts with the base. */
+const CONFLICT_EXTRA_ATTEMPTS = 2;
+
 /**
  * A failed step with "on failure, send back": the report goes to the earlier step's agent, which keeps
- * working on the same copy and PR; the steps after it run again when it finishes.
+ * working on the same copy and PR; the steps after it run again when it finishes. When the work was approved but the
+ * PR/MR conflicts with the base, the Studio merges the base into that copy first and asks only for the conflicts.
  */
 async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: WorkflowStepRun) {
   const index = steps.findIndex((step) => step.id === failed.stepId);
@@ -524,18 +530,22 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
   const targetIndex = steps.findIndex((entry) => entry.id === step.onFailure!.retryStepId);
   const targetLane = laneFor(steps, targetIndex, failed.lane);
   const target = latest(run.steps, step.onFailure.retryStepId, targetLane);
-  if (!target?.agentId || target.attempt >= step.onFailure.maxAttempts) return false;
-
   const output = outputOf(failed);
+  const limit = step.onFailure.maxAttempts + (output.mergeConflict ? CONFLICT_EXTRA_ATTEMPTS : 0);
+  if (!target?.agentId || target.attempt >= limit) return false;
+
   const synced = await syncReviewerCommits(target.agentId, failed.agentId);
-  const report = [
-    `O passo "${step.name}" encontrou problemas no seu trabalho (tentativa ${target.attempt} de ${step.onFailure.maxAttempts}):`,
-    output.summary ?? failed.error ?? '',
-    output.details ?? '',
-    ...(synced ? ['', synced] : []),
-    '',
-    'Corrija na mesma cópia e termine novamente; o Studio envia as novas alterações para o mesmo PR/MR.',
-  ].join('\n');
+  const report = output.mergeConflict
+    ? await conflictReport(target.agentId, step.name, synced)
+    : [
+        `O passo "${step.name}" encontrou problemas no seu trabalho (tentativa ${target.attempt} de ${step.onFailure.maxAttempts}):`,
+        output.summary ?? failed.error ?? '',
+        output.details ?? '',
+        ...(synced ? ['', synced] : []),
+        '',
+        'Corrija na mesma cópia e termine novamente; o Studio envia as novas alterações para o mesmo PR/MR.',
+      ].join('\n');
+  if (!report) return false;
   await sendMessage(target.agentId, report.trim());
 
   // History stays: the failed step and everything after the target are marked as sent back.
@@ -558,6 +568,32 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
     },
   });
   return true;
+}
+
+/**
+ * The message for an approved PR/MR that conflicts with the base: the base is merged into the agent's copy and the
+ * agent resolves what git could not. Null when even that failed (the run then fails as before).
+ */
+async function conflictReport(agentId: string, stepName: string, synced: string | null) {
+  try {
+    const conflicts = await mergeBaseIntoCopy(agentId);
+    const intro = `O passo "${stepName}" aprovou o seu trabalho, mas o PR/MR não pôde ser mesclado: outras tarefas foram entregues na branch de destino enquanto isso e mexeram nos mesmos arquivos.`;
+    const done = 'Depois, termine; o Studio envia para o mesmo PR/MR e o passo de teste roda de novo sobre o código com o merge.';
+    const body =
+      conflicts.length > 0
+        ? [
+            'O Studio já trouxe a versão mais recente da branch de destino para a sua cópia (merge em andamento). Ficaram com conflito:',
+            ...conflicts.map((file) => `- ${file}`),
+            '',
+            'Resolva cada conflito mantendo as duas mudanças: o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo. Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, rode o build e os testes e corrija o que quebrar com a junção.',
+          ]
+        : [
+            'O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto. Rode o build e os testes e corrija o que quebrar com a junção (ex.: uma função renomeada do outro lado).',
+          ];
+    return [intro, '', ...body, ...(synced ? ['', synced] : []), '', done].join('\n');
+  } catch {
+    return null;
+  }
 }
 
 /**

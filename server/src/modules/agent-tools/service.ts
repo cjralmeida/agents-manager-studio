@@ -39,6 +39,8 @@ export interface AgentResult {
   createdTasks?: { id: string; title: string; ref: string | null; url: string | null }[];
   /** Project the agent created (the next workflow steps work on it). */
   projectId?: string;
+  /** The work was approved but its PR/MR conflicts with the base branch (set by the Studio, not the agent). */
+  mergeConflict?: boolean;
 }
 
 type Args = Record<string, unknown>;

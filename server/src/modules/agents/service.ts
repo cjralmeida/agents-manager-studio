@@ -12,7 +12,7 @@ import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { assertPushBranch, assertWorkBase } from './branch-guard.js';
-import { mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
+import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
@@ -24,6 +24,7 @@ import {
   currentBranch,
   checkoutRemoteBranch,
   isMergedInto,
+  mergeRemoteBase,
   returnToAgent,
   prepareEmptyWorkdir,
   prepareWorkdir,
@@ -351,6 +352,29 @@ async function updateFromRemote(agent: Agent, remoteUrl: string) {
     baseBranch: agent.baseBranch,
     fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token),
     token,
+  });
+}
+
+/**
+ * Brings the latest base branch into an agent's copy so it can fix the conflicts of its PR/MR. Returns the files left
+ * with conflicts (empty when git merged everything by itself).
+ */
+export async function mergeBaseIntoCopy(agentId: string) {
+  const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, include: { project: true } });
+  const remote = agent.project?.gitRemoteUrl ? parseRemote(agent.project.gitRemoteUrl) : null;
+  if (!remote) throw new HttpError(422, 'O projeto não tem remote para buscar a base.');
+  const account = await findGitAccount(agent.workspaceId, remote);
+  const token = secrets.decrypt(account.tokenEncrypted);
+  const provider = account.provider as 'GITHUB' | 'GITLAB';
+  return mergeRemoteBase({
+    workdir: agent.workdir,
+    baseBranch: agent.baseBranch,
+    fetchUrl: authenticatedPushUrl(remote, provider, token),
+    token,
+    author: {
+      name: account.authorName || account.username,
+      email: account.authorEmail || defaultAuthorEmail(provider, account.username, remoteHostname(remote)),
+    },
   });
 }
 
@@ -689,7 +713,7 @@ async function mergeOwnPullRequest(
       data: {
         status: 'COMPLETED',
         prUrl: input.prUrl,
-        result: { ...result, status: 'failure', summary: message },
+        result: { ...result, status: 'failure', summary: message, mergeConflict: isConflictMessage(message) },
         finishedAt: new Date(),
         lastActivityAt: new Date(),
       },

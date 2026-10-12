@@ -103,6 +103,57 @@ export async function updateToRemoteBase(input: { workdir: string; baseBranch: s
   }
 }
 
+/**
+ * Merges the latest base branch from the remote into the agent's branch, e.g. when its approved PR/MR conflicts with
+ * work merged meanwhile. A clean merge is committed; with conflicts the merge stays in progress (markers in the
+ * files) for the agent to resolve, and the Studio's commit at the end concludes it. Returns the conflicting files.
+ */
+export async function mergeRemoteBase(input: {
+  workdir: string;
+  baseBranch: string;
+  fetchUrl: string;
+  token: string;
+  author: { name: string; email: string };
+}) {
+  const dir = workdirPath(input.workdir);
+  const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
+  const identity = ['-c', `user.name=${input.author.name}`, '-c', `user.email=${input.author.email}`];
+  const merge = () => git(dir, [...identity, 'merge', '--no-edit', '-m', `Merge ${input.baseBranch} (resolver conflitos)`, 'FETCH_HEAD']);
+  try {
+    // Pending edits would mix with the merge; they are committed first (the Studio commits everything anyway).
+    await git(dir, ['add', '--all']);
+    if ((await git(dir, ['status', '--porcelain'])).trim()) await git(dir, [...identity, 'commit', '-q', '-m', 'Alterações antes do merge da base']);
+    await git(dir, ['fetch', '--quiet', '--depth', CLONE_DEPTH, input.fetchUrl, input.baseBranch], { timeoutMs: 300_000 });
+    try {
+      await merge();
+      return [];
+    } catch (error) {
+      if (!(error instanceof GitError)) throw error;
+      // The copies are shallow: without the common ancestor, git refuses; bring the whole history and try again.
+      if (/unrelated histories/i.test(error.message)) {
+        await git(dir, ['fetch', '--quiet', '--unshallow', input.fetchUrl, input.baseBranch], { timeoutMs: 600_000 });
+        try {
+          await merge();
+          return [];
+        } catch (retryError) {
+          if (!(retryError instanceof GitError)) throw retryError;
+        }
+      }
+      const conflicts = (await git(dir, ['diff', '--name-only', '--diff-filter=U'])).split('\n').filter(Boolean);
+      if (conflicts.length === 0) {
+        await git(dir, ['merge', '--abort']).catch(() => undefined);
+        throw error;
+      }
+      return conflicts;
+    }
+  } catch (error) {
+    if (error instanceof GitError) throw new HttpError(502, redact(error.message));
+    throw error;
+  } finally {
+    await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
+  }
+}
+
 /** Moves the copy to a branch fetched from the remote (e.g. a person's PR/MR branch); returns its head commit. */
 export async function checkoutRemoteBranch(input: { workdir: string; branch: string; fetchUrl: string; token: string }) {
   const dir = workdirPath(input.workdir);
