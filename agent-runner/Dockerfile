@@ -11,6 +11,11 @@ RUN apt-get update \
     python3 python3-pip python3-venv python-is-python3 python3-pil postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
+# Game audio made by code: synthesis (numpy/scipy), MIDI rendering with a General MIDI soundfont, and encoding.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg fluidsynth fluid-soundfont-gm python3-numpy python3-scipy \
+  && rm -rf /var/lib/apt/lists/*
+
 # Go, JDK 21 and Maven come from their official images.
 COPY --from=go /usr/local/go /usr/local/go
 COPY --from=java /opt/java/openjdk /opt/java/openjdk
