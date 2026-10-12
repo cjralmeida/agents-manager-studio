@@ -26,6 +26,7 @@ import { agentVariableRoutes } from './modules/agent-variables/routes.js';
 import { viewProfileRoutes } from './modules/view-profiles/routes.js';
 import { clickupRoutes } from './modules/clickup/routes.js';
 import { pixellabRoutes } from './modules/pixellab/routes.js';
+import { autoAnswerRoutes } from './modules/auto-answer/routes.js';
 import { workspaceRoutes } from './modules/workspaces/routes.js';
 
 function loggerOptions(): FastifyServerOptions['logger'] {
@@ -72,6 +73,7 @@ export async function buildApp() {
       await api.register(viewProfileRoutes);
       await api.register(clickupRoutes);
       await api.register(pixellabRoutes);
+      await api.register(autoAnswerRoutes);
       await api.register(gitAccountRoutes);
       await api.register(agentAccountRoutes);
       await api.register(skillRoutes);

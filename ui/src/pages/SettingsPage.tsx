@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { useMe } from '../api/auth';
+import { AutoAnswerSection } from '../components/settings/AutoAnswerSection';
 import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { ViewProfilesSection } from '../components/settings/ViewProfilesSection';
@@ -34,10 +35,15 @@ export function SettingsPage() {
           <SkillsSection />
         ) : activeTab === 'profiles' ? (
           <ViewProfilesSection />
-        ) : isAdmin ? (
-          <ProjectsRootSection />
         ) : (
-          <p className="text-sm text-muted">A pasta central é a mesma para todos os usuários e só administradores podem trocá-la.</p>
+          <>
+            <AutoAnswerSection />
+            {isAdmin ? (
+              <ProjectsRootSection />
+            ) : (
+              <p className="text-sm text-muted">A pasta central é a mesma para todos os usuários e só administradores podem trocá-la.</p>
+            )}
+          </>
         )}
       </div>
     </div>

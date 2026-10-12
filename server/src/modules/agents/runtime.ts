@@ -85,7 +85,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   }
   lines.push(
     '- O ambiente tem Node.js 24, Python 3 (pip e venv), Go 1.25, Java 21 com Maven (Java 11 em /opt/java/jdk11: use JAVA_HOME=/opt/java/jdk11 em projetos Java 8 a 11), psql e git, sem sudo. Instale dependências no projeto (npm install, python -m venv .venv, go mod download, mvn ...) e rode os testes antes de terminar. Não versione .venv nem pastas de build.',
-    '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor.',
+    '- Quando precisar de uma decisão do usuário, use a ferramenta AskUserQuestion em vez de supor. Ponha "(Recomendado)" no rótulo da opção que você recomenda (em pedidos de aprovação, a opção "Aprovar"): se o usuário não responder a tempo, o Studio responde por ele com essa opção.',
     '- Seu trabalho termina quando o seu turno termina: não deixe nada rodando em segundo plano. Se usar subagentes, espere todos terminarem e confira o que fizeram antes de encerrar.',
     '- Ao terminar, resuma o que foi feito.',
     '- Responda em português.',

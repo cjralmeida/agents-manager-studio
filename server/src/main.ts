@@ -4,6 +4,7 @@ import { startAgentMonitor } from './modules/agents/monitor.js';
 import { resumeFinalizing } from './modules/agents/service.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startCapacityMonitor } from './modules/capacity/service.js';
+import { startAutoAnswer } from './modules/auto-answer/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
@@ -27,6 +28,9 @@ app.addHook('onClose', async () => stopPreviewMonitor());
 // Gestor de Capacidade: notices when a board workflow could run more or fewer tasks at once and suggests it.
 const stopCapacityMonitor = startCapacityMonitor(app.log);
 app.addHook('onClose', async () => stopCapacityMonitor());
+// Automatic answers: a question left unanswered for the user's chosen time is answered with the recommended option.
+const stopAutoAnswer = startAutoAnswer(app.log);
+app.addHook('onClose', async () => stopAutoAnswer());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {
