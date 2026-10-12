@@ -7,7 +7,7 @@ import type { WorkspaceDetail } from '../../api/workspaces';
 import { timeAgo } from '../../lib/time';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
-import { ErrorText, TextInput } from '../form';
+import { ErrorText, Select, TextInput } from '../form';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
 import { BoardSetup } from './BoardSetup';
 import { BoardConversionPanel } from './BoardConversionPanel';
@@ -95,7 +95,19 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const agentMap = useMemo(() => agentsByItem(agents.data ?? []), [agents.data]);
   const inActiveWorkflow = useInActiveWorkflow();
   const inWorkflow = (item: { id: string }) => inActiveWorkflow(workspace.id, item.id);
-  const items = board.items.filter((item) => matchesSearch(item, search));
+  // Project filter, kept in the URL (?project=<id> or "none") so a filtered board can be linked and survives a reload.
+  const projectFilter = params.get('project') ?? '';
+  const setProjectFilter = (value: string) => {
+    if (value) params.set('project', value);
+    else params.delete('project');
+    setParams(params, { replace: true });
+  };
+  const projectOptions = useMemo(() => projectsOnBoard(board, workspace), [board, workspace]);
+  const items = board.items.filter(
+    (item) =>
+      matchesSearch(item, search) &&
+      (!projectFilter || (projectFilter === 'none' ? !item.projectId : item.projectId === projectFilter)),
+  );
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
   const outOfModel = board.sources.filter((source) => source.modelStatus !== 'synced');
@@ -121,11 +133,21 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           <SyncStatus sources={board.sources} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {projectOptions.length > 1 && (
+            <Select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label="Filtrar por projeto" className="w-52!">
+              <option value="">Todos os projetos</option>
+              {projectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} ({option.count})
+                </option>
+              ))}
+            </Select>
+          )}
           <TextInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar tarefa, #número, @pessoa"
-            className="w-60"
+            className="w-60!"
           />
           <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
           <Link to="/board?tab=model" className="text-xs text-muted hover:text-accent" title="Colunas e campos valem para todos os workspaces">
@@ -183,4 +205,16 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
       {creating && <NewTaskForm workspaceId={workspace.id} board={board} onClose={() => setCreating(false)} />}
     </div>
   );
+}
+
+/** Projects that have tasks on the board, by name, plus tasks outside any project (drafts, other repositories). */
+function projectsOnBoard(board: Board, workspace: WorkspaceDetail) {
+  const counts = new Map<string, number>();
+  for (const item of board.items) counts.set(item.projectId ?? 'none', (counts.get(item.projectId ?? 'none') ?? 0) + 1);
+  const options = [...counts.entries()]
+    .filter(([value]) => value !== 'none')
+    .map(([value, count]) => ({ value, count, label: workspace.projects.find((project) => project.id === value)?.name ?? 'Projeto' }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const outside = counts.get('none');
+  return outside ? [...options, { value: 'none', count: outside, label: 'Sem projeto' }] : options;
 }
