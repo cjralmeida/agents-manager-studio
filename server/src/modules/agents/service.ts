@@ -472,6 +472,12 @@ export async function sendMessage(id: string, text: string) {
   if (agent.status === 'CANCELLED' || agent.status === 'FINALIZING') {
     throw new HttpError(409, 'Não é possível enviar mensagens para este agente agora.');
   }
+  // While a question waits, the agent is blocked on it and would never read a plain message (and the question could
+  // no longer be answered): the message becomes the answer to every open question.
+  const questions = agent.status === 'WAITING_INPUT' && Array.isArray(agent.pendingQuestion) ? (agent.pendingQuestion as { question?: string }[]) : [];
+  if (questions.length > 0) {
+    return answerQuestion(id, Object.fromEntries(questions.map((entry, index) => [entry.question ?? `Pergunta ${index + 1}`, text])));
+  }
 
   await prisma.agentInbox.create({ data: { agentId: id, kind: 'MESSAGE', payload: { text } } });
   await addEvent(id, 'user_message', { text });
