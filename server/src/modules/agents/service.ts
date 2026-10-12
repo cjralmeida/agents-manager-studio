@@ -609,7 +609,7 @@ async function finalizeInBackground(id: string) {
 
     // A reported failure (e.g. a tester that found problems) keeps the PR open: only approved work is merged.
     if (agent.autoMerge && (agent.result as { status?: string } | null)?.status !== 'failure') {
-      await mergeOwnPullRequest(agent, { provider, remote, token, prUrl, project: agent.project! });
+      await mergeOwnPullRequest(agent, { provider, remote, token, prUrl, project: agent.project!, ownWork: !continuesOpenPr });
       return;
     }
 
@@ -717,7 +717,15 @@ export async function publishAgentWork(agentId: string) {
  */
 async function mergeOwnPullRequest(
   agent: Agent,
-  input: { provider: 'GITHUB' | 'GITLAB'; remote: RemoteInfo; token: string; prUrl: string; project: { name: string; baseBranch: string | null } },
+  input: {
+    provider: 'GITHUB' | 'GITLAB';
+    remote: RemoteInfo;
+    token: string;
+    prUrl: string;
+    project: { name: string; baseBranch: string | null };
+    /** The PR/MR is the agent's own work (not one it continued, like a tester's, which the workflow sends back). */
+    ownWork: boolean;
+  },
 ) {
   const result = (agent.result ?? {}) as Prisma.JsonObject;
   const number = pullRequestNumber(input.prUrl);
@@ -733,6 +741,7 @@ async function mergeOwnPullRequest(
     await reportTaskMove(agent, 'done');
   } catch (error) {
     const message = `PR/MR aberto, mas o merge falhou: ${errorMessage(error)}`;
+    if (isConflictMessage(message) && input.ownWork && (await resolveOwnConflict(agent, input.prUrl))) return;
     await prisma.agent.update({
       where: { id: agent.id },
       data: {
@@ -747,6 +756,49 @@ async function mergeOwnPullRequest(
     await addEvent(agent.id, 'completed', { prUrl: input.prUrl });
     await reportTaskMove(agent, 'review');
   }
+}
+
+const MAX_CONFLICT_ROUNDS = 3;
+
+/**
+ * The agent's own PR/MR conflicts with work merged meanwhile (e.g. two art tasks that both touched a shared script):
+ * the base is merged into its copy and the agent goes back to work to resolve what git could not, then finishes again
+ * and the merge is retried. Returns false when that was not possible (or happened too many times), so the merge
+ * failure is reported as before.
+ */
+async function resolveOwnConflict(agent: Agent, prUrl: string) {
+  const result = (agent.result ?? {}) as Prisma.JsonObject;
+  const rounds = typeof result.conflictRounds === 'number' ? result.conflictRounds : 0;
+  if (rounds >= MAX_CONFLICT_ROUNDS) return false;
+  let conflicts: string[];
+  try {
+    conflicts = await mergeBaseIntoCopy(agent.id);
+  } catch {
+    return false;
+  }
+  const text = [
+    'O PR/MR não pôde ser mesclado: outras tarefas foram entregues na branch de destino enquanto isso e mexeram nos mesmos arquivos.',
+    '',
+    ...(conflicts.length > 0
+      ? [
+          'O Studio já trouxe a versão mais recente da branch de destino para a sua cópia (merge em andamento). Ficaram com conflito:',
+          ...conflicts.map((file) => `- ${file}`),
+          '',
+          'Junte as versões mantendo as duas mudanças (o que veio da branch de destino já foi entregue por outras tarefas): tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, e rode de novo o que gera os seus arquivos (build, testes ou scripts) para conferir que tudo continua certo.',
+        ]
+      : ['O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto. Rode de novo o build, os testes ou os scripts e corrija o que quebrar com a junção.']),
+    '',
+    'Depois, termine de novo; o Studio envia para o mesmo PR/MR e tenta o merge outra vez. Não precisa pedir aprovação de novo só por causa disso, a menos que o resultado visível mude.',
+  ].join('\n');
+  await prisma.agent.update({
+    where: { id: agent.id },
+    data: { prUrl, result: { ...result, conflictRounds: rounds + 1 }, status: 'RUNNING', errorMessage: null, finishedAt: null, lastActivityAt: new Date() },
+  });
+  await addEvent(agent.id, 'status', { message: 'O merge do PR/MR teve conflito: a branch de destino foi trazida para a cópia e o agente vai resolver.' });
+  await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text } } });
+  await addEvent(agent.id, 'user_message', { text });
+  wake(agent.id);
+  return true;
 }
 
 /**
