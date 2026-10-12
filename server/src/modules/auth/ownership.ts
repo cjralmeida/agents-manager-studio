@@ -14,6 +14,7 @@ const OWNER_OF: Record<string, (id: string) => Promise<string | null | undefined
   '/api/agent-accounts/:id': async (id) => (await prisma.agentAccount.findUnique({ where: { id }, select: { ownerId: true } }))?.ownerId,
   '/api/render-accounts/:id': async (id) => (await prisma.renderAccount.findUnique({ where: { id }, select: { ownerId: true } }))?.ownerId,
   '/api/clickup-accounts/:id': async (id) => (await prisma.clickupAccount.findUnique({ where: { id }, select: { ownerId: true } }))?.ownerId,
+  '/api/pixellab-accounts/:id': async (id) => (await prisma.pixellabAccount.findUnique({ where: { id }, select: { ownerId: true } }))?.ownerId,
   '/api/agent-profiles/:id': async (id) => (await prisma.agentProfile.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,
   '/api/agents/:id': async (id) => (await prisma.agent.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,
   '/api/assistant/conversations/:id': async (id) => (await prisma.agent.findUnique({ where: { id }, select: { workspace: { select: { ownerId: true } } } }))?.workspace.ownerId,

@@ -48,13 +48,14 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sessions        Session[]
-  settings        UserSetting[]
-  workspaces      Workspace[]
-  gitAccounts     GitAccount[]
-  agentAccounts   AgentAccount[]
-  renderAccounts  RenderAccount[]
-  clickupAccounts ClickupAccount[]
+  sessions         Session[]
+  settings         UserSetting[]
+  workspaces       Workspace[]
+  gitAccounts      GitAccount[]
+  agentAccounts    AgentAccount[]
+  renderAccounts   RenderAccount[]
+  clickupAccounts  ClickupAccount[]
+  pixellabAccounts PixellabAccount[]
 
   @@map("users")
 }
@@ -250,25 +251,29 @@ model AgentAccount {
 }
 
 model WorkspaceSettings {
-  workspaceId      String   @id @map("workspace_id") @db.Uuid
-  agentAccountId   String?  @map("agent_account_id") @db.Uuid
+  workspaceId       String   @id @map("workspace_id") @db.Uuid
+  agentAccountId    String?  @map("agent_account_id") @db.Uuid
   /// Render account used to deploy this workspace's projects.
-  renderAccountId  String?  @map("render_account_id") @db.Uuid
+  renderAccountId   String?  @map("render_account_id") @db.Uuid
   /// ClickUp account agents read tasks from (read-only tools).
-  clickupAccountId String?  @map("clickup_account_id") @db.Uuid
+  clickupAccountId  String?  @map("clickup_account_id") @db.Uuid
+  /// PixelLab account (pixel art generation) for agents with the "pixellab" tool.
+  pixellabAccountId String?  @map("pixellab_account_id") @db.Uuid
   /// Skill ids (path relative to the skills folder) enabled for agents of this workspace.
-  enabledSkillIds  String[] @default([]) @map("enabled_skill_ids")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  enabledSkillIds   String[] @default([]) @map("enabled_skill_ids")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  agentAccount   AgentAccount?   @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
-  renderAccount  RenderAccount?  @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
-  clickupAccount ClickupAccount? @relation(fields: [clickupAccountId], references: [id], onDelete: SetNull)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentAccount    AgentAccount?    @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
+  renderAccount   RenderAccount?   @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
+  clickupAccount  ClickupAccount?  @relation(fields: [clickupAccountId], references: [id], onDelete: SetNull)
+  pixellabAccount PixellabAccount? @relation(fields: [pixellabAccountId], references: [id], onDelete: SetNull)
 
   @@index([agentAccountId])
   @@index([renderAccountId])
   @@index([clickupAccountId])
+  @@index([pixellabAccountId])
   @@map("workspace_settings")
 }
 
@@ -849,4 +854,22 @@ model CapacityReview {
 
   @@index([workspaceId, createdAt])
   @@map("capacity_reviews")
+}
+
+/// PixelLab account (API token encrypted): agents with the "pixellab" tool get PixelLab's MCP tools through it.
+model PixellabAccount {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  ownerId        String   @map("owner_id") @db.Uuid
+  label          String
+  tokenEncrypted String   @map("token_encrypted")
+  tokenHint      String   @map("token_hint")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspaceSettings WorkspaceSettings[]
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId])
+  @@map("pixellab_accounts")
 }

@@ -9,6 +9,8 @@ export interface WorkspaceSettingsData {
   renderAccountId: string | null;
   /** ClickUp account agents read tasks from. */
   clickupAccountId: string | null;
+  /** PixelLab account for agents with the "pixellab" tool; undefined on update = unchanged. */
+  pixellabAccountId?: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }
@@ -55,6 +57,7 @@ async function readSettings(db: Tx, workspaceId: string): Promise<WorkspaceSetti
     agentAccountId: settings?.agentAccountId ?? null,
     renderAccountId: settings?.renderAccountId ?? null,
     clickupAccountId: settings?.clickupAccountId ?? null,
+    pixellabAccountId: settings?.pixellabAccountId ?? null,
     gitAccountIds: links.map((link) => link.gitAccountId),
     enabledSkillIds: settings?.enabledSkillIds ?? [],
   };
@@ -65,6 +68,7 @@ async function writeSettings(tx: Tx, workspaceId: string, settings: WorkspaceSet
     agentAccountId: settings.agentAccountId,
     renderAccountId: settings.renderAccountId,
     clickupAccountId: settings.clickupAccountId ?? null,
+    ...(settings.pixellabAccountId !== undefined && { pixellabAccountId: settings.pixellabAccountId }),
     enabledSkillIds: settings.enabledSkillIds,
   };
   await tx.workspaceSettings.upsert({ where: { workspaceId }, create: { workspaceId, ...data }, update: data });
@@ -82,6 +86,10 @@ async function validateSettings(ownerId: string, input: WorkspaceSettingsData) {
 
   if (input.clickupAccountId && !(await prisma.clickupAccount.count({ where: { id: input.clickupAccountId, ownerId } }))) {
     throw new HttpError(422, 'Conta do ClickUp não encontrada.');
+  }
+
+  if (input.pixellabAccountId && !(await prisma.pixellabAccount.count({ where: { id: input.pixellabAccountId, ownerId } }))) {
+    throw new HttpError(422, 'Conta do PixelLab não encontrada.');
   }
 
   if (input.renderAccountId && !(await prisma.renderAccount.count({ where: { id: input.renderAccountId, ownerId } }))) {

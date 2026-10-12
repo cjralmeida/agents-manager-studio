@@ -3,7 +3,7 @@ import type { AgentModel } from './agents';
 import { api } from './client';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
-export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects';
+export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects' | 'pixellab';
 
 /** A fixed agent of the workspace; each run of it is an Agent (execution). */
 export interface AgentProfile {
@@ -46,6 +46,7 @@ export const toolLabels: Record<ProfileTool, string> = {
   render: 'Render em homologação (variáveis, deploy e logs)',
   render_read: 'Homologação, só leitura (URLs e logs dos projetos)',
   clickup_read: 'ClickUp, só leitura (tarefas da conta do workspace)',
+  pixellab: 'PixelLab (gerar e animar pixel art; gasta créditos da conta do workspace)',
   projects: 'Projetos (criar repositório novo, com sua confirmação)',
 };
 

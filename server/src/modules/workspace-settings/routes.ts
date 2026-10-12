@@ -10,6 +10,8 @@ const settingsBody = z
     agentAccountId: z.uuid().nullable(),
     renderAccountId: z.uuid().nullable().default(null),
     clickupAccountId: z.uuid().nullable().default(null),
+    /** Left out = unchanged (screens that do not show it keep the account). */
+    pixellabAccountId: z.uuid().nullable().optional(),
     gitAccountIds: z.array(z.uuid()).max(20),
     enabledSkillIds: z.array(z.string().min(1).max(300)).max(200),
   })

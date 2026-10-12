@@ -5,6 +5,7 @@ export interface WorkspaceSettings {
   agentAccountId: string | null;
   renderAccountId: string | null;
   clickupAccountId: string | null;
+  pixellabAccountId?: string | null;
   gitAccountIds: string[];
   enabledSkillIds: string[];
 }

@@ -20,6 +20,11 @@ const RESUME_SESSION_ID = process.env.RESUME_SESSION_ID || undefined;
 const SYSTEM_PROMPT_APPEND = process.env.SYSTEM_PROMPT_APPEND || '';
 /** Studio tool groups enabled for this agent (e.g. "board,result"). */
 const STUDIO_TOOLS = (process.env.STUDIO_TOOLS || '').split(',').filter(Boolean);
+// PixelLab's hosted MCP server, for agents with the "pixellab" tool. The token stays in the runner: it is removed from
+// the environment before the agent's process starts.
+const PIXELLAB_TOKEN = process.env.PIXELLAB_TOKEN || '';
+const PIXELLAB_MCP_URL = process.env.PIXELLAB_MCP_URL || 'https://api.pixellab.ai/mcp';
+delete process.env.PIXELLAB_TOKEN;
 const WORKDIR = '/workspace';
 
 const log = (msg, extra = {}) => console.log(JSON.stringify({ time: new Date().toISOString(), msg, ...extra }));
@@ -230,7 +235,10 @@ async function main() {
       allowDangerouslySkipPermissions: true,
       canUseTool,
       systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM_PROMPT_APPEND },
-      ...(studio && { mcpServers: { studio } }),
+      mcpServers: {
+        ...(studio && { studio }),
+        ...(PIXELLAB_TOKEN && { pixellab: { type: 'http', url: PIXELLAB_MCP_URL, headers: { Authorization: `Bearer ${PIXELLAB_TOKEN}` } } }),
+      },
     },
   });
 

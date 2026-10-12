@@ -1,12 +1,14 @@
 import { useSearchParams } from 'react-router';
 import { useAgentAccounts, useGitAccounts } from '../api/accounts';
 import { useClickupAccounts } from '../api/clickup';
+import { usePixellabAccounts } from '../api/pixellab';
 import { useRenderAccounts } from '../api/render';
 import { Button } from '../components/Button';
 import { type ConnectorId, ConnectorIcon } from '../components/connectors/ConnectorIcon';
 import { RenderAccountsSection } from '../components/render/RenderAccountsSection';
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
 import { ClickupAccountsSection } from '../components/settings/ClickupAccountsSection';
+import { PixellabAccountsSection } from '../components/settings/PixellabAccountsSection';
 import { BoardTemplateSection } from '../components/settings/BoardTemplateSection';
 import { GitAccountsSection } from '../components/settings/GitAccountsSection';
 import { plural } from '../lib/time';
@@ -28,6 +30,7 @@ export function ConnectorsPage() {
   const gitAccounts = useGitAccounts();
   const renderAccounts = useRenderAccounts();
   const clickupAccounts = useClickupAccounts();
+  const pixellabAccounts = usePixellabAccounts();
 
   const gitStatus = (provider: 'GITHUB' | 'GITLAB') => {
     const accounts = gitAccounts.data?.filter((account) => account.provider === provider) ?? [];
@@ -42,6 +45,8 @@ export function ConnectorsPage() {
   const renderWorkspaces = renderAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
   const clickupCount = clickupAccounts.data?.length ?? 0;
   const clickupWorkspaces = clickupAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
+  const pixellabCount = pixellabAccounts.data?.length ?? 0;
+  const pixellabWorkspaces = pixellabAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
 
   const cards: ConnectorCardInfo[] = [
     {
@@ -62,6 +67,13 @@ export function ConnectorsPage() {
       purpose: 'Leitura de tarefas do ClickUp pelos agentes (ex.: migrar um backlog para o quadro). Nada é alterado lá.',
       connected: clickupCount > 0,
       status: clickupCount > 0 ? `${plural(clickupCount, 'conta', 'contas')} · em ${plural(clickupWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
+    },
+    {
+      id: 'pixellab',
+      name: 'PixelLab',
+      purpose: 'Geração e animação de pixel art pelos agentes de arte (gasta créditos da sua conta).',
+      connected: pixellabCount > 0,
+      status: pixellabCount > 0 ? `${plural(pixellabCount, 'conta', 'contas')} · em ${plural(pixellabWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
     },
     {
       id: 'render',
@@ -129,6 +141,7 @@ export function ConnectorsPage() {
           {current.id === 'gitlab' && <GitAccountsSection provider="GITLAB" />}
           {current.id === 'render' && <RenderAccountsSection />}
           {current.id === 'clickup' && <ClickupAccountsSection />}
+          {current.id === 'pixellab' && <PixellabAccountsSection />}
         </div>
       )}
     </section>

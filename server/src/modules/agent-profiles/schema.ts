@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_MODELS } from '../agents/service.js';
 
 /** Studio tool groups a workspace agent can use. */
-export const PROFILE_TOOLS = ['board', 'render', 'render_read', 'clickup_read', 'projects'] as const;
+export const PROFILE_TOOLS = ['board', 'render', 'render_read', 'clickup_read', 'projects', 'pixellab'] as const;
 
 /** A workspace agent as the form (and Órbi's proposals) describe it. */
 export const profileSchema = z

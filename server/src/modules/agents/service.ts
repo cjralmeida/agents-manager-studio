@@ -9,6 +9,7 @@ import { HttpError, notFound } from '../../lib/errors.js';
 import { toContainerPath, toHostPath } from '../../lib/paths.js';
 import { secrets } from '../../lib/secrets.js';
 import { moveAgentTask, taskForAgent } from '../boards/service.js';
+import { PIXELLAB_MCP_URL, pixellabTokenFor } from '../pixellab/service.js';
 import { pullRequestNumber } from '../render/status.js';
 import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
@@ -405,6 +406,12 @@ export async function mergeBaseIntoCopy(agentId: string) {
 
 // ---------------------------------------------------------------- container
 
+/** PixelLab token for the runner (it connects PixelLab's MCP server and removes the token from the agent's environment). */
+async function pixellabEnv(agent: Agent): Promise<Record<string, string>> {
+  const token = await pixellabTokenFor(agent.workspaceId, agent.tools);
+  return token ? { PIXELLAB_TOKEN: token, PIXELLAB_MCP_URL } : {};
+}
+
 const starting = new Set<string>();
 
 /** Makes sure a runner container is up for the agent, resuming its Claude session when there is one. */
@@ -434,7 +441,7 @@ export async function ensureContainer(agentId: string) {
       contextProjects: await contextProjectsOf(agent),
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
-      env: await testServicesEnv(agent.id, Boolean(agent.projectId)),
+      env: { ...(await testServicesEnv(agent.id, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
       variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
