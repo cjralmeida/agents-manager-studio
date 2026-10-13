@@ -18,7 +18,7 @@ interface TaskCardProps {
 export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false }: TaskCardProps) {
   const navigate = useNavigate();
   const waiting = agent?.status === 'WAITING_INPUT';
-  const working = inWorkflow || (agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status));
+  const working = !agent?.paused && (inWorkflow || (agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)));
   const values = board.fields.flatMap((field) => {
     const option = field.options.find((entry) => entry.id === item.fields[field.id]);
     return option ? [{ field, option }] : [];
@@ -78,7 +78,7 @@ export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false
 
       {(agent || item.assignees.length > 0) && (
         <div className="mt-2 flex items-center justify-between gap-2">
-          {agent ? <AgentStatusBadge status={agent.status} /> : <span />}
+          {agent ? <AgentStatusBadge status={agent.status} paused={agent.paused} /> : <span />}
           <span className="truncate text-[11px] text-muted">{item.assignees.map((login) => `@${login}`).join(' ')}</span>
         </div>
       )}

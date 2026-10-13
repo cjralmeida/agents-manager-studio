@@ -36,7 +36,7 @@ export function AgentList({ agents, showWorkspace = false, live }: AgentListProp
               className={`border-t border-border hover:bg-border/30 ${
                 agent.status === 'WAITING_INPUT'
                   ? 'bg-amber-400/5'
-                  : ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)
+                  : !agent.paused && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)
                     ? 'glow-working-row bg-purple-500/5'
                     : ''
               }`}
@@ -50,7 +50,7 @@ export function AgentList({ agents, showWorkspace = false, live }: AgentListProp
               {showWorkspace && <td className="px-4 py-2">{agent.workspaceName}</td>}
               <td className="px-4 py-2">{agent.projectName ?? <span className="text-muted">sem repositório</span>}</td>
               <td className="px-4 py-2">
-                <AgentStatusBadge status={agent.status} />
+                <AgentStatusBadge status={agent.status} paused={agent.paused} />
               </td>
               <td className="px-4 py-2">
                 <AgentUsageLine agent={agent} live={live?.get(agent.id)} />

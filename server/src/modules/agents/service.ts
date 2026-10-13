@@ -69,7 +69,7 @@ const STATUS_PRIORITY: Partial<Record<AgentStatus, number>> = { WAITING_INPUT: 0
 const agentInclude = {
   project: { select: { name: true } },
   workspace: { select: { name: true } },
-  workflowRun: { select: { workflow: { select: { name: true } } } },
+  workflowRun: { select: { workflow: { select: { name: true, isEnabled: true } } } },
   profile: { select: { name: true } },
 } satisfies Prisma.AgentInclude;
 
@@ -995,6 +995,8 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     taskUrl: agent.taskUrl,
     workflowRunId: agent.workflowRunId,
     workflowName: agent.workflowRun?.workflow.name ?? null,
+    /** Stopped while its workflow is switched off: shown as paused, not as working. */
+    paused: ['PREPARING', 'RUNNING'].includes(agent.status) && !agent.containerId && agent.workflowRun?.workflow.isEnabled === false,
     profileId: agent.profileId,
     profileName: agent.profile?.name ?? null,
     output: agent.output,

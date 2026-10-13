@@ -48,6 +48,8 @@ export interface Agent {
   baseBranch: string;
   branch: string;
   workdirHostPath: string;
+  /** Stopped while its workflow is switched off (shown as paused). */
+  paused?: boolean;
   /** The copy lives in the Docker volume; workdirHostPath is then where its code is copied on request. */
   copyInDocker: boolean;
   /** The copy's code is being copied to the Windows folder right now. */

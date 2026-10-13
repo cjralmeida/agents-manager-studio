@@ -60,7 +60,7 @@ export function AgentPage() {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-xl font-semibold">{data.title}</h1>
-            <AgentStatusBadge status={data.status} />
+            <AgentStatusBadge status={data.status} paused={data.paused} />
           </div>
           <p className="mt-1 text-sm text-muted">
             {data.profileName && <span className="text-gray-200">{data.profileName} · </span>}

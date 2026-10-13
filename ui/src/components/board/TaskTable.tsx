@@ -71,7 +71,7 @@ export function TaskTable<T extends BoardItem>({ board, items, agents, onOpen, l
                     </td>
                   );
                 })}
-                <td className="px-3 py-2">{agent ? <AgentStatusBadge status={agent.status} /> : <span className="text-muted">—</span>}</td>
+                <td className="px-3 py-2">{agent ? <AgentStatusBadge status={agent.status} paused={agent.paused} /> : <span className="text-muted">—</span>}</td>
                 <td className="px-3 py-2 whitespace-nowrap text-muted">{timeAgo(item.updatedAt)}</td>
               </tr>
             );

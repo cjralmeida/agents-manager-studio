@@ -131,7 +131,7 @@ export function TaskDrawer({ workspace, board, item, agent, onClose, inWorkflow 
               <Link to={`/agents/${agent.id}`} className="truncate text-sm font-medium hover:text-accent">
                 {agent.title}
               </Link>
-              <AgentStatusBadge status={agent.status} />
+              <AgentStatusBadge status={agent.status} paused={agent.paused} />
             </div>
           )}
           {blocked ? (

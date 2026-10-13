@@ -153,7 +153,8 @@ export function runTaskIds(run: Pick<RunWithDetails, 'taskItemId' | 'trigger' | 
 /** Tasks that active runs are working on, over the workspaces the user sees (to light their cards up). */
 export async function activeRunTasks(userId: string) {
   const runs = await prisma.workflowRun.findMany({
-    where: { status: 'RUNNING', workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
+    // A switched-off workflow is paused: its cards do not light up as worked on.
+    where: { status: 'RUNNING', workflow: { isEnabled: true }, workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
     include: { steps: { select: { lane: true } } },
   });
   return runs.flatMap((run) => runTaskIds(run as never).map((taskItemId) => ({ workspaceId: run.workspaceId, taskItemId, runId: run.id })));

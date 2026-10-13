@@ -14,7 +14,8 @@ export const agentStatusLabels: Record<AgentStatus, { label: string; tone: Tone 
   CANCELLED: { label: 'Cancelado', tone: 'neutral' },
 };
 
-export function AgentStatusBadge({ status }: { status: AgentStatus }) {
+export function AgentStatusBadge({ status, paused = false }: { status: AgentStatus; paused?: boolean }) {
+  if (paused) return <Badge tone="neutral">Pausado</Badge>;
   const { label, tone } = agentStatusLabels[status];
   return <Badge tone={tone}>{label}</Badge>;
 }
