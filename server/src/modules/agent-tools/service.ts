@@ -1,4 +1,5 @@
 import { prisma } from '../../db.js';
+import { parseRemote } from '../agents/remote.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import { boardContext, createTask, editItem, moveItem, setItemField } from '../boards/service.js';
@@ -82,6 +83,12 @@ async function mergeResult(agentId: string, patch: AgentResult) {
  * Board task from names (repository, column, "Campo": "opção"), as agents and Órbi write it.
  * Throws a message the agent can act on when a name does not exist.
  */
+/** "owner/repo" of a project's remote, or null without one. */
+async function projectRepository(projectId: string) {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { gitRemoteUrl: true } });
+  return project?.gitRemoteUrl ? (parseRemote(project.gitRemoteUrl)?.path ?? null) : null;
+}
+
 export async function prepareTaskByNames(workspaceId: string, args: Args) {
   const { snapshot, repos: allRepos } = await boardContext(workspaceId);
   // Only projects some source of the board holds can get tasks.
@@ -203,7 +210,13 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       if (existing) {
         return { ...describeItem(snapshot, existing), message: 'Já existe uma tarefa aberta com este título; nada foi criado. Use board_update_task para mudá-la.' };
       }
-      const { id } = await createTask(agent.workspaceId, await prepareTaskByNames(agent.workspaceId, args));
+      // Without a repository the task would be a loose draft on the board that no workflow ever picks: an agent
+      // working on a project creates it in that project's repository unless it names another one.
+      const ownRepository = !text(args.repository) && agent.projectId ? await projectRepository(agent.projectId) : null;
+      const prepared = await prepareTaskByNames(agent.workspaceId, ownRepository ? { ...args, repository: ownRepository } : args).catch((error: unknown) =>
+        ownRepository ? prepareTaskByNames(agent.workspaceId, args) : Promise.reject(error),
+      );
+      const { id } = await createTask(agent.workspaceId, prepared);
       const title = text(args.title, 250)!;
       const created = (await boardContext(agent.workspaceId)).snapshot.items.find((item) => item.id === id);
       const summary = created ? describeItem(snapshot, created) : { id, title, ref: null, url: null };
