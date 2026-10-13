@@ -96,7 +96,13 @@ export function createRenderClient(apiKey: string) {
     },
 
     async deploy(serviceId: string, commitId?: string): Promise<RenderDeploy> {
-      return toDeploy(await call('POST', `/services/${serviceId}/deploys`, { clearCache: 'do_not_clear', ...(commitId && { commitId }) }));
+      const created = await call('POST', `/services/${serviceId}/deploys`, { clearCache: 'do_not_clear', ...(commitId && { commitId }) });
+      if (created?.id) return toDeploy(created);
+      // 202 without a body: the deploy was queued behind one already running (e.g. the auto-deploy the merge just
+      // triggered). The newest deploy of the service is the one that will carry the commit.
+      const [latest] = await call<Json[]>('GET', `/services/${serviceId}/deploys?limit=1`);
+      if (!latest?.deploy?.id) throw new HttpError(502, 'O Render aceitou o deploy, mas não informou qual é.');
+      return toDeploy(latest.deploy);
     },
 
     async getDeploy(serviceId: string, deployId: string): Promise<RenderDeploy> {
