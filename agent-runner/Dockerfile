@@ -50,14 +50,36 @@ RUN mkdir -p /opt/playwright && cd /opt/playwright \
 # Versions are pinned by the image; agents must not update themselves.
 ENV DISABLE_AUTOUPDATER=1
 
+# Package caches shared by every agent (the Studio mounts one volume at /cache): the second agent of a project reuses
+# what the first downloaded instead of fetching it all again. pnpm and yarn come through corepack.
+ENV npm_config_cache=/cache/npm \
+  YARN_CACHE_FOLDER=/cache/yarn \
+  COREPACK_HOME=/cache/corepack \
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+  GOMODCACHE=/cache/go/mod \
+  GOCACHE=/cache/go/build \
+  PIP_CACHE_DIR=/cache/pip \
+  GRADLE_USER_HOME=/cache/gradle \
+  MAVEN_OPTS="-Daether.syncContext.named.factory=file-lock -Daether.syncContext.named.nameMapper=file-gav"
+RUN corepack enable \
+  && mkdir -p /cache && chown node:node /cache
+
 WORKDIR /opt/runner
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY spike ./spike
 COPY src ./src
 
+# The steps above ran as root and may have written to the cache folders (npm ci): the agents must own them.
+RUN chown -R node:node /cache
+
 # Claude Code refuses to skip permissions as root, and agents should not run as root anyway.
 USER node
 # Created as "node" so a volume mounted here inherits the right owner.
 RUN mkdir -p /home/node/.claude
+# Maven's local repository lives in the shared cache (mvn and ./mvnw both read this file).
+RUN mkdir -p /home/node/.m2 /cache/m2 /cache/npm /cache/pnpm-store /cache/corepack \
+  && echo '<settings><localRepository>/cache/m2</localRepository></settings>' > /home/node/.m2/settings.xml \
+  && mkdir -p /home/node/.config/pnpm && echo 'store-dir=/cache/pnpm-store' > /home/node/.config/pnpm/rc \
+  && corepack prepare pnpm@10 --activate
 WORKDIR /home/node

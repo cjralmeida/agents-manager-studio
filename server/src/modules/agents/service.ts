@@ -17,6 +17,7 @@ import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { assertPushBranch, assertWorkBase } from './branch-guard.js';
 import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
+import { removeBuildVolumes } from './build-dirs.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
@@ -547,6 +548,7 @@ export async function deleteAgent(id: string) {
 
   if (agent.containerId) await stopAgentContainer(agent.containerId);
   await removeVolume(agentVolumeName(id));
+  await removeBuildVolumes(id);
   await removeWorkdir(agent.workdir);
   await removeAgentVariables(id);
   await prisma.agent.delete({ where: { id } });

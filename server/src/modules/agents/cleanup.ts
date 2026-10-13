@@ -4,6 +4,7 @@ import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { freeAgentsDiskGb } from '../system/service.js';
 import { copyExpired, FINISHED } from './cleanup-policy.js';
+import { removeBuildVolumes } from './build-dirs.js';
 import { workdirPath } from './workdir.js';
 
 /**
@@ -29,6 +30,7 @@ export async function cleanFinishedCopies(log: FastifyBaseLogger) {
     if (!copyExpired({ ...agent, runStatus: agent.workflowRun?.status ?? null }, now, retention)) continue;
     try {
       await rm(workdirPath(agent.workdir), { recursive: true, force: true, maxRetries: 2 });
+      await removeBuildVolumes(agent.id);
       await prisma.agent.update({ where: { id: agent.id }, data: { workdirRemovedAt: new Date() } });
       removed++;
     } catch (err) {

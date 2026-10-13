@@ -194,6 +194,16 @@ export async function removeImage(name: string) {
   await call('DELETE', `/images/${encodeURIComponent(name)}`).catch(() => undefined);
 }
 
+export async function volumeExists(name: string) {
+  try {
+    await call('GET', `/volumes/${encodeURIComponent(name)}`);
+    return true;
+  } catch (error) {
+    if (error instanceof DockerError && error.statusCode === 404) return false;
+    throw error;
+  }
+}
+
 export async function removeVolume(name: string) {
   await call('DELETE', `/volumes/${encodeURIComponent(name)}?force=1`).catch(ignoreGone);
 }

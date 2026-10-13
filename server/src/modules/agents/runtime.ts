@@ -4,9 +4,13 @@ import { config } from '../../config.js';
 import { createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
 import { AGENT_VARIABLES_FILE, variablesHostDir } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
+import { buildDirBinds } from './build-dirs.js';
 import { workdirHostPath } from './workdir.js';
 
 export const AGENT_LABEL = 'agents-manager-studio.agent-id';
+
+/** Docker volume with the package caches every agent shares. */
+export const AGENT_CACHE_VOLUME = 'ams-agent-cache';
 
 export function agentVolumeName(agentId: string) {
   return `ams-agent-${agentId}`;
@@ -156,6 +160,7 @@ const contextMount = (name: string) => `/context/${name.replace(/[^\w.-]/g, '_')
 export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [] }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
+  const buildBinds = await buildDirBinds(agent).catch(() => []);
 
   const containerId = await createContainer({
     image: config.agentRunnerImage,
@@ -166,6 +171,10 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
     binds: [
       `${workdirHostPath(agent.workdir)}:/workspace`,
       `${agentVolumeName(agent.id)}:/home/node/.claude`,
+      // Package caches shared by all agents (npm, pnpm, Maven, Go, pip...): see the agent-runner Dockerfile.
+      `${AGENT_CACHE_VOLUME}:/cache`,
+      // node_modules, target... in Docker volumes: much faster than through the Windows folder (see build-dirs.ts).
+      ...buildBinds,
       ...skillBinds(skillIds),
       ...(variableNames ? [`${variablesHostDir(agent.id)}:/run/studio:ro`] : []),
       ...contextProjects.map((project) => `${project.hostPath}:${contextMount(project.name)}:ro`),
