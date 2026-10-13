@@ -30,7 +30,8 @@ export function git(cwd: string, args: string[], options: { env?: Record<string,
         cwd,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_GLOBAL: GLOBAL_CONFIG, ...options.env },
         maxBuffer: 50 * 1024 * 1024,
-        timeout: options.timeoutMs ?? 120_000,
+        // Local operations (add, merge, checkout) on a big copy can take minutes on a slow bind mount (Docker on Windows).
+        timeout: options.timeoutMs ?? 600_000,
       },
       (error, stdout, stderr) => {
         if (error) reject(new GitError(args, stderr || error.message));
