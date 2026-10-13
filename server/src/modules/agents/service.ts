@@ -572,6 +572,19 @@ export async function finalizeAgent(id: string) {
  * Finishing (commit, push, PR/MR, merge) runs inside the server, so a restart in the middle leaves the agent in
  * FINALIZING. Called at startup: every step can be repeated (nothing new to commit, same push, the PR is reused).
  */
+/** Error of an agent whose copy was being prepared when the Studio restarted; workflows start such a step again. */
+export const PREPARATION_INTERRUPTED = 'A preparação da cópia foi interrompida por um reinício do Studio.';
+
+/**
+ * The copy is prepared inside the server (clone, then the container starts): a restart in the middle leaves the agent
+ * in PREPARING for good. At startup, those agents (no container, no prepared copy) are failed so they can be relaunched.
+ */
+export async function failInterruptedPreparations() {
+  const agents = await prisma.agent.findMany({ where: { status: 'PREPARING', containerId: null, baseCommit: null }, select: { id: true } });
+  for (const { id } of agents) await markFailed(id, new Error(PREPARATION_INTERRUPTED));
+  return agents.length;
+}
+
 export async function resumeFinalizing() {
   const agents = await prisma.agent.findMany({ where: { status: 'FINALIZING' }, select: { id: true } });
   for (const { id } of agents) {

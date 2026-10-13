@@ -4,7 +4,7 @@ import { prisma } from '../../db.js';
 import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
-import { type AgentModel, cancelAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
+import { type AgentModel, PREPARATION_INTERRUPTED, cancelAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
@@ -637,7 +637,14 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
 
     for (const stepRun of run.steps.filter((entry) => entry.status === 'FAILED')) {
       const isLatest = latest(run.steps, stepRun.stepId, stepRun.lane)?.id === stepRun.id;
-      if (isLatest && (await sendBack(run, steps, stepRun))) run = await load();
+      if (!isLatest) continue;
+      // Cut by a Studio restart before the agent even started: not a problem of the work, the step simply starts again.
+      if (stepRun.error === PREPARATION_INTERRUPTED) {
+        await prisma.workflowStepRun.update({ where: { id: stepRun.id }, data: { status: 'RETRIED' } });
+        run = await load();
+        continue;
+      }
+      if (await sendBack(run, steps, stepRun)) run = await load();
     }
 
     const blocker = await workspaceBlocker(run.workspaceId);

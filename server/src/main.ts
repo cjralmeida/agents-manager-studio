@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
-import { resumeFinalizing } from './modules/agents/service.js';
+import { failInterruptedPreparations, resumeFinalizing } from './modules/agents/service.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startCapacityMonitor } from './modules/capacity/service.js';
 import { startAutoAnswer } from './modules/auto-answer/service.js';
@@ -52,6 +52,14 @@ try {
   if (resumed > 0) app.log.info({ resumed }, 'Resumed agents that were finishing');
 } catch (err) {
   app.log.error({ err }, 'Resuming finishing agents failed');
+}
+
+// Agents whose copy was being prepared when the server stopped; their workflow steps start again.
+try {
+  const interrupted = await failInterruptedPreparations();
+  if (interrupted > 0) app.log.info({ interrupted }, 'Failed agents whose preparation was interrupted');
+} catch (err) {
+  app.log.error({ err }, 'Failing interrupted preparations failed');
 }
 
 // Picks up folders created while the server was down; failures must not stop the server.
