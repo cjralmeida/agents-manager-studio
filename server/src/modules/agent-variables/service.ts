@@ -52,10 +52,15 @@ export async function writeAgentVariables(agent: { id: string; workspaceId: stri
   const variables = await prisma.agentVariable.findMany({ where: { workspaceId: agent.workspaceId }, orderBy: { key: 'asc' } });
   const dir = variablesDir(agent.id);
   const file = path.posix.join(dir, 'variables.env');
+  const json = path.posix.join(dir, 'variables.json');
+  const entries = variables.map((variable) => ({ key: variable.key, value: secrets.decrypt(variable.valueEncrypted) }));
   await mkdir(dir, { recursive: true });
-  await writeFile(file, renderEnvFile(variables.map((variable) => ({ key: variable.key, value: secrets.decrypt(variable.valueEncrypted) }))));
+  // The .env is shell syntax (values quoted); code that reads the file itself takes the JSON, with the plain values.
+  await writeFile(file, renderEnvFile(entries));
+  await writeFile(json, JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.key, entry.value])), null, 2));
   await chmod(dir, 0o700);
   await chmod(file, 0o600);
+  await chmod(json, 0o600);
   await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
   return variables.map((variable) => variable.key);
 }
