@@ -20,21 +20,27 @@ export async function cleanFinishedCopies(log: FastifyBaseLogger) {
   const free = await freeAgentsDiskGb();
   const diskShort = free !== null && free < config.minFreeDiskGb;
   const agents = await prisma.agent.findMany({
-    where: { status: { in: [...FINISHED] }, workdirRemovedAt: null, containerId: null },
-    select: { id: true, workdir: true, status: true, finishedAt: true, lastActivityAt: true, workflowRun: { select: { status: true } } },
+    where: { workdirRemovedAt: null },
+    select: { id: true, workdir: true, status: true, containerId: true, finishedAt: true, lastActivityAt: true, workflowRun: { select: { status: true } } },
   });
   const now = new Date();
   const retention = { completedHours: config.copyRetentionHours, failedDays: config.failedCopyRetentionDays, diskShort };
+  // Steps of a workflow run may share one copy: it goes only when every agent using it may let it go.
+  const byCopy = new Map<string, typeof agents>();
+  for (const agent of agents) byCopy.set(agent.workdir, [...(byCopy.get(agent.workdir) ?? []), agent]);
   let removed = 0;
-  for (const agent of agents) {
-    if (!copyExpired({ ...agent, runStatus: agent.workflowRun?.status ?? null }, now, retention)) continue;
+  for (const [workdir, users] of byCopy) {
+    const expired = users.every(
+      (agent) => !agent.containerId && (FINISHED as readonly string[]).includes(agent.status) && copyExpired({ ...agent, runStatus: agent.workflowRun?.status ?? null }, now, retention),
+    );
+    if (!expired) continue;
     try {
-      await rm(workdirPath(agent.workdir), { recursive: true, force: true, maxRetries: 2 });
-      await removeBuildVolumes(agent.id);
-      await prisma.agent.update({ where: { id: agent.id }, data: { workdirRemovedAt: new Date() } });
+      await rm(workdirPath(workdir), { recursive: true, force: true, maxRetries: 2 });
+      for (const agent of users) await removeBuildVolumes(agent);
+      await prisma.agent.updateMany({ where: { id: { in: users.map((agent) => agent.id) } }, data: { workdirRemovedAt: new Date() } });
       removed++;
     } catch (err) {
-      log.warn({ agentId: agent.id, err }, 'Could not delete the copy of a finished agent');
+      log.warn({ workdir, err }, 'Could not delete the copy of finished agents');
     }
   }
   if (removed > 0) log.info({ removed, diskShort, freeGb: free }, 'Deleted copies of finished agents');

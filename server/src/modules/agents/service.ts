@@ -229,6 +229,17 @@ export async function launchAgent(input: LaunchAgentInput) {
   }
   if (source?.workdirRemovedAt) throw copyRemoved();
   const cloneFrom = project ? (source ? workdirPath(source.workdir) : toContainerPath(workspace.name, project.name)) : null;
+  // The next step of the same workflow run (review, deploy, test) works in the previous step's copy itself once that
+  // agent is done: same branch, nothing to clone again (a big repository on a slow disk took ~10 minutes per step).
+  const shareCopy = Boolean(
+    source &&
+      input.workflowRunId &&
+      source.workflowRunId === input.workflowRunId &&
+      !source.containerId &&
+      !source.workdirRemovedAt &&
+      source.baseCommit &&
+      ['COMPLETED', 'READY_FOR_REVIEW', 'FAILED'].includes(source.status),
+  );
   // Continuing another agent: same branch and PR (its base stays the PR base).
   const baseBranch = !project
     ? '-'
@@ -267,7 +278,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       branch: project ? (source?.branch ?? input.pullRequest?.branch ?? `agent/${slug ? `${slug}-` : ''}${shortId}`) : '-',
       ...(source?.prUrl && { prUrl: source.prUrl }),
       ...(input.pullRequest && { prUrl: input.pullRequest.url }),
-      workdir: `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
+      workdir: shareCopy ? source!.workdir : `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
     },
@@ -277,7 +288,8 @@ export async function launchAgent(input: LaunchAgentInput) {
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
   // A copy continuing another agent keeps that agent's branch; fresh copies follow the remote base.
-  void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch, Boolean(input.pullRequest));
+  if (shareCopy) void startOnSharedCopy(agent.id, source!);
+  else void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch, Boolean(input.pullRequest));
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -285,6 +297,19 @@ export async function launchAgent(input: LaunchAgentInput) {
 async function reportTaskMove(agent: Agent, role: 'inProgress' | 'review' | 'done', assignSelf = false) {
   const message = await moveAgentTask(agent, role, { assignSelf });
   if (message) await addEvent(agent.id, 'status', { message });
+}
+
+/** Starts an agent in the copy of the previous step of its workflow run (see shareCopy in launchAgent). */
+async function startOnSharedCopy(agentId: string, source: Agent) {
+  try {
+    await prisma.agent.update({ where: { id: agentId }, data: { baseCommit: source.baseCommit } });
+    await addEvent(agentId, 'status', {
+      message: `Usando a cópia do passo anterior em ${workdirHostPath(source.workdir)} (branch ${source.branch}), sem clonar de novo.`,
+    });
+    await ensureContainer(agentId);
+  } catch (error) {
+    await markFailed(agentId, error);
+  }
 }
 
 async function prepareAndStart(
@@ -563,8 +588,12 @@ export async function deleteAgent(id: string) {
 
   if (agent.containerId) await stopAgentContainer(agent.containerId);
   await removeVolume(agentVolumeName(id));
-  await removeBuildVolumes(id);
-  await removeWorkdir(agent.workdir);
+  // Steps of a workflow run may share one copy: it goes with the last agent using it.
+  const sharing = await prisma.agent.count({ where: { workdir: agent.workdir, id: { not: id }, workdirRemovedAt: null } });
+  if (sharing === 0) {
+    await removeBuildVolumes(agent);
+    await removeWorkdir(agent.workdir);
+  }
   await removeAgentVariables(id);
   await prisma.agent.delete({ where: { id } });
 }
@@ -601,6 +630,13 @@ export const PREPARATION_INTERRUPTED = 'A preparação da cópia foi interrompid
 export async function failInterruptedPreparations() {
   const agents = await prisma.agent.findMany({ where: { status: 'PREPARING', containerId: null, baseCommit: null }, select: { id: true } });
   for (const { id } of agents) await markFailed(id, new Error(PREPARATION_INTERRUPTED));
+  return agents.length;
+}
+
+/** Agents whose copy was ready but whose container had not started when the server stopped: they start now. */
+export async function startPreparedAgents() {
+  const agents = await prisma.agent.findMany({ where: { status: 'PREPARING', containerId: null, baseCommit: { not: null } }, select: { id: true } });
+  for (const { id } of agents) wake(id);
   return agents.length;
 }
 

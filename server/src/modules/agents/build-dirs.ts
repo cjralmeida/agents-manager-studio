@@ -21,8 +21,9 @@ const BUILD_DIRS: { dir: string; markers: string[] }[] = [
 /** Same uid as the "node" user of the agent-runner image. */
 const AGENT_UID = '1000:1000';
 
-export function buildVolumeName(agentId: string, dir: string) {
-  return `ams-build-${agentId}-${dir.replace(/^\./, '')}`;
+/** Named after the copy (not the agent): steps of a workflow that share a copy also share what was installed. */
+export function buildVolumeName(workdir: string, dir: string) {
+  return `ams-build-${workdir.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${dir.replace(/^\./, '')}`;
 }
 
 function isEmptyOrMissing(dir: string) {
@@ -40,7 +41,7 @@ export async function buildDirBinds(agent: { id: string; workdir: string }) {
   for (const { dir, markers } of BUILD_DIRS) {
     if (!markers.some((marker) => existsSync(path.posix.join(root, marker)))) continue;
     if (!isEmptyOrMissing(path.posix.join(root, dir))) continue;
-    const name = buildVolumeName(agent.id, dir);
+    const name = buildVolumeName(agent.workdir, dir);
     // A new volume belongs to root; the agent runs as "node". Fixed once, when the volume is created.
     if (!(await volumeExists(name))) {
       const result = await runOnce({
@@ -57,6 +58,12 @@ export async function buildDirBinds(agent: { id: string; workdir: string }) {
   return binds;
 }
 
-export async function removeBuildVolumes(agentId: string) {
-  await Promise.all(BUILD_DIRS.map(({ dir }) => removeVolume(buildVolumeName(agentId, dir))));
+export async function removeBuildVolumes(agent: { id: string; workdir: string }) {
+  await Promise.all(
+    BUILD_DIRS.flatMap(({ dir }) => [
+      removeVolume(buildVolumeName(agent.workdir, dir)),
+      // Volumes made before they were named after the copy.
+      removeVolume(`ams-build-${agent.id}-${dir.replace(/^\./, '')}`),
+    ]),
+  );
 }

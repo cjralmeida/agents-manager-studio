@@ -625,6 +625,9 @@ async function syncReviewerCommits(targetAgentId: string, reviewerAgentId: strin
     prisma.agent.findUnique({ where: { id: reviewerAgentId } }),
   ]);
   if (!target || !reviewer || reviewer.branch !== target.branch || reviewer.projectId !== target.projectId || !target.projectId) return null;
+  if (reviewer.workdir === target.workdir) {
+    return `O passo de revisão trabalhou na sua própria cópia: os commits dele (testes e ajustes) já estão aí (branch ${target.branch}). Rode a suíte e corrija o código até tudo passar, sem alterar esses testes.`;
+  }
   try {
     await fastForwardFrom({ workdir: target.workdir, fromWorkdir: reviewer.workdir, branch: target.branch });
     return `Os commits do passo de revisão (testes e ajustes) já estão na sua cópia (branch ${target.branch}): rode a suíte e corrija o código até tudo passar, sem alterar esses testes.`;

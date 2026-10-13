@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { startAgentMonitor } from './modules/agents/monitor.js';
-import { failInterruptedPreparations, resumeFinalizing } from './modules/agents/service.js';
+import { failInterruptedPreparations, resumeFinalizing, startPreparedAgents } from './modules/agents/service.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startCapacityMonitor } from './modules/capacity/service.js';
 import { startAutoAnswer } from './modules/auto-answer/service.js';
@@ -79,6 +79,8 @@ try {
 try {
   const interrupted = await failInterruptedPreparations();
   if (interrupted > 0) app.log.info({ interrupted }, 'Failed agents whose preparation was interrupted');
+  const prepared = await startPreparedAgents();
+  if (prepared > 0) app.log.info({ prepared }, 'Started agents whose copy was ready before the restart');
 } catch (err) {
   app.log.error({ err }, 'Failing interrupted preparations failed');
 }
