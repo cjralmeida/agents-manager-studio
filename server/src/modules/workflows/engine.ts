@@ -53,8 +53,11 @@ function errorText(error: unknown) {
 
 // ---------------------------------------------------------------- guards
 
-/** Why no new agent should start in the workspace now (Claude plan or Docker at the limit), or null. */
-export async function workspaceBlocker(workspaceId: string): Promise<string | null> {
+/**
+ * Why no new agent should start in the workspace now (Claude plan or the computer at the limit), or null. With
+ * `resources: false` only the plan counts: used for the next step of a run already going (see advanceRun).
+ */
+export async function workspaceBlocker(workspaceId: string, options: { resources?: boolean } = {}): Promise<string | null> {
   const settings = await prisma.workspaceSettings.findUnique({ where: { workspaceId }, include: { agentAccount: true } });
   if (!settings?.agentAccount) return 'Parado: o workspace não tem conta Claude configurada.';
 
@@ -66,6 +69,7 @@ export async function workspaceBlocker(workspaceId: string): Promise<string | nu
   if (session && session.percent >= config.workflowPlanLimitPercent) {
     return `Pausado: janela de 5 horas do Claude em ${Math.round(session.percent)}% (limite ${config.workflowPlanLimitPercent}%).`;
   }
+  if (options.resources === false) return null;
   const usage = await getResourceUsage().catch(() => null);
   if (usage && usage.launchWarnings.length > 0) return `Aguardando: ${usage.launchWarnings.join(' ')}`;
   return null;
@@ -659,7 +663,10 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
       if (await sendBack(run, steps, stepRun)) run = await load();
     }
 
-    const blocker = await workspaceBlocker(run.workspaceId);
+    // A busy computer holds back new work only: the next step of a task already going replaces the agent that just
+    // finished, and finishing what started is what frees the computer. The Claude plan limit holds back everything.
+    const planBlocker = await workspaceBlocker(run.workspaceId, { resources: false });
+    const fullBlocker = planBlocker ?? (await workspaceBlocker(run.workspaceId));
     const fanOut = fanOutIndex(steps);
     const lastIndex = steps.length - 1;
     // Set inside walk(); typed as boolean so TypeScript does not narrow them to their initial value.
@@ -681,7 +688,8 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
           return;
         }
         // Not started yet (or sent back): start it, unless the workspace is at its limits.
-        if (blocker) {
+        const startsNewWork = index === 0 || index === fanOut;
+        if (startsNewWork ? fullBlocker : planBlocker) {
           pending = true;
           return;
         }
