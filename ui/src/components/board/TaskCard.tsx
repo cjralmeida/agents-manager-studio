@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import type { Agent } from '../../api/agents';
 import type { BoardItem, BoardLayout } from '../../api/boards';
 import { AgentStatusBadge } from '../agents/AgentStatusBadge';
@@ -15,6 +16,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false }: TaskCardProps) {
+  const navigate = useNavigate();
   const waiting = agent?.status === 'WAITING_INPUT';
   const working = inWorkflow || (agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status));
   const values = board.fields.flatMap((field) => {
@@ -50,6 +52,28 @@ export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false
             <OptionChip key={field.id} option={option} title={`${field.name}: ${option.name}`} />
           ))}
         </div>
+      )}
+
+      {waiting && agent && (
+        // Inside the card's button: a span acting as a link, so a click answers instead of opening the task.
+        <span
+          role="link"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/agents/${agent.id}#pergunta`);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.stopPropagation();
+            navigate(`/agents/${agent.id}#pergunta`);
+          }}
+          className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-400/50 bg-amber-500/10 px-2 py-1 text-xs text-amber-200 hover:bg-amber-500/20"
+          title={agent.title}
+        >
+          <span className="truncate">O agente precisa de você</span>
+          <span className="shrink-0 font-medium">Responder →</span>
+        </span>
       )}
 
       {(agent || item.assignees.length > 0) && (

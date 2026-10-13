@@ -1,13 +1,39 @@
 import type { Agent } from '../../api/agents';
 import type { BoardItem, BoardLayout } from '../../api/boards';
 
-/** The agent shown on a card: the first non-cancelled one (the server lists agents needing the user first). */
-export function agentsByItem(agents: Agent[]) {
+/** A task of a running workflow run (from /workflow-runs/active-tasks). */
+export interface RunTask {
+  workspaceId: string;
+  taskItemId: string;
+  runId: string;
+}
+
+/** Waiting for the user beats working, which beats anything else; a cancelled agent is shown last. */
+function rank(agent: Agent) {
+  if (agent.status === 'WAITING_INPUT') return 3;
+  if (['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)) return 2;
+  return agent.status === 'CANCELLED' ? 0 : 1;
+}
+
+/**
+ * The agent shown on each card, keyed by `key(workspaceId, taskItemId)`. A card gets the agent linked to its task and
+ * also the agents of the workflow run working on it (a review, a deploy or a test of several tasks is not linked to
+ * one task), so a question from any of them lights the card up. The server lists agents needing the user first.
+ */
+export function agentsByItem(agents: Agent[], runTasks: RunTask[] = [], key = (_workspaceId: string, taskItemId: string) => taskItemId) {
   const map = new Map<string, Agent>();
+  const offer = (mapKey: string, agent: Agent) => {
+    const current = map.get(mapKey);
+    if (!current || rank(agent) > rank(current)) map.set(mapKey, agent);
+  };
+  const tasksOfRun = new Map<string, RunTask[]>();
+  for (const task of runTasks) tasksOfRun.set(task.runId, [...(tasksOfRun.get(task.runId) ?? []), task]);
   for (const agent of agents) {
-    if (!agent.taskItemId) continue;
-    const current = map.get(agent.taskItemId);
-    if (!current || (current.status === 'CANCELLED' && agent.status !== 'CANCELLED')) map.set(agent.taskItemId, agent);
+    if (agent.taskItemId) offer(key(agent.workspaceId, agent.taskItemId), agent);
+    // Only live agents of a run count for its other tasks: a finished step must not cover the current one.
+    if (agent.workflowRunId && rank(agent) >= 2) {
+      for (const task of tasksOfRun.get(agent.workflowRunId) ?? []) offer(key(task.workspaceId, task.taskItemId), agent);
+    }
   }
   return map;
 }

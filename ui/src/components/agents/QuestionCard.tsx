@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type AgentQuestion, useAnswerAgent } from "../../api/agents";
 import { Button } from "../Button";
 import { ErrorText, TextInput } from "../form";
@@ -16,6 +16,11 @@ export function QuestionCard({
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
   const answer = useAnswerAgent(agentId);
+  // Opened from a task card ("Responder"): the page comes with #pergunta and scrolls straight to the question.
+  const sectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (window.location.hash === "#pergunta") sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   const toggle = (question: AgentQuestion, label: string) => {
     const current = selected[question.question] ?? [];
@@ -38,7 +43,11 @@ export function QuestionCard({
   const complete = questions.every((question) => answers[question.question]);
 
   return (
-    <section className="rounded-lg border border-amber-400/50 bg-amber-500/5 p-4 shadow-[0_0_24px_-6px_rgba(251,191,36,0.5)]">
+    <section
+      id="pergunta"
+      ref={sectionRef}
+      className="rounded-lg border border-amber-400/50 bg-amber-500/5 p-4 shadow-[0_0_24px_-6px_rgba(251,191,36,0.5)]"
+    >
       <h3 className="text-sm font-semibold text-amber-300">
         O agente precisa de você
       </h3>

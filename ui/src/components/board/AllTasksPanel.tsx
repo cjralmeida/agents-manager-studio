@@ -1,26 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { type Agent, useAgents } from '../../api/agents';
+import { useAgents } from '../../api/agents';
 import { type OverviewItem, useAllTasks, useMoveOverviewTask } from '../../api/boards';
 import { ErrorText, TextInput } from '../form';
 import { MultiSelect } from '../MultiSelect';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
-import { matchesSearch } from './boardUtils';
-import { useInActiveWorkflow } from '../../api/workflows';
+import { agentsByItem, matchesSearch } from './boardUtils';
+import { useActiveWorkflowTasks, useInActiveWorkflow } from '../../api/workflows';
 import { KanbanView } from './KanbanView';
 import { TaskTable } from './TaskTable';
 
-/** Agent of each task, keyed like the overview items ("<workspaceId>:<item id>"). */
-function agentsByOverviewItem(agents: Agent[]) {
-  const map = new Map<string, Agent>();
-  for (const agent of agents) {
-    if (!agent.taskItemId) continue;
-    const key = `${agent.workspaceId}:${agent.taskItemId}`;
-    const current = map.get(key);
-    if (!current || (current.status === 'CANCELLED' && agent.status !== 'CANCELLED')) map.set(key, agent);
-  }
-  return map;
-}
 
 /** Tasks of every workspace on the model's columns; a card opens on its workspace board. */
 export function AllTasksPanel() {
@@ -33,7 +22,12 @@ export function AllTasksPanel() {
   const [search, setSearch] = useState('');
   const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
 
-  const agentMap = useMemo(() => agentsByOverviewItem(agents.data ?? []), [agents.data]);
+  const activeTasks = useActiveWorkflowTasks();
+  // Keyed like the overview items ("<workspaceId>:<item id>").
+  const agentMap = useMemo(
+    () => agentsByItem(agents.data ?? [], activeTasks.data ?? [], (workspaceId, taskItemId) => `${workspaceId}:${taskItemId}`),
+    [agents.data, activeTasks.data],
+  );
 
   if (overview.error) return <ErrorText error={overview.error} />;
   if (!overview.data) return <p className="text-sm text-muted">Lendo os quadros dos workspaces...</p>;

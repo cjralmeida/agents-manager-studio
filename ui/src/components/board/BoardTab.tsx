@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAgents } from '../../api/agents';
-import { useInActiveWorkflow } from '../../api/workflows';
+import { useActiveWorkflowTasks, useInActiveWorkflow } from '../../api/workflows';
 import { type Board, type BoardSource, boardProviderLabels, useBoard, useBoardSources, useMoveTask, useRefreshBoard } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { timeAgo } from '../../lib/time';
@@ -92,7 +92,8 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
   const refresh = useRefreshBoard(workspace.id);
   const move = useMoveTask(workspace.id);
 
-  const agentMap = useMemo(() => agentsByItem(agents.data ?? []), [agents.data]);
+  const activeTasks = useActiveWorkflowTasks();
+  const agentMap = useMemo(() => agentsByItem(agents.data ?? [], activeTasks.data ?? []), [agents.data, activeTasks.data]);
   const inActiveWorkflow = useInActiveWorkflow();
   const inWorkflow = (item: { id: string }) => inActiveWorkflow(workspace.id, item.id);
   // Project filter, kept in the URL (?project=<id> or "none") so a filtered board can be linked and survives a reload.
