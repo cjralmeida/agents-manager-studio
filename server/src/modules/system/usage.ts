@@ -40,10 +40,11 @@ export interface UsageTotals {
 export function launchWarnings(totals: UsageTotals, limits: LaunchLimits) {
   const warnings: string[] = [];
   const who = totals.source === 'host' ? 'do computador' : 'usada pelo Studio';
-  if (totals.memoryPercent >= limits.memoryPercent) {
+  if (limits.memoryPercent < 100 && totals.memoryPercent >= limits.memoryPercent) {
     warnings.push(`Memória ${who} em ${Math.round(totals.memoryPercent)}% (limite ${limits.memoryPercent}%).`);
   }
-  if (totals.cpuPercent >= limits.cpuPercent) {
+  // A limit of 100% turns the check off (CPU measured on Windows sits at 100% whenever an agent compiles).
+  if (limits.cpuPercent < 100 && totals.cpuPercent >= limits.cpuPercent) {
     warnings.push(`CPU ${who} em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
   }
   if (typeof totals.freeDiskGb === 'number' && limits.minFreeDiskGb !== undefined && totals.freeDiskGb < limits.minFreeDiskGb) {
