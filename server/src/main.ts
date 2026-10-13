@@ -11,6 +11,20 @@ import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
 import { scanWorkspaces } from './modules/workspaces/service.js';
+import { prisma } from './db.js';
+
+async function waitForDatabase() {
+  for (let attempt = 1; attempt <= 60; attempt++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return;
+    } catch {
+      if (attempt === 1) app.log.info('Waiting for the database before the startup recovery');
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+  }
+  app.log.warn('Database still unavailable after 2 minutes; running the startup recovery anyway');
+}
 
 const app = await buildApp();
 const stopAgentMonitor = startAgentMonitor(app.log);
@@ -49,6 +63,9 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 await app.listen({ host: '0.0.0.0', port: config.port });
+
+// After a reboot the server may start before Postgres accepts connections; the startup recovery below needs the database.
+await waitForDatabase();
 
 // Agents whose commit, push or merge was cut by a restart finish now.
 try {
