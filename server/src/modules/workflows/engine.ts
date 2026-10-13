@@ -302,6 +302,16 @@ async function completeTask(run: RunWithSteps, lane: string) {
   await moveAgentTask({ workspaceId: run.workspaceId, taskItemId }, role);
 }
 
+const MAX_PREPARE_ATTEMPTS = 3;
+
+/** Whether the step's agent failed while its copy was being prepared, before doing any work. */
+async function failedBeforeCopy(stepRun: WorkflowStepRun) {
+  if (stepRun.error === PREPARATION_INTERRUPTED) return true;
+  if (!stepRun.agentId) return false;
+  const agent = await prisma.agent.findUnique({ where: { id: stepRun.agentId }, select: { status: true, baseCommit: true } });
+  return agent?.status === 'FAILED' && agent.baseCommit === null;
+}
+
 /** Updates a running step from its agent or deployment. */
 async function syncStep(stepRun: WorkflowStepRun) {
   const finish = (status: 'SUCCEEDED' | 'FAILED', output: StepOutput, error: string | null = null) =>
@@ -638,8 +648,9 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
     for (const stepRun of run.steps.filter((entry) => entry.status === 'FAILED')) {
       const isLatest = latest(run.steps, stepRun.stepId, stepRun.lane)?.id === stepRun.id;
       if (!isLatest) continue;
-      // Cut by a Studio restart before the agent even started: not a problem of the work, the step simply starts again.
-      if (stepRun.error === PREPARATION_INTERRUPTED) {
+      // The agent failed before it even had its copy (clone timed out on a slow disk, Studio restarted mid-way): not a
+      // problem of the work, so the step simply starts again, a few times.
+      if (stepRun.attempt < MAX_PREPARE_ATTEMPTS && (await failedBeforeCopy(stepRun))) {
         await prisma.workflowStepRun.update({ where: { id: stepRun.id }, data: { status: 'RETRIED' } });
         run = await load();
         continue;

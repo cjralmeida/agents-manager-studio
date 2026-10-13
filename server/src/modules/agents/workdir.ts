@@ -57,7 +57,7 @@ export async function prepareWorkdir(input: {
       '--no-tags',
       `file://${input.projectDir}`,
       dest,
-    ], { timeoutMs: 600_000 });
+    ], { timeoutMs: 1_800_000 }); // big repositories on a slow bind mount (Docker on Windows) take a while
   } catch (error) {
     if (error instanceof GitError && /not found in upstream|Remote branch .* not found/i.test(error.stderr)) {
       throw new HttpError(422, `A branch "${cloneBranch}" não existe no projeto.`);
