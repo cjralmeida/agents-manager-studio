@@ -1,4 +1,4 @@
-import type { Agent } from '../../api/agents';
+import { type Agent, isWorking } from '../../api/agents';
 import type { BoardItem, BoardLayout } from '../../api/boards';
 
 /** A task of a running workflow run (from /workflow-runs/active-tasks). */
@@ -11,7 +11,7 @@ export interface RunTask {
 /** Waiting for the user beats working, which beats anything else; a cancelled agent is shown last. */
 function rank(agent: Agent) {
   if (agent.status === 'WAITING_INPUT') return 3;
-  if (['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)) return 2;
+  if (isWorking(agent)) return 2;
   return agent.status === 'CANCELLED' ? 0 : 1;
 }
 

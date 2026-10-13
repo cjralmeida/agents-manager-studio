@@ -215,6 +215,11 @@ export function useAgentAction(id: string, action: 'finalize' | 'cancel') {
 }
 
 /** Copies the code of the agent's copy (in Docker) to the Windows folder, in the background. */
+/** Working right now: preparing, running or sending, and not paused with its switched-off workflow. */
+export function isWorking(agent: Pick<Agent, 'status' | 'paused'>) {
+  return !agent.paused && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status);
+}
+
 export function useMirrorAgent(id: string) {
   const invalidate = useInvalidateAgents();
   return useMutation({

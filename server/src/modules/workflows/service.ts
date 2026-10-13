@@ -55,7 +55,8 @@ async function toResponse(workflow: Workflow) {
     processId: workflow.processId,
     lastCheckedAt: workflow.lastCheckedAt,
     statusMessage: workflow.statusMessage,
-    runningRuns: running,
+    // A switched-off workflow's runs are paused, not running.
+    runningRuns: workflow.isEnabled ? running : 0,
     totalRuns: total,
     createdAt: workflow.createdAt,
   };
@@ -208,7 +209,7 @@ export async function listRuns(workspaceId: string, workflowId?: string) {
 /** Running workflow runs over the workspaces the user sees (general dashboard), with the workspace name. */
 export async function listActiveRuns(userId: string) {
   const runs = await prisma.workflowRun.findMany({
-    where: { status: 'RUNNING', workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
+    where: { status: 'RUNNING', workflow: { isEnabled: true }, workspaceId: { in: await visibleWorkspaceIdsOf(userId) } },
     include: runInclude,
     orderBy: { startedAt: 'desc' },
     take: 50,

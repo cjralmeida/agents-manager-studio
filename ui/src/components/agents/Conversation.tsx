@@ -35,7 +35,8 @@ export function Conversation({ agent, speaker = 'Agente', renderEvent, composer 
         ))}
       </ol>
 
-      {agent.status === 'RUNNING' && <p className="animate-pulse text-sm text-muted">{speaker === 'Agente' ? 'O agente está trabalhando...' : `${speaker} está pensando...`}</p>}
+      {agent.paused && <p className="text-sm text-muted">Pausado: o workflow deste agente está desligado. Ele continua de onde parou quando o workflow for religado.</p>}
+      {agent.status === 'RUNNING' && !agent.paused && <p className="animate-pulse text-sm text-muted">{speaker === 'Agente' ? 'O agente está trabalhando...' : `${speaker} está pensando...`}</p>}
       {agent.status === 'PREPARING' && <p className="animate-pulse text-sm text-muted">Preparando a cópia do projeto...</p>}
       {agent.status === 'WAITING_INPUT' && agent.pendingQuestion && (
         <QuestionCard agentId={agent.id} questions={agent.pendingQuestion} />

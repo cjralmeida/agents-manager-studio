@@ -226,7 +226,7 @@ function WorkflowCard({
 
   return (
     <article
-      className={`rounded-lg border bg-panel p-4 ${workflow.runningRuns > 0 ? 'glow-working' : 'border-border'} ${workflow.isEnabled ? '' : 'opacity-70'}`}
+      className={`rounded-lg border bg-panel p-4 ${workflow.isEnabled && workflow.runningRuns > 0 ? 'glow-working' : 'border-border'} ${workflow.isEnabled ? '' : 'opacity-70'}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

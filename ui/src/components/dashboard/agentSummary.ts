@@ -1,5 +1,5 @@
 import type { AgentProfile } from '../../api/agentProfiles';
-import type { Agent } from '../../api/agents';
+import { type Agent, isWorking } from '../../api/agents';
 import type { ContainerUsage } from '../../api/system';
 import { totalTokens } from '../../api/usage';
 
@@ -25,7 +25,6 @@ export interface AgentSummary {
   lastActivityAt: string | null;
 }
 
-const WORKING = ['PREPARING', 'RUNNING', 'FINALIZING'];
 /** Page key of the executions without a workspace agent. */
 export const UNASSIGNED_KEY = 'avulsos';
 
@@ -40,7 +39,7 @@ function summarize(
 ): AgentSummary {
   const sorted = [...executions].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
   const waiting = sorted.find((agent) => agent.status === 'WAITING_INPUT');
-  const working = sorted.filter((agent) => WORKING.includes(agent.status)).length;
+  const working = sorted.filter(isWorking).length;
   const latest = sorted[0];
   const state: AgentState = waiting
     ? 'waiting'

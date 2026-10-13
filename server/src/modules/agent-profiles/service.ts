@@ -23,7 +23,8 @@ const WORKING_STATUSES = ['PREPARING', 'RUNNING', 'WAITING_INPUT'] as const;
 
 async function toResponse(profile: AgentProfile & { workspace?: { name: string } }) {
   const [working, total] = await Promise.all([
-    prisma.agent.count({ where: { profileId: profile.id, status: { in: [...WORKING_STATUSES] } } }),
+    // An agent paused with its workflow (switched off, no container) is not working.
+    prisma.agent.count({ where: { profileId: profile.id, status: { in: [...WORKING_STATUSES] }, NOT: { containerId: null, workflowRun: { workflow: { isEnabled: false } } } } }),
     prisma.agent.count({ where: { profileId: profile.id } }),
   ]);
   return {

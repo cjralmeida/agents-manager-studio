@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { type Agent, useAgents } from '../api/agents';
+import { type Agent, isWorking, useAgents } from '../api/agents';
 import {
   type ScanSummary,
   type WorkspaceSummary,
@@ -87,7 +87,7 @@ export function WorkspacesPage() {
 function activityOf(agents: Agent[] | undefined, workspaceId: string) {
   const own = agents?.filter((agent) => agent.workspaceId === workspaceId) ?? [];
   return {
-    working: own.filter((agent) => ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)).length,
+    working: own.filter(isWorking).length,
     waiting: own.filter((agent) => agent.status === 'WAITING_INPUT').length,
   };
 }

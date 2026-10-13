@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAgent, useAgents } from '../api/agents';
+import { isWorking, useAgent, useAgents } from '../api/agents';
 import { NavLink, Outlet } from 'react-router';
 import { useMe } from '../api/auth';
 import { useCapacitySuggestions } from '../api/capacity';
@@ -27,7 +27,7 @@ export function Layout() {
   const workspaces = useWorkspaces();
   const agents = useAgents();
   /** Workspaces with an agent working / waiting for the user, to light up their menu entries. */
-  const activeIds = new Set(agents.data?.filter((agent) => ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)).map((agent) => agent.workspaceId));
+  const activeIds = new Set(agents.data?.filter(isWorking).map((agent) => agent.workspaceId));
   const waitingIds = new Set(agents.data?.filter((agent) => agent.status === 'WAITING_INPUT').map((agent) => agent.workspaceId));
   const items = me.data?.role === 'ADMIN' ? [...navItems, { to: '/users', label: 'Usuários', end: false }] : navItems;
   const activeWorkspaces = workspaces.data?.filter((workspace) => !workspace.isMissing) ?? [];

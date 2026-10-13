@@ -141,7 +141,7 @@ function AgentCard({ summary, showWorkspace, onRun }: { summary: AgentSummary; s
             {summary.latest.title}
           </span>
           {/* The card badge already says "Trabalhando"/"Aguardando"; the latest execution's badge only adds something new. */}
-          {!repeatsCardState(summary.state, summary.latest.status) && <AgentStatusBadge status={summary.latest.status} />}
+          {!repeatsCardState(summary.state, summary.latest.status) && <AgentStatusBadge status={summary.latest.status} paused={summary.latest.paused} />}
         </Link>
       ) : (
         <p className="mt-3 text-xs text-muted">Ainda não executou.</p>
