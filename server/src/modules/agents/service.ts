@@ -22,22 +22,7 @@ import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runt
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
-import {
-  NO_CHANGES_MESSAGE,
-  commitAndPush,
-  currentBranch,
-  checkoutRemoteBranch,
-  isMergedInto,
-  mergeRemoteBase,
-  returnToAgent,
-  prepareEmptyWorkdir,
-  prepareWorkdir,
-  removeWorkdir,
-  updateToRemoteBase,
-  workdirDiff,
-  workdirHostPath,
-  workdirPath,
-} from './workdir.js';
+import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, refreshContextProject, removeWorkdir, returnToAgent, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
@@ -452,6 +437,35 @@ export async function ensureContainer(agentId: string) {
   }
 }
 
+/** Context projects refreshed recently (project id -> time), so each container start does not fetch again. */
+const contextRefreshedAt = new Map<string, number>();
+const CONTEXT_REFRESH_MS = 10 * 60_000;
+
+/**
+ * Reference projects are read from the user's folder as it is: a folder left behind its remote would show agents old
+ * documentation. Before an agent starts, each one is brought up to date when that is safe (see refreshContextProject).
+ */
+async function refreshContextProjects(agent: Agent, projects: { id: string; name: string; gitRemoteUrl: string | null; baseBranch: string | null; isGitRepo: boolean; workspace: { name: string } }[]) {
+  for (const project of projects) {
+    if (!project.isGitRepo || !project.gitRemoteUrl) continue;
+    if (Date.now() - (contextRefreshedAt.get(project.id) ?? 0) < CONTEXT_REFRESH_MS) continue;
+    contextRefreshedAt.set(project.id, Date.now());
+    try {
+      const remote = parseRemote(project.gitRemoteUrl);
+      if (!remote) continue;
+      const dir = toContainerPath(project.workspace.name, project.name);
+      const branch = project.baseBranch ?? (await currentBranch(dir));
+      if (!branch) continue;
+      const account = await findGitAccount(agent.workspaceId, remote);
+      const token = secrets.decrypt(account.tokenEncrypted);
+      const updated = await refreshContextProject({ dir, branch, fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token), token });
+      if (updated) await addEvent(agent.id, 'status', { message: `Projeto de contexto ${project.name} atualizado com o remoto (${branch}, ${updated.slice(0, 7)}).` });
+    } catch {
+      // Without access or with a diverged folder the agent reads the folder as it is.
+    }
+  }
+}
+
 /** Reference projects of an execution, as mounted read-only at /context/<name>. */
 async function contextProjectsOf(agent: Agent) {
   if (agent.contextProjectIds.length === 0) return [];
@@ -460,6 +474,7 @@ async function contextProjectsOf(agent: Agent) {
     include: { workspace: { select: { name: true } } },
     orderBy: { name: 'asc' },
   });
+  await refreshContextProjects(agent, projects);
   return Promise.all(
     projects.map(async (project) => ({
       name: project.name,

@@ -81,6 +81,25 @@ export async function prepareWorkdir(input: {
  * there (e.g. by earlier workflow steps). The local project is kept when it has commits the remote lacks.
  * Returns the new base commit, or null when the copy stays as it was.
  */
+/**
+ * Brings a reference (context) project up to date with its remote, only when that is safe: the folder is on its base
+ * branch, has no local changes and its commits are all on the remote (fast-forward). Otherwise it is left as it is,
+ * since it may be the user's own work in progress. Returns the new commit, or null when nothing changed.
+ */
+export async function refreshContextProject(input: { dir: string; branch: string; fetchUrl: string; token: string }) {
+  // The folder is the user's Windows checkout (CRLF line endings, no exec bits): seen with Windows' own rules it is
+  // clean, and files checked out here get the same line endings the user's git would write.
+  const windows = ['-c', 'core.autocrlf=true', '-c', 'core.filemode=false'];
+  if ((await currentBranch(input.dir)) !== input.branch) return null;
+  if ((await git(input.dir, [...windows, 'status', '--porcelain'])).trim()) return null;
+  await git(input.dir, ['fetch', '--quiet', input.fetchUrl, input.branch], { timeoutMs: 300_000 });
+  const local = (await git(input.dir, ['rev-parse', 'HEAD'])).trim();
+  const remote = (await git(input.dir, ['rev-parse', 'FETCH_HEAD'])).trim();
+  if (local === remote) return null;
+  await git(input.dir, [...windows, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD']);
+  return remote;
+}
+
 export async function updateToRemoteBase(input: { workdir: string; baseBranch: string; fetchUrl: string; token: string }) {
   const dir = workdirPath(input.workdir);
   const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
