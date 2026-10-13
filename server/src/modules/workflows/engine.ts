@@ -650,7 +650,8 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
       if (!isLatest) continue;
       // The agent failed before it even had its copy (clone timed out on a slow disk, Studio restarted mid-way): not a
       // problem of the work, so the step simply starts again, a few times.
-      if (stepRun.attempt < MAX_PREPARE_ATTEMPTS && (await failedBeforeCopy(stepRun))) {
+      // A preparation cut by a Studio restart always starts again; other failures before the copy, a few times.
+      if (stepRun.error === PREPARATION_INTERRUPTED || (stepRun.attempt < MAX_PREPARE_ATTEMPTS && (await failedBeforeCopy(stepRun)))) {
         await prisma.workflowStepRun.update({ where: { id: stepRun.id }, data: { status: 'RETRIED' } });
         run = await load();
         continue;
