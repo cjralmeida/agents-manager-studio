@@ -106,7 +106,14 @@ export function AgentPage() {
 
       <div className="mt-2 space-y-1">
         <ErrorText error={finalize.error ?? cancel.error ?? remove.error} />
-        {data.errorMessage && <p className="text-sm text-red-300">{data.errorMessage}</p>}
+        {data.limitResumeAt ? (
+          <p className="text-sm text-amber-300">
+            Limite do plano Claude atingido: o agente retoma sozinho em{' '}
+            {new Date(data.limitResumeAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.
+          </p>
+        ) : (
+          data.errorMessage && <p className="text-sm text-red-300">{data.errorMessage}</p>
+        )}
       </div>
 
       <AgentResultPanel agent={data} />

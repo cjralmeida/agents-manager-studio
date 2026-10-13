@@ -5,6 +5,8 @@ import { type AgentStatus, Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { RateLimitInfo, UsageTotals } from '../usage/calc.js';
 import { recordAgentUsage, recordPlanUsageForAgent } from '../usage/service.js';
+import { isPlanLimitError } from '../plan-limit/limit.js';
+import { holdForPlanLimit } from '../plan-limit/service.js';
 import { hashSecret } from './runtime.js';
 import { addEvent, onAgentIdle } from './service.js';
 
@@ -93,6 +95,8 @@ export async function applyRunnerEvents(agentId: string, events: RunnerEvent[]) 
         const queued = await prisma.agentInbox.count({ where: { agentId, deliveredAt: null } });
         if (!locked && agent.status === 'RUNNING' && queued === 0) data.status = 'READY_FOR_REVIEW';
         data.errorMessage = event.data.isError ? event.data.text.slice(0, 500) : null;
+        // The plan limit is not a failure: the agent waits and the Studio resumes it when the limit resets.
+        if (!locked && event.data.isError && isPlanLimitError(event.data.text)) await holdForPlanLimit(agentId, event.data.text);
         break;
       }
       case 'usage':

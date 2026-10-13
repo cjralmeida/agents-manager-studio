@@ -16,6 +16,7 @@ import type { BoardItem, StatusMap } from '../boards/types.js';
 import { getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
+import { planBlockedUntil } from '../plan-limit/limit.js';
 import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
 import { type ReadyFeature, awaitingDecision, decisionPrompt, featurePrompt, featuresReady, pickTasks, taskPrompt } from './match.js';
 
@@ -58,8 +59,10 @@ export async function workspaceBlocker(workspaceId: string): Promise<string | nu
   if (!settings?.agentAccount) return 'Parado: o workspace não tem conta Claude configurada.';
 
   const plan = settings.agentAccount.planUsage as PlanUsage | null;
-  const session = plan?.windows.find((window) => window.key === 'five_hour');
-  if (plan?.status === 'rejected') return 'Pausado: limite do plano Claude atingido.';
+  // A usage report from before the window reset is stale: the limit no longer holds once its reset has passed.
+  const session = plan?.windows.find((window) => window.key === 'five_hour' && (!window.resetsAt || new Date(window.resetsAt) > new Date()));
+  const blockedUntil = planBlockedUntil(plan);
+  if (blockedUntil) return `Pausado: limite do plano Claude atingido; volta em ${blockedUntil.toLocaleString('pt-BR', { timeZone: process.env.TZ || 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.`;
   if (session && session.percent >= config.workflowPlanLimitPercent) {
     return `Pausado: janela de 5 horas do Claude em ${Math.round(session.percent)}% (limite ${config.workflowPlanLimitPercent}%).`;
   }
@@ -340,7 +343,8 @@ async function syncStep(stepRun: WorkflowStepRun) {
     return finish('FAILED', output, agent.errorMessage ?? (agent.status === 'CANCELLED' ? 'Agente cancelado.' : 'Agente falhou.'));
   }
   // An automatic conclusion that failed (e.g. push refused) leaves the agent in review with an error.
-  if (agent.status === 'READY_FOR_REVIEW' && agent.errorMessage && !agent.containerId) {
+  // An agent waiting for the plan limit to reset is still on its step: the Studio resumes it.
+  if (agent.status === 'READY_FOR_REVIEW' && agent.errorMessage && !agent.containerId && !agent.limitResumeAt) {
     return finish('FAILED', output, agent.errorMessage);
   }
 }

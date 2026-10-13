@@ -380,6 +380,8 @@ model Agent {
   /// Estimated cost (API list prices) of everything the agent used.
   costUsd           Float       @default(0) @map("cost_usd")
   errorMessage      String?     @map("error_message")
+  /// Set when a turn stopped on the Claude plan limit: the Studio resumes the agent at this time (see plan-limit).
+  limitResumeAt     DateTime?   @map("limit_resume_at")
   lastActivityAt    DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   finishedAt        DateTime?   @map("finished_at") @db.Timestamptz(3)
   createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)

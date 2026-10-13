@@ -68,6 +68,8 @@ export interface Agent {
   /** Tokens and estimated cost (API list prices) used by the agent. */
   usage: UsageTotals;
   errorMessage: string | null;
+  /** Stopped on the Claude plan limit: the Studio resumes the agent at this time. */
+  limitResumeAt: string | null;
   lastActivityAt: string;
   createdAt: string;
   finishedAt: string | null;

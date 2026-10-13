@@ -493,6 +493,7 @@ export async function sendMessage(id: string, text: string) {
     data: {
       status: agent.status === 'PREPARING' ? 'PREPARING' : 'RUNNING',
       errorMessage: null,
+      limitResumeAt: null,
       finishedAt: null,
       lastActivityAt: new Date(),
     },
@@ -849,6 +850,8 @@ export async function onAgentIdle(id: string) {
   if (!agent || agent.status !== 'READY_FOR_REVIEW' || !agent.autoConclude) return;
   // A turn that ended in error (e.g. the plan limit) is not a delivery: keep the work, the user resumes with a message.
   if (agent.errorMessage) {
+    // Stopped on the plan limit: the Studio resumes it by itself when the limit resets (see plan-limit).
+    if (agent.limitResumeAt) return;
     await addEvent(id, 'status', { message: 'Parou por erro (ex.: limite do plano). Nada foi enviado; mande uma mensagem (ex.: "continue") para retomar.' });
     return;
   }
@@ -910,6 +913,7 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     result: agent.result,
     usage: usageOf(agent),
     errorMessage: agent.errorMessage,
+    limitResumeAt: agent.limitResumeAt,
     lastActivityAt: agent.lastActivityAt,
     createdAt: agent.createdAt,
     finishedAt: agent.finishedAt,

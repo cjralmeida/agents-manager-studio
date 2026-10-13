@@ -5,6 +5,7 @@ import { resumeFinalizing } from './modules/agents/service.js';
 import { startTestServicesJanitor } from './modules/agents/test-services.js';
 import { startCapacityMonitor } from './modules/capacity/service.js';
 import { startAutoAnswer } from './modules/auto-answer/service.js';
+import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
@@ -31,6 +32,9 @@ app.addHook('onClose', async () => stopCapacityMonitor());
 // Automatic answers: a question left unanswered for the user's chosen time is answered with the recommended option.
 const stopAutoAnswer = startAutoAnswer(app.log);
 app.addHook('onClose', async () => stopAutoAnswer());
+// Plan limit: agents that stopped on the Claude plan limit resume by themselves when it resets.
+const stopPlanLimitResume = startPlanLimitResume(app.log);
+app.addHook('onClose', async () => stopPlanLimitResume());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {
