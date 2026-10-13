@@ -43,6 +43,34 @@ describe('capacitySignals', () => {
   });
 });
 
+describe('capacitySignals with the computer', () => {
+  const machine = (memoryPercent: number, cpuPercent: number, freeDiskGb: number | null = 50) => ({
+    memoryPercent,
+    cpuPercent,
+    freeDiskGb,
+    memoryLimit: 80,
+    cpuLimit: 85,
+    minFreeDiskGb: 10,
+    source: 'host' as const,
+  });
+
+  it('does not suggest more runs when the computer has no room', () => {
+    const busy = [load({ ready: [task('r#1')] })];
+    assert.deepEqual(capacitySignals(busy, plan(10), machine(75, 30)), []);
+    assert.deepEqual(capacitySignals(busy, plan(10), machine(40, 90)), []);
+    assert.equal(capacitySignals(busy, plan(10), machine(40, 30))[0]?.direction, 'up');
+  });
+
+  it('suggests fewer runs when memory or the disk are at the limit, not for a CPU spike', () => {
+    const [memory] = capacitySignals([load({ max: 3 })], plan(10), machine(88, 30));
+    assert.equal(memory?.direction, 'down');
+    assert.equal(memory?.to, 2);
+    assert.match(memory?.reason ?? '', /memória do computador em 88%/);
+    assert.match(capacitySignals([load({ max: 2 })], plan(10), machine(40, 30, 4))[0]?.reason ?? '', /disco/);
+    assert.deepEqual(capacitySignals([load({ max: 3 })], plan(10), machine(40, 100)), []);
+  });
+});
+
 describe('signalsSignature', () => {
   it('changes when other tasks become ready, not with the order', () => {
     const loads = [load({ ready: [task('r#1'), task('r#2')] })];

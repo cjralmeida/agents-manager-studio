@@ -26,6 +26,19 @@ export interface PlanState {
   limitPercent: number;
 }
 
+/** The computer the agents run on (Windows helper numbers, or the Docker VM when the helper is off). */
+export interface MachineState {
+  memoryPercent: number;
+  cpuPercent: number;
+  /** Free space (GB) on the disk of the agent copies, or null when unknown. */
+  freeDiskGb: number | null;
+  /** The launch limits (AGENT_LAUNCH_*): at these values workflows stop starting agents. */
+  memoryLimit: number;
+  cpuLimit: number;
+  minFreeDiskGb: number;
+  source: 'host' | 'docker';
+}
+
 export interface CapacitySignal {
   workflowId: string;
   workflowName: string;
@@ -43,17 +56,42 @@ const DOWN_MARGIN = 10;
 const WEEK_HIGH = 90;
 const MAX_RUNS = 5;
 
-export function capacitySignals(loads: WorkflowLoad[], plan: PlanState): CapacitySignal[] {
+/** Below this distance (points) from the memory or CPU limit, more runs at once are not suggested. */
+const MACHINE_HEADROOM = 10;
+
+/** Why the computer cannot take more agents: at its limits (suggest fewer) or just without room (suggest no more). */
+export function machinePressure(machine: MachineState | null) {
+  if (!machine) return { overloaded: null, busy: false };
+  const where = machine.source === 'host' ? 'do computador' : 'do Docker';
+  const diskShort = machine.freeDiskGb !== null && machine.freeDiskGb < machine.minFreeDiskGb;
+  // CPU spikes a lot between samples: it only holds back new runs; memory and disk also ask for fewer.
+  const overloaded =
+    machine.memoryPercent >= machine.memoryLimit
+      ? `memória ${where} em ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%)`
+      : diskShort
+        ? `disco das cópias com ${machine.freeDiskGb!.toFixed(1)} GB livres (mínimo ${machine.minFreeDiskGb} GB)`
+        : null;
+  const busy =
+    overloaded !== null ||
+    machine.memoryPercent >= machine.memoryLimit - MACHINE_HEADROOM ||
+    machine.cpuPercent >= machine.cpuLimit - MACHINE_HEADROOM;
+  return { overloaded, busy };
+}
+
+export function capacitySignals(loads: WorkflowLoad[], plan: PlanState, machine: MachineState | null = null): CapacitySignal[] {
   const session = plan.sessionPercent;
   const nearLimit = session !== null && session >= plan.limitPercent - DOWN_MARGIN;
   const weekHigh = plan.weekPercent !== null && plan.weekPercent >= WEEK_HIGH;
-  const roomForMore = !nearLimit && !weekHigh && (session === null || session < plan.limitPercent - UP_HEADROOM);
+  const pressure = machinePressure(machine);
+  const roomForMore = !nearLimit && !weekHigh && !pressure.busy && (session === null || session < plan.limitPercent - UP_HEADROOM);
 
   const signals: CapacitySignal[] = [];
   for (const load of loads) {
     const base = { workflowId: load.workflowId, workflowName: load.workflowName, from: load.max };
     if (load.max > 1 && load.recentConflicts > 0) {
       signals.push({ ...base, direction: 'down', to: load.max - 1, reason: `${load.recentConflicts} execução(ões) com conflito de merge nas últimas 24 h` });
+    } else if (load.max > 1 && pressure.overloaded) {
+      signals.push({ ...base, direction: 'down', to: load.max - 1, reason: pressure.overloaded });
     } else if (load.max > 1 && (nearLimit || weekHigh)) {
       signals.push({
         ...base,

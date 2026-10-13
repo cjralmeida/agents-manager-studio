@@ -9,7 +9,8 @@ import type { BoardItem } from '../boards/types.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { type BoardTaskState, boardTaskQueue, boardTaskState, parseTrigger, workspaceBlocker } from '../workflows/engine.js';
-import { type CapacitySignal, type PlanState, type WorkflowLoad, capacitySignals, signalsSignature } from './signals.js';
+import { getResourceUsage } from '../system/service.js';
+import { type CapacitySignal, type MachineState, type PlanState, type WorkflowLoad, capacitySignals, signalsSignature } from './signals.js';
 
 /** How often the workspaces are looked at (plain rules, no AI). */
 const TICK_MS = 3 * 60_000;
@@ -27,6 +28,24 @@ async function planState(workspaceId: string): Promise<PlanState> {
   const plan = settings?.agentAccount?.planUsage as PlanUsage | null | undefined;
   const percent = (key: string) => plan?.windows.find((window) => window.key === key)?.percent ?? null;
   return { sessionPercent: percent('five_hour'), weekPercent: percent('seven_day'), limitPercent: config.workflowPlanLimitPercent };
+}
+
+/** The computer the agents run on: the Windows numbers when the helper measures them, else the Docker VM. */
+async function machineState(): Promise<MachineState | null> {
+  const usage = await getResourceUsage().catch(() => null);
+  if (!usage) return null;
+  const limits = { memoryLimit: config.launchMemoryPercent, cpuLimit: config.launchCpuPercent, minFreeDiskGb: config.minFreeDiskGb };
+  if (usage.host) {
+    const agentsDisk = usage.host.disks.find((disk) => disk.agents);
+    return {
+      ...limits,
+      memoryPercent: usage.host.memoryPercent,
+      cpuPercent: usage.host.cpuPercent,
+      freeDiskGb: agentsDisk ? agentsDisk.free / 1024 ** 3 : null,
+      source: 'host',
+    };
+  }
+  return { ...limits, memoryPercent: usage.totals.memoryPercent, cpuPercent: usage.totals.cpuPercent, freeDiskGb: null, source: 'docker' };
 }
 
 /** The board workflows of the workspace with their queue: busy slots, tasks ready, tasks waiting. */
@@ -108,7 +127,17 @@ async function averageRunCost(workflowId: string) {
   return Math.round(((sum._sum.costUsd ?? 0) / runs.length) * 100) / 100;
 }
 
-function prompt(signals: CapacitySignal[], plan: PlanState, details: unknown[]) {
+function machineText(machine: MachineState | null) {
+  if (!machine) return 'desconhecido';
+  const source = machine.source === 'host' ? 'Windows, medido pelo studio.ps1' : 'só a VM do Docker: o helper do Windows não está rodando';
+  const disk = machine.freeDiskGb === null ? 'desconhecido' : `${machine.freeDiskGb.toFixed(1)} GB livres`;
+  return (
+    `(${source}) memória: ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%) · ` +
+    `CPU: ${Math.round(machine.cpuPercent)}% (limite ${machine.cpuLimit}%) · disco das cópias: ${disk} (mínimo ${machine.minFreeDiskGb} GB)`
+  );
+}
+
+function prompt(signals: CapacitySignal[], plan: PlanState, details: unknown[], machine: MachineState | null) {
   const percent = (value: number | null) => (value === null ? 'desconhecido' : `${Math.round(value)}%`);
   return `Você está agindo como o Gestor de Capacidade do Studio. Esta conversa foi aberta pelo Studio (não pelo usuário) porque as regras de capacidade mudaram de sinal.
 
@@ -121,11 +150,15 @@ COMO DECIDIR
 - Subir só ajuda se as tarefas puderem andar em paralelo sem mexer nos mesmos arquivos: cada agente trabalha na própria branch, sem sincronizar com a principal antes do PR, então duas tarefas no mesmo código geram conflito de merge e a execução falha. Compare as tarefas liberadas entre si e com os arquivos que os agentes em execução já tocaram. Se precisar, leia a tarefa inteira com board_get_task.
 - Uma tarefa que depende de outra em andamento não fica liberada; não conte com ela.
 - Cada execução a mais consome o plano Claude no mesmo ritmo. Use o consumo da janela de 5 h, a semanal e o custo médio por execução para ver se o plano aguenta até a janela reiniciar; os workflows pausam sozinhos em ${plan.limitPercent}%.
-- Descer é seguro: proponha quando o plano estiver perto do limite ou quando houve conflito de merge.
+- Cada execução a mais também pesa no computador (CPU, memória e o disco das cópias, que é um HD mecânico): com o computador perto dos limites, não suba; com memória ou disco no limite, desça. A CPU oscila muito entre amostras: sozinha, ela só impede subir.
+- Descer é seguro: proponha quando o plano ou o computador estiverem perto do limite ou quando houve conflito de merge.
 - O número sugerido pelas regras é só um ponto de partida (ex.: subir para 2 em vez de 3 se só duas tarefas são independentes).
 
 PLANO CLAUDE
 janela de 5 h: ${percent(plan.sessionPercent)} · semanal: ${percent(plan.weekPercent)} · pausa dos workflows em ${plan.limitPercent}%
+
+COMPUTADOR
+${machineText(machine)}
 
 SINAIS E DADOS
 ${JSON.stringify(details, null, 2)}`;
@@ -138,9 +171,9 @@ async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
   );
   if (!hasBoardWorkflow) return;
 
-  const [state, plan] = await Promise.all([boardTaskState(workspaceId), planState(workspaceId)]);
+  const [state, plan, machine] = await Promise.all([boardTaskState(workspaceId), planState(workspaceId), machineState()]);
   const loads = await workflowLoads(workspaceId, state);
-  const signals = capacitySignals(loads, plan);
+  const signals = capacitySignals(loads, plan, machine);
   const signature = signalsSignature(signals, loads);
 
   const last = await prisma.capacityReview.findFirst({ where: { workspaceId }, orderBy: { createdAt: 'desc' } });
@@ -185,7 +218,7 @@ async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
   const names = [...new Set(signals.map((signal) => `${signal.workflowName} ${signal.direction === 'up' ? '↑' : '↓'}`))].join(', ');
   const agent = await launchAgent({
     assistantWorkspaceId: workspaceId,
-    prompt: prompt(signals, plan, details),
+    prompt: prompt(signals, plan, details, machine),
     title: `Gestor de Capacidade: ${names}`.slice(0, 120),
     model: 'sonnet',
     confirmHighUsage: true,
