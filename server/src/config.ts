@@ -28,6 +28,9 @@ const envSchema = z.object({
   AGENT_RUNNER_IMAGE: z.string().min(1).default('agents-manager-studio-agent-runner:latest'),
   // Folder with one isolated clone per agent: inside this container and the same folder on the host.
   AGENTS_DIR: z.string().min(1).default('/data/agents'),
+  // New agent copies live in this Docker volume (fast: no Windows bridge); AGENTS_DIR keeps the code mirror for Windows.
+  AGENTS_VOLUME: z.string().min(1).default('ams-agents'),
+  AGENTS_VOLUME_DIR: z.string().min(1).default('/data/agents-vol'),
   AGENTS_HOST_DIR: z.string().min(1),
   // Host path of the skills folder, mounted into agent containers.
   CLAUDE_SKILLS_HOST_DIR: z.string().min(1),
@@ -78,6 +81,8 @@ function loadConfig() {
     skillsDir: env.SKILLS_DIR,
     agentRunnerImage: env.AGENT_RUNNER_IMAGE,
     agentsDir: env.AGENTS_DIR,
+    agentsVolume: env.AGENTS_VOLUME,
+    agentsVolumeDir: env.AGENTS_VOLUME_DIR,
     // Docker on Windows accepts "D:/path" binds; backslashes are normalized.
     agentsHostDir: env.AGENTS_HOST_DIR.replaceAll('\\', '/'),
     skillsHostDir: env.CLAUDE_SKILLS_HOST_DIR.replaceAll('\\', '/'),

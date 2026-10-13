@@ -5,7 +5,7 @@ import { prisma } from '../../db.js';
 import { freeAgentsDiskGb } from '../system/service.js';
 import { copyExpired, FINISHED } from './cleanup-policy.js';
 import { removeBuildVolumes } from './build-dirs.js';
-import { workdirPath } from './workdir.js';
+import { isVolumeCopy, mirrorPath, workdirPath } from './workdir.js';
 
 /**
  * Copies of finished agents are deleted after a while: each copy holds the whole project (with node_modules), and
@@ -36,6 +36,7 @@ export async function cleanFinishedCopies(log: FastifyBaseLogger) {
     if (!expired) continue;
     try {
       await rm(workdirPath(workdir), { recursive: true, force: true, maxRetries: 2 });
+      if (isVolumeCopy(workdir)) await rm(mirrorPath(workdir), { recursive: true, force: true, maxRetries: 2 });
       for (const agent of users) await removeBuildVolumes(agent);
       await prisma.agent.updateMany({ where: { id: { in: users.map((agent) => agent.id) } }, data: { workdirRemovedAt: new Date() } });
       removed++;

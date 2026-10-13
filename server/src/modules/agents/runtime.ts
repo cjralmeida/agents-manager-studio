@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../../config.js';
-import { createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
+import { type ContainerMount, createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
 import { AGENT_VARIABLES_FILE, variablesHostDir } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
 import { buildDirBinds } from './build-dirs.js';
-import { workdirHostPath } from './workdir.js';
+import { workdirMount } from './workdir.js';
 
 export const AGENT_LABEL = 'agents-manager-studio.agent-id';
 
@@ -147,6 +147,8 @@ export interface StartAgentInput {
 export interface ContextProject {
   name: string;
   hostPath: string;
+  /** Folder inside the agents volume holding the project's checkout (null: mounted from the Windows folder). */
+  volumeSubpath?: string | null;
   /** Branch checked out in the folder (null: not a git repository). */
   branch: string | null;
   /** The project's base branch, when set (warned about when the folder is on another one). */
@@ -168,8 +170,15 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
     cmd: ['node', '/opt/runner/src/runner.mjs'],
     network: config.agentNetwork,
     labels: { [AGENT_LABEL]: agent.id },
+    mounts: [
+      workdirMount(agent.workdir, '/workspace'),
+      ...contextProjects.flatMap((project): ContainerMount[] =>
+        project.volumeSubpath
+          ? [{ Type: 'volume', Source: config.agentsVolume, Target: contextMount(project.name), ReadOnly: true, VolumeOptions: { Subpath: project.volumeSubpath } }]
+          : [],
+      ),
+    ],
     binds: [
-      `${workdirHostPath(agent.workdir)}:/workspace`,
       `${agentVolumeName(agent.id)}:/home/node/.claude`,
       // Package caches shared by all agents (npm, pnpm, Maven, Go, pip...): see the agent-runner Dockerfile.
       `${AGENT_CACHE_VOLUME}:/cache`,
@@ -177,7 +186,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       ...buildBinds,
       ...skillBinds(skillIds),
       ...(variableNames ? [`${variablesHostDir(agent.id)}:/run/studio:ro`] : []),
-      ...contextProjects.map((project) => `${project.hostPath}:${contextMount(project.name)}:ro`),
+      ...contextProjects.filter((project) => !project.volumeSubpath).map((project) => `${project.hostPath}:${contextMount(project.name)}:ro`),
     ],
     env: {
       AGENT_ID: agent.id,

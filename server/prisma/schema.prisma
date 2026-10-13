@@ -384,6 +384,8 @@ model Agent {
   limitResumeAt     DateTime?   @map("limit_resume_at")
   /// Set when the Studio deleted the agent's copy to free disk (see agents/cleanup.ts); it can no longer continue.
   workdirRemovedAt  DateTime?   @map("workdir_removed_at")
+  /// Last time the code of this (volume) copy was mirrored to the Windows folder (see agents/mirror.ts).
+  mirroredAt        DateTime?   @map("mirrored_at")
   lastActivityAt    DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   finishedAt        DateTime?   @map("finished_at") @db.Timestamptz(3)
   createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)

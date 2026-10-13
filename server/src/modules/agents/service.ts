@@ -18,11 +18,12 @@ import { assertPushBranch, assertWorkBase } from './branch-guard.js';
 import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { removeBuildVolumes } from './build-dirs.js';
+import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
-import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, refreshContextProject, removeWorkdir, returnToAgent, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
+import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
@@ -278,7 +279,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       branch: project ? (source?.branch ?? input.pullRequest?.branch ?? `agent/${slug ? `${slug}-` : ''}${shortId}`) : '-',
       ...(source?.prUrl && { prUrl: source.prUrl }),
       ...(input.pullRequest && { prUrl: input.pullRequest.url }),
-      workdir: shareCopy ? source!.workdir : `${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
+      workdir: shareCopy ? source!.workdir : `${VOLUME_PREFIX}${workspace.name}/${isAssistant ? 'orbi' : (project?.name ?? 'sem-repositorio')}-${shortId}`,
       ...(task && { taskItemId: task.item.id, taskRef: task.taskRef, taskUrl: task.item.url }),
       ...(input.workflowRunId && { workflowRunId: input.workflowRunId }),
     },
@@ -330,8 +331,21 @@ async function prepareAndStart(
       await ensureContainer(agentId);
       return;
     }
+    // A fresh copy clones from the project's mirror in the Docker volume (refreshed from the remote), not from the
+    // user's Windows folder; without a remote or an account, the folder is the source as before.
+    let source = projectDir;
+    if (followRemoteBase && agent.projectId) {
+      const project = await prisma.project.findUnique({ where: { id: agent.projectId }, include: { workspace: { select: { name: true } } } });
+      const access = project ? await remoteAccess(agent.workspaceId, project.gitRemoteUrl) : null;
+      if (project && access) {
+        source = await refreshMirror(project.workspace.name, project.name, agent.baseBranch, access).catch(async (error: unknown) => {
+          await addEvent(agentId, 'status', { message: `Não foi possível usar o espelho do remoto; clonando da pasta do projeto (${errorMessage(error)}).` });
+          return projectDir;
+        });
+      }
+    }
     let { baseCommit } = await prepareWorkdir({
-      projectDir,
+      projectDir: source,
       workdir: agent.workdir,
       baseBranch: agent.baseBranch,
       branch: agent.branch,
@@ -379,6 +393,16 @@ async function checkoutFromRemote(agent: Agent, remoteUrl: string) {
 }
 
 /** Fetches the base branch from the remote with the workspace credentials (never stored in the copy). */
+/** Fetch access to a project's remote with the workspace's git account; null without a remote or an account. */
+async function remoteAccess(workspaceId: string, remoteUrl: string | null): Promise<RemoteAccess | null> {
+  const remote = remoteUrl ? parseRemote(remoteUrl) : null;
+  if (!remote) return null;
+  const account = await findGitAccount(workspaceId, remote).catch(() => null);
+  if (!account) return null;
+  const token = secrets.decrypt(account.tokenEncrypted);
+  return { fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token), token };
+}
+
 async function updateFromRemote(agent: Agent, remoteUrl: string) {
   const remote = parseRemote(remoteUrl);
   if (!remote) return null;
@@ -462,36 +486,11 @@ export async function ensureContainer(agentId: string) {
   }
 }
 
-/** Context projects refreshed recently (project id -> time), so each container start does not fetch again. */
-const contextRefreshedAt = new Map<string, number>();
-const CONTEXT_REFRESH_MS = 10 * 60_000;
-
 /**
- * Reference projects are read from the user's folder as it is: a folder left behind its remote would show agents old
- * documentation. Before an agent starts, each one is brought up to date when that is safe (see refreshContextProject).
+ * Reference projects of an execution, mounted read-only at /context/<name>. A project with a remote comes from its
+ * checkout in the Docker volume, refreshed from the remote (always current, nothing read through Windows); without a
+ * remote or an account, from the user's folder as it is.
  */
-async function refreshContextProjects(agent: Agent, projects: { id: string; name: string; gitRemoteUrl: string | null; baseBranch: string | null; isGitRepo: boolean; workspace: { name: string } }[]) {
-  for (const project of projects) {
-    if (!project.isGitRepo || !project.gitRemoteUrl) continue;
-    if (Date.now() - (contextRefreshedAt.get(project.id) ?? 0) < CONTEXT_REFRESH_MS) continue;
-    contextRefreshedAt.set(project.id, Date.now());
-    try {
-      const remote = parseRemote(project.gitRemoteUrl);
-      if (!remote) continue;
-      const dir = toContainerPath(project.workspace.name, project.name);
-      const branch = project.baseBranch ?? (await currentBranch(dir));
-      if (!branch) continue;
-      const account = await findGitAccount(agent.workspaceId, remote);
-      const token = secrets.decrypt(account.tokenEncrypted);
-      const updated = await refreshContextProject({ dir, branch, fetchUrl: authenticatedPushUrl(remote, account.provider as 'GITHUB' | 'GITLAB', token), token });
-      if (updated) await addEvent(agent.id, 'status', { message: `Projeto de contexto ${project.name} atualizado com o remoto (${branch}, ${updated.slice(0, 7)}).` });
-    } catch {
-      // Without access or with a diverged folder the agent reads the folder as it is.
-    }
-  }
-}
-
-/** Reference projects of an execution, as mounted read-only at /context/<name>. */
 async function contextProjectsOf(agent: Agent) {
   if (agent.contextProjectIds.length === 0) return [];
   const projects = await prisma.project.findMany({
@@ -499,14 +498,22 @@ async function contextProjectsOf(agent: Agent) {
     include: { workspace: { select: { name: true } } },
     orderBy: { name: 'asc' },
   });
-  await refreshContextProjects(agent, projects);
   return Promise.all(
-    projects.map(async (project) => ({
-      name: project.name,
-      hostPath: toHostPath(project.workspace.name, project.name),
-      branch: project.isGitRepo ? await currentBranch(toContainerPath(project.workspace.name, project.name)) : null,
-      baseBranch: project.baseBranch,
-    })),
+    projects.map(async (project) => {
+      const windowsBranch = project.isGitRepo ? await currentBranch(toContainerPath(project.workspace.name, project.name)) : null;
+      const branch = project.baseBranch ?? windowsBranch;
+      const access = project.isGitRepo && branch ? await remoteAccess(agent.workspaceId, project.gitRemoteUrl) : null;
+      const volumeSubpath = access && branch
+        ? await refreshContext(project.id, project.workspace.name, project.name, branch, access).catch(() => null)
+        : null;
+      return {
+        name: project.name,
+        hostPath: toHostPath(project.workspace.name, project.name),
+        volumeSubpath,
+        branch: volumeSubpath ? branch : windowsBranch,
+        baseBranch: project.baseBranch,
+      };
+    }),
   );
 }
 

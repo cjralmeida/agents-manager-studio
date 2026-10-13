@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../../config.js';
+import type { ContainerMount } from '../../lib/docker.js';
 import { git, GitError } from '../../lib/git.js';
 import { HttpError } from '../../lib/errors.js';
 
@@ -11,12 +12,38 @@ const AGENT_UID = '1000:1000';
 const CLONE_DEPTH = '200';
 const MAX_PATCH_BYTES = 1_000_000;
 
+/**
+ * New copies live in a Docker volume (config.agentsVolume): git, builds and tests run there without the slow Windows
+ * bridge (a `git status` on a big repository took 5 minutes through it). Their `workdir` starts with this prefix;
+ * copies made before stay in the Windows folder. The code of a volume copy is mirrored to the Windows folder when its
+ * agents finish (see mirror.ts), so the user still finds it there.
+ */
+export const VOLUME_PREFIX = 'vol:';
+export const isVolumeCopy = (workdir: string) => workdir.startsWith(VOLUME_PREFIX);
+const relativeWorkdir = (workdir: string) => (isVolumeCopy(workdir) ? workdir.slice(VOLUME_PREFIX.length) : workdir);
+
 export function workdirPath(workdir: string) {
-  return path.posix.join(config.agentsDir, workdir);
+  return isVolumeCopy(workdir)
+    ? path.posix.join(config.agentsVolumeDir, relativeWorkdir(workdir))
+    : path.posix.join(config.agentsDir, workdir);
 }
 
+/** Where the user finds the copy on Windows (for a volume copy: its code mirror, written when the agents finish). */
 export function workdirHostPath(workdir: string) {
-  return `${config.agentsHostDir}/${workdir}`;
+  return `${config.agentsHostDir}/${relativeWorkdir(workdir)}`;
+}
+
+/** The Windows mirror of a volume copy, as seen by the server. */
+export function mirrorPath(workdir: string) {
+  return path.posix.join(config.agentsDir, relativeWorkdir(workdir));
+}
+
+/** Mount of the copy, or of a folder inside it, into a container. */
+export function workdirMount(workdir: string, target: string, folder = '', readOnly = false): ContainerMount {
+  if (isVolumeCopy(workdir)) {
+    return { Type: 'volume', Source: config.agentsVolume, Target: target, ReadOnly: readOnly, VolumeOptions: { Subpath: path.posix.join(relativeWorkdir(workdir), folder) } };
+  }
+  return { Type: 'bind', Source: folder ? `${workdirHostPath(workdir)}/${folder}` : workdirHostPath(workdir), Target: target, ReadOnly: readOnly };
 }
 
 /** Current branch of the user's repository; null when HEAD is detached. */
@@ -81,25 +108,6 @@ export async function prepareWorkdir(input: {
  * there (e.g. by earlier workflow steps). The local project is kept when it has commits the remote lacks.
  * Returns the new base commit, or null when the copy stays as it was.
  */
-/**
- * Brings a reference (context) project up to date with its remote, only when that is safe: the folder is on its base
- * branch, has no local changes and its commits are all on the remote (fast-forward). Otherwise it is left as it is,
- * since it may be the user's own work in progress. Returns the new commit, or null when nothing changed.
- */
-export async function refreshContextProject(input: { dir: string; branch: string; fetchUrl: string; token: string }) {
-  // The folder is the user's Windows checkout (CRLF line endings, no exec bits): seen with Windows' own rules it is
-  // clean, and files checked out here get the same line endings the user's git would write.
-  const windows = ['-c', 'core.autocrlf=true', '-c', 'core.filemode=false'];
-  if ((await currentBranch(input.dir)) !== input.branch) return null;
-  if ((await git(input.dir, [...windows, 'status', '--porcelain'])).trim()) return null;
-  await git(input.dir, ['fetch', '--quiet', input.fetchUrl, input.branch], { timeoutMs: 300_000 });
-  const local = (await git(input.dir, ['rev-parse', 'HEAD'])).trim();
-  const remote = (await git(input.dir, ['rev-parse', 'FETCH_HEAD'])).trim();
-  if (local === remote) return null;
-  await git(input.dir, [...windows, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD']);
-  return remote;
-}
-
 export async function updateToRemoteBase(input: { workdir: string; baseBranch: string; fetchUrl: string; token: string }) {
   const dir = workdirPath(input.workdir);
   const redact = (text: string) => text.replaceAll(input.token, '***').replaceAll(encodeURIComponent(input.token), '***');
@@ -318,4 +326,5 @@ export async function fastForwardFrom(input: { workdir: string; fromWorkdir: str
 
 export async function removeWorkdir(workdir: string) {
   await rm(workdirPath(workdir), { recursive: true, force: true });
+  if (isVolumeCopy(workdir)) await rm(mirrorPath(workdir), { recursive: true, force: true });
 }

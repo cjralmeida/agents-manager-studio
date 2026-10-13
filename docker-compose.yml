@@ -81,8 +81,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Writable so the Studio can create workspace folders here (only this folder, not the whole drive).
       - ${PROJECTS_HOST_DIR}:/data/Projetos
-      # One isolated clone per agent; also mounted into each agent container.
+      # Older agent copies and the Windows mirror of the new ones (code only, written when the agents finish).
       - ${AGENTS_HOST_DIR}:/data/agents
+      # One isolated clone per agent (new ones): a Docker volume, fast; each agent container mounts its own folder.
+      - agent_copies:/data/agents-vol
       - ${CLAUDE_SKILLS_HOST_DIR:?set CLAUDE_SKILLS_HOST_DIR in .env}:/data/claude-skills:ro
       # Requests to the Windows helper (studio.ps1), which changes the central folder and recreates the server.
       - ./host-helper:/data/host-helper
@@ -122,3 +124,6 @@ volumes:
   postgres_data:
   n8n_data:
   caddy_data:
+  agent_copies:
+    # Fixed name: the server mounts folders of it into agent containers by this name (AGENTS_VOLUME).
+    name: ams-agents

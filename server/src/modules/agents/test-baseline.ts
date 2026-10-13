@@ -3,8 +3,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
-import { runOnce } from '../../lib/docker.js';
-import { workdirHostPath, workdirPath } from './workdir.js';
+import { type ContainerMount, runOnce } from '../../lib/docker.js';
+import { workdirMount, workdirPath } from './workdir.js';
 
 /**
  * Projects whose tests need the database structure (e.g. GlobalFarm: a pg_dump of the schema plus the Flyway history,
@@ -29,11 +29,11 @@ function superuserUrl(database: string) {
   return url.toString();
 }
 
-async function psql(database: string, args: string[], binds: string[] = [], timeoutMs = 15 * 60_000) {
+async function psql(database: string, args: string[], mounts: ContainerMount[] = [], timeoutMs = 15 * 60_000) {
   return runOnce({
     image: PSQL_IMAGE,
     cmd: ['psql', '-q', '-X', superuserUrl(database), ...args],
-    binds,
+    mounts,
     network: config.agentNetwork,
     timeoutMs,
   });
@@ -67,7 +67,7 @@ export async function baselineTemplate(agent: { workdir: string }) {
     const result = await psql(
       template,
       files.names.flatMap((name) => ['-f', `/baseline/${name}`]),
-      [`${workdirHostPath(agent.workdir)}/${BASELINE_DIR}:/baseline:ro`],
+      [workdirMount(agent.workdir, '/baseline', BASELINE_DIR, true)],
     );
     const tables = await psql(template, ['-At', '-c', "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'"], [], 60_000);
     if (result.timedOut || Number(tables.stdout.trim()) === 0) {

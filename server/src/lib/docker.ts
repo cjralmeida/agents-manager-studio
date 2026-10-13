@@ -92,6 +92,14 @@ export async function imageExists(image: string) {
   }
 }
 
+export interface ContainerMount {
+  Type: 'bind' | 'volume';
+  Source: string;
+  Target: string;
+  ReadOnly?: boolean;
+  VolumeOptions?: { Subpath?: string };
+}
+
 export interface ContainerSpec {
   image: string;
   cmd: string[];
@@ -100,6 +108,8 @@ export interface ContainerSpec {
   labels?: Record<string, string>;
   /** Volume or bind mounts, e.g. "volume-name:/home/node/.claude" or "D:/path:/workspace". */
   binds?: string[];
+  /** Mounts the bind strings cannot express, e.g. a folder inside a volume (VolumeOptions.Subpath). */
+  mounts?: ContainerMount[];
   network?: string;
   /** User inside the container (e.g. "0" for root); empty keeps the image's. */
   user?: string;
@@ -114,7 +124,7 @@ export async function createContainer(spec: ContainerSpec): Promise<string> {
     Labels: spec.labels ?? {},
     ...(spec.user && { User: spec.user }),
     Tty: false,
-    HostConfig: { Binds: spec.binds ?? [], ...(spec.network && { NetworkMode: spec.network }) },
+    HostConfig: { Binds: spec.binds ?? [], ...(spec.mounts && { Mounts: spec.mounts }), ...(spec.network && { NetworkMode: spec.network }) },
   });
   return Id;
 }
