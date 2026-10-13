@@ -428,7 +428,7 @@ export async function ensureContainer(agentId: string) {
       contextProjects: await contextProjectsOf(agent),
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
-      env: { ...(await testServicesEnv(agent.id, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
+      env: { ...(await testServicesEnv(agent, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
       variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });

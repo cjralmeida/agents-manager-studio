@@ -3,6 +3,7 @@ import net from 'node:net';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
+import { baselineTemplate, giveOwnership } from './test-baseline.js';
 
 /**
  * Throwaway services for the tests of agents that work on a repository: an empty PostgreSQL database with its own
@@ -30,16 +31,20 @@ async function exists(query: string, value: string) {
   return (await prisma.$queryRawUnsafe<unknown[]>(query, value)).length > 0;
 }
 
-/** Creates (once) the agent's database and login; returns the URL the agent's tests use. */
-export async function ensureTestDatabase(agentId: string) {
+/**
+ * Creates (once) the agent's database and login; returns the URL the agent's tests use. When the project keeps a
+ * database baseline (see test-baseline.ts), the database starts as a copy of it.
+ */
+export async function ensureTestDatabase(agentId: string, template: string | null = null) {
   const name = testDatabaseName(agentId);
   const password = testDatabasePassword(agentId);
   if (!(await exists('SELECT 1 FROM pg_roles WHERE rolname = $1', name))) {
     await prisma.$executeRawUnsafe(`CREATE ROLE "${name}" LOGIN PASSWORD '${password}'`);
   }
   if (!(await exists('SELECT 1 FROM pg_database WHERE datname = $1', name))) {
-    await prisma.$executeRawUnsafe(`CREATE DATABASE "${name}" OWNER "${name}"`);
+    await prisma.$executeRawUnsafe(`CREATE DATABASE "${name}" OWNER "${name}"${template ? ` TEMPLATE "${template}"` : ''}`);
     await prisma.$executeRawUnsafe(`REVOKE CONNECT ON DATABASE "${name}" FROM PUBLIC`);
+    if (template) await giveOwnership(name, name);
   }
   return `postgresql://${name}:${password}@${config.testDatabaseHost}:5432/${name}`;
 }
@@ -87,9 +92,13 @@ function flushRedisDatabase(index: number) {
 }
 
 /** Env for the agent container: only agents that work on a repository get test services. */
-export async function testServicesEnv(agentId: string, hasRepository: boolean): Promise<Record<string, string>> {
+export async function testServicesEnv(agent: { id: string; workdir: string }, hasRepository: boolean): Promise<Record<string, string>> {
   if (!hasRepository) return {};
-  const env: Record<string, string> = { TEST_DATABASE_URL: await ensureTestDatabase(agentId) };
+  const agentId = agent.id;
+  const template = await baselineTemplate(agent).catch(() => null);
+  const env: Record<string, string> = { TEST_DATABASE_URL: await ensureTestDatabase(agentId, template) };
+  // Tells the agent the structure is already there (see the runtime prompt).
+  if (template) env.TEST_DATABASE_BASELINE = 'docker/db/baseline';
   const redis = await ensureTestRedis(agentId).catch(() => null);
   if (redis) env.TEST_REDIS_URL = redis;
   return env;

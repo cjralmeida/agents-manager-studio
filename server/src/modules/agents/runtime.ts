@@ -96,7 +96,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   );
   if (agent.projectId) {
     lines.push(
-      '- Para testes que precisam de banco, use SOMENTE TEST_DATABASE_URL (PostgreSQL vazio e exclusivo desta execução) e, se precisar de Redis, TEST_REDIS_URL. Nunca use outro banco ou serviço real nos testes.',
+      '- Para testes que precisam de banco, use SOMENTE TEST_DATABASE_URL (PostgreSQL exclusivo desta execução) e, se precisar de Redis, TEST_REDIS_URL. Nunca use outro banco ou serviço real nos testes. Se TEST_DATABASE_BASELINE estiver definida, o banco já vem com o baseline do projeto aplicado (os .sql dessa pasta): não aplique de novo, só o que vier depois dele (ex.: migrações novas ao subir a aplicação). Sem ela, o banco começa vazio.',
     );
   }
   if (contextProjects.length > 0) {
