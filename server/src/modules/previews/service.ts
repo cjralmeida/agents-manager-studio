@@ -272,7 +272,19 @@ export function startPreviewMonitor(log: FastifyBaseLogger) {
     }
     if (!stopped) timer = setTimeout(run, 120_000);
   };
-  void recoverPreviews().then(run, (err: unknown) => log.error({ err }, 'Preview recovery failed'));
+  // At boot the database may still be starting: the recovery is retried, and the monitor starts either way.
+  const recover = async (attempt = 1): Promise<void> => {
+    try {
+      await recoverPreviews();
+    } catch (err) {
+      if (attempt < 30) {
+        await new Promise((resolve) => setTimeout(resolve, 4_000));
+        return recover(attempt + 1);
+      }
+      log.error({ err }, 'Preview recovery failed');
+    }
+  };
+  void recover().then(run);
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
