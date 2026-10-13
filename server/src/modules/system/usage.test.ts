@@ -52,4 +52,11 @@ describe('launchWarnings', () => {
     assert.deepEqual(launchWarnings({ memoryPercent: 10, cpuPercent: 10, freeDiskGb: 40 }, withDisk), []);
     assert.deepEqual(launchWarnings({ memoryPercent: 10, cpuPercent: 10, freeDiskGb: null }, withDisk), []);
   });
+
+  it('names the computer when the numbers come from the Windows helper', () => {
+    assert.deepEqual(launchWarnings({ memoryPercent: 88, cpuPercent: 93, source: 'host' }, limits), [
+      'Memória do computador em 88% (limite 80%).',
+      'CPU do computador em 93% (limite 85%).',
+    ]);
+  });
 });

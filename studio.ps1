@@ -42,7 +42,7 @@ function Get-ComposeArgs {
 
 function Write-Json([string]$Path, $Value) {
   $tmp = "$Path.tmp"
-  [IO.File]::WriteAllText($tmp, ($Value | ConvertTo-Json -Compress), $Utf8NoBom)
+  [IO.File]::WriteAllText($tmp, ($Value | ConvertTo-Json -Compress -Depth 5), $Utf8NoBom)
   Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
 
@@ -113,6 +113,22 @@ function Stop-Helper {
   Remove-Item -LiteralPath $state -Force
 }
 
+# What the Windows machine is using (the Docker numbers miss everything outside the VM): CPU, memory and fixed disks.
+function Get-HostStats {
+  $os = Get-CimInstance Win32_OperatingSystem
+  $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+  $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object {
+    @{ drive = $_.DeviceID; total = [double]$_.Size; free = [double]$_.FreeSpace }
+  })
+  return @{
+    cpuPercent = [double]$cpu
+    memoryTotal = [double]$os.TotalVisibleMemorySize * 1024
+    memoryUsed = ([double]$os.TotalVisibleMemorySize - [double]$os.FreePhysicalMemory) * 1024
+    disks = $disks
+    sampledAt = (Get-Date).ToUniversalTime().ToString('o')
+  }
+}
+
 function Start-Watch {
   # One helper per user session.
   $mutex = New-Object System.Threading.Mutex($false, 'Local\AgentsManagerStudioHelper')
@@ -124,8 +140,13 @@ function Start-Watch {
   $startedAt = (Get-Date).ToUniversalTime().ToString('o')
   Write-Log 'helper started'
 
+  $hostStats = $null
+  $tick = 0
   while ($true) {
-    Write-Json $stateFile @{ pid = $PID; dev = [bool]$Dev; startedAt = $startedAt; heartbeatAt = (Get-Date).ToUniversalTime().ToString('o') }
+    # Sampled every ~10 s: the CIM queries cost more than the heartbeat.
+    if ($tick % 5 -eq 0) { try { $hostStats = Get-HostStats } catch { $hostStats = $null } }
+    $tick++
+    Write-Json $stateFile @{ pid = $PID; dev = [bool]$Dev; startedAt = $startedAt; heartbeatAt = (Get-Date).ToUniversalTime().ToString('o'); host = $hostStats }
 
     if (Test-Path -LiteralPath $requestFile) {
       $request = $null

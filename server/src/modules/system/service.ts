@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { statfs } from 'node:fs/promises';
+import { readFile, statfs } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from '../../config.js';
@@ -37,8 +37,20 @@ export interface ContainerUsage {
   memoryUsed: number;
 }
 
+/** The whole computer, measured on Windows by the helper (studio.ps1); null when the helper is not running. */
+export interface HostStats {
+  cpuPercent: number;
+  memoryUsed: number;
+  memoryTotal: number;
+  memoryPercent: number;
+  /** Fixed disks, with the one holding the agent copies marked. */
+  disks: { drive: string; total: number; free: number; agents: boolean }[];
+  sampledAt: string;
+}
+
 export interface ResourceUsage {
   docker: { version: string; os: string; cpus: number; memoryTotal: number };
+  host: HostStats | null;
   totals: { cpuPercent: number; memoryUsed: number; memoryPercent: number; runningAgents: number };
   limits: { memoryPercent: number; cpuPercent: number };
   /** Reasons to confirm before launching another agent. */
@@ -89,16 +101,47 @@ async function sampleResources(): Promise<ResourceUsage> {
     runningAgents: containers.filter((container) => container.kind === 'agent').length,
   };
   const limits = { memoryPercent: config.launchMemoryPercent, cpuPercent: config.launchCpuPercent, minFreeDiskGb: config.minFreeDiskGb };
-  const freeDiskGb = await freeAgentsDiskGb();
+  const host = await readHostStats();
+  const agentsDisk = host?.disks.find((disk) => disk.agents);
+  const freeDiskGb = agentsDisk ? agentsDisk.free / 1024 ** 3 : await freeAgentsDiskGb();
+  // The launch limits look at the whole computer when the helper measures it: the agents compete with everything else.
+  const launchTotals = host
+    ? { memoryPercent: host.memoryPercent, cpuPercent: host.cpuPercent, freeDiskGb, source: 'host' as const }
+    : { ...totals, freeDiskGb };
 
   return {
     docker: { version: info.ServerVersion, os: info.OperatingSystem, cpus: info.NCPU, memoryTotal: info.MemTotal },
     totals,
     limits,
-    launchWarnings: launchWarnings({ ...totals, freeDiskGb }, limits),
+    host,
+    launchWarnings: launchWarnings(launchTotals, limits),
     containers: containers.sort((a, b) => b.memoryUsed - a.memoryUsed),
     sampledAt: new Date().toISOString(),
   };
+}
+
+const HOST_STATS_STALE_MS = 30_000;
+
+/** Host numbers written by the Windows helper into helper.json; null when the helper is off or the sample is old. */
+async function readHostStats(): Promise<HostStats | null> {
+  try {
+    const state = JSON.parse((await readFile(path.join(config.hostHelperDir, 'helper.json'), 'utf8')).replace(/^﻿/, '')) as {
+      host?: { cpuPercent: number; memoryUsed: number; memoryTotal: number; disks?: { drive: string; total: number; free: number }[]; sampledAt: string } | null;
+    };
+    const host = state.host;
+    if (!host || Date.now() - new Date(host.sampledAt).getTime() > HOST_STATS_STALE_MS) return null;
+    const agentsDrive = config.agentsHostDir.slice(0, 2).toUpperCase();
+    return {
+      cpuPercent: host.cpuPercent,
+      memoryUsed: host.memoryUsed,
+      memoryTotal: host.memoryTotal,
+      memoryPercent: host.memoryTotal > 0 ? (host.memoryUsed / host.memoryTotal) * 100 : 0,
+      disks: (host.disks ?? []).map((disk) => ({ ...disk, agents: disk.drive.toUpperCase() === agentsDrive })),
+      sampledAt: host.sampledAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Free space (GB) on the disk that holds the agent copies; null when it cannot be read. */

@@ -32,16 +32,19 @@ export interface UsageTotals {
   cpuPercent: number;
   /** Free space (GB) on the disk of the agent copies, when known. */
   freeDiskGb?: number | null;
+  /** Whether the numbers are of the whole computer (Windows helper) or only of the Docker containers. */
+  source?: 'host' | 'docker';
 }
 
 /** Reasons to ask for confirmation before starting another agent; empty when usage is fine. */
 export function launchWarnings(totals: UsageTotals, limits: LaunchLimits) {
   const warnings: string[] = [];
+  const who = totals.source === 'host' ? 'do computador' : 'usada pelo Studio';
   if (totals.memoryPercent >= limits.memoryPercent) {
-    warnings.push(`Memória usada pelo Studio em ${Math.round(totals.memoryPercent)}% (limite ${limits.memoryPercent}%).`);
+    warnings.push(`Memória ${who} em ${Math.round(totals.memoryPercent)}% (limite ${limits.memoryPercent}%).`);
   }
   if (totals.cpuPercent >= limits.cpuPercent) {
-    warnings.push(`CPU usada pelo Studio em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
+    warnings.push(`CPU ${who} em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
   }
   if (typeof totals.freeDiskGb === 'number' && limits.minFreeDiskGb !== undefined && totals.freeDiskGb < limits.minFreeDiskGb) {
     warnings.push(`Disco das cópias dos agentes com ${totals.freeDiskGb.toFixed(1)} GB livres (mínimo ${limits.minFreeDiskGb} GB).`);

@@ -13,8 +13,19 @@ export interface ContainerUsage {
   memoryUsed: number;
 }
 
+/** The whole computer, measured on Windows by the Studio helper; null when the helper is not running. */
+export interface HostStats {
+  cpuPercent: number;
+  memoryUsed: number;
+  memoryTotal: number;
+  memoryPercent: number;
+  disks: { drive: string; total: number; free: number; agents: boolean }[];
+  sampledAt: string;
+}
+
 export interface ResourceUsage {
   docker: { version: string; os: string; cpus: number; memoryTotal: number };
+  host: HostStats | null;
   totals: { cpuPercent: number; memoryUsed: number; memoryPercent: number; runningAgents: number };
   limits: { memoryPercent: number; cpuPercent: number };
   launchWarnings: string[];
