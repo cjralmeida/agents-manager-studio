@@ -32,8 +32,9 @@ export function previewSlug(name: string) {
 }
 
 const previewUrl = (project: Pick<Project, 'name'>) => `http://${previewSlug(project.name)}.localhost`;
-const buildDir = (projectId: string, commit: string) => path.posix.join(config.agentsDir, PREVIEWS_DIR, projectId, commit.slice(0, 12));
-const buildHostDir = (projectId: string, commit: string) => `${config.agentsHostDir}/${PREVIEWS_DIR}/${projectId}/${commit.slice(0, 12)}`;
+// Preview builds live in the agents' Docker volume (fast); the daemon path is what docker compose binds resolve to.
+const buildDir = (projectId: string, commit: string) => path.posix.join(config.agentsVolumeDir, PREVIEWS_DIR, projectId, commit.slice(0, 12));
+const buildHostDir = (projectId: string, commit: string) => path.posix.join(config.agentsVolumeDaemonDir, PREVIEWS_DIR, projectId, commit.slice(0, 12));
 const tail = (text: string) => (text.length > LOG_TAIL ? `…${text.slice(-LOG_TAIL)}` : text);
 
 async function findProject(projectId: string) {
@@ -175,7 +176,7 @@ async function cleanup(projectId: string) {
     if (served) keep.add(served.commit.slice(0, 12));
   }
   const slug = previewSlug((await findProject(projectId)).name);
-  const root = path.posix.join(config.agentsDir, PREVIEWS_DIR, projectId);
+  const root = path.posix.join(config.agentsVolumeDir, PREVIEWS_DIR, projectId);
   for (const entry of await readdir(root).catch(() => [] as string[])) {
     if (keep.has(entry)) continue;
     await rm(path.posix.join(root, entry), { recursive: true, force: true });

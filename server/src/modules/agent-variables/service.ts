@@ -14,12 +14,14 @@ const AGENT_UID = '1000:1000';
 const VARS_DIR = '.studio-vars';
 export const AGENT_VARIABLES_FILE = '/run/studio/variables.env';
 
+/** Kept in the agents' Docker volume, like the copies; mounted read-only at /run/studio. */
 function variablesDir(agentId: string) {
-  return path.posix.join(config.agentsDir, VARS_DIR, agentId);
+  return path.posix.join(config.agentsVolumeDir, VARS_DIR, agentId);
 }
 
-export function variablesHostDir(agentId: string) {
-  return `${config.agentsHostDir}/${VARS_DIR}/${agentId}`;
+/** Folder of the agent's variables inside the agents volume (a volume subpath to mount). */
+export function variablesSubpath(agentId: string) {
+  return path.posix.join(VARS_DIR, agentId);
 }
 
 export async function listAgentVariables(workspaceId: string) {

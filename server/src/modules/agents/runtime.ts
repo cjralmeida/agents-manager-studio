@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../../config.js';
 import { type ContainerMount, createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
-import { AGENT_VARIABLES_FILE, variablesHostDir } from '../agent-variables/service.js';
+import { AGENT_VARIABLES_FILE, variablesSubpath } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
 import { buildDirBinds } from './build-dirs.js';
 import { workdirMount } from './workdir.js';
@@ -172,6 +172,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
     labels: { [AGENT_LABEL]: agent.id },
     mounts: [
       workdirMount(agent.workdir, '/workspace'),
+      ...(variableNames ? [{ Type: 'volume' as const, Source: config.agentsVolume, Target: '/run/studio', ReadOnly: true, VolumeOptions: { Subpath: variablesSubpath(agent.id) } }] : []),
       ...contextProjects.flatMap((project): ContainerMount[] =>
         project.volumeSubpath
           ? [{ Type: 'volume', Source: config.agentsVolume, Target: contextMount(project.name), ReadOnly: true, VolumeOptions: { Subpath: project.volumeSubpath } }]
@@ -185,7 +186,6 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       // node_modules, target... in Docker volumes: much faster than through the Windows folder (see build-dirs.ts).
       ...buildBinds,
       ...skillBinds(skillIds),
-      ...(variableNames ? [`${variablesHostDir(agent.id)}:/run/studio:ro`] : []),
       ...contextProjects.filter((project) => !project.volumeSubpath).map((project) => `${project.hostPath}:${contextMount(project.name)}:ro`),
     ],
     env: {

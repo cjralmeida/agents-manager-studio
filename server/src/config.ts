@@ -31,6 +31,8 @@ const envSchema = z.object({
   // New agent copies live in this Docker volume (fast: no Windows bridge); AGENTS_DIR keeps the code mirror for Windows.
   AGENTS_VOLUME: z.string().min(1).default('ams-agents'),
   AGENTS_VOLUME_DIR: z.string().min(1).default('/data/agents-vol'),
+  // The same volume as the Docker daemon sees it (binds of preview builds run by docker compose use this path).
+  AGENTS_VOLUME_DAEMON_DIR: z.string().min(1).default('/var/lib/docker/volumes/ams-agents/_data'),
   AGENTS_HOST_DIR: z.string().min(1),
   // Host path of the skills folder, mounted into agent containers.
   CLAUDE_SKILLS_HOST_DIR: z.string().min(1),
@@ -83,6 +85,7 @@ function loadConfig() {
     agentsDir: env.AGENTS_DIR,
     agentsVolume: env.AGENTS_VOLUME,
     agentsVolumeDir: env.AGENTS_VOLUME_DIR,
+    agentsVolumeDaemonDir: env.AGENTS_VOLUME_DAEMON_DIR,
     // Docker on Windows accepts "D:/path" binds; backslashes are normalized.
     agentsHostDir: env.AGENTS_HOST_DIR.replaceAll('\\', '/'),
     skillsHostDir: env.CLAUDE_SKILLS_HOST_DIR.replaceAll('\\', '/'),
