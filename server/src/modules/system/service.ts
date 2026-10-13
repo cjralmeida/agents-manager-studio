@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { statfs } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from '../../config.js';
@@ -87,16 +88,27 @@ async function sampleResources(): Promise<ResourceUsage> {
     memoryPercent: info.MemTotal > 0 ? (memorySum / info.MemTotal) * 100 : 0,
     runningAgents: containers.filter((container) => container.kind === 'agent').length,
   };
-  const limits = { memoryPercent: config.launchMemoryPercent, cpuPercent: config.launchCpuPercent };
+  const limits = { memoryPercent: config.launchMemoryPercent, cpuPercent: config.launchCpuPercent, minFreeDiskGb: config.minFreeDiskGb };
+  const freeDiskGb = await freeAgentsDiskGb();
 
   return {
     docker: { version: info.ServerVersion, os: info.OperatingSystem, cpus: info.NCPU, memoryTotal: info.MemTotal },
     totals,
     limits,
-    launchWarnings: launchWarnings(totals, limits),
+    launchWarnings: launchWarnings({ ...totals, freeDiskGb }, limits),
     containers: containers.sort((a, b) => b.memoryUsed - a.memoryUsed),
     sampledAt: new Date().toISOString(),
   };
+}
+
+/** Free space (GB) on the disk that holds the agent copies; null when it cannot be read. */
+export async function freeAgentsDiskGb() {
+  try {
+    const stats = await statfs(config.agentsDir);
+    return (stats.bavail * stats.bsize) / 1024 ** 3;
+  } catch {
+    return null;
+  }
 }
 
 export function getResourceUsage(): Promise<ResourceUsage> {

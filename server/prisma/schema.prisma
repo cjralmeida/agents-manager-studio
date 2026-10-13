@@ -382,6 +382,8 @@ model Agent {
   errorMessage      String?     @map("error_message")
   /// Set when a turn stopped on the Claude plan limit: the Studio resumes the agent at this time (see plan-limit).
   limitResumeAt     DateTime?   @map("limit_resume_at")
+  /// Set when the Studio deleted the agent's copy to free disk (see agents/cleanup.ts); it can no longer continue.
+  workdirRemovedAt  DateTime?   @map("workdir_removed_at")
   lastActivityAt    DateTime    @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   finishedAt        DateTime?   @map("finished_at") @db.Timestamptz(3)
   createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)

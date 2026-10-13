@@ -70,6 +70,8 @@ export interface Agent {
   errorMessage: string | null;
   /** Stopped on the Claude plan limit: the Studio resumes the agent at this time. */
   limitResumeAt: string | null;
+  /** The Studio deleted this finished agent's copy to free disk; it can no longer continue. */
+  workdirRemovedAt: string | null;
   lastActivityAt: string;
   createdAt: string;
   finishedAt: string | null;

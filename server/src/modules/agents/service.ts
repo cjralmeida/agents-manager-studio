@@ -241,6 +241,7 @@ export async function launchAgent(input: LaunchAgentInput) {
   if (input.sourceAgentId && (!source || source.projectId !== project?.id)) {
     throw new HttpError(422, 'Só é possível continuar o trabalho de um agente do mesmo projeto.');
   }
+  if (source?.workdirRemovedAt) throw copyRemoved();
   const cloneFrom = project ? (source ? workdirPath(source.workdir) : toContainerPath(workspace.name, project.name)) : null;
   // Continuing another agent: same branch and PR (its base stays the PR base).
   const baseBranch = !project
@@ -479,6 +480,7 @@ export async function sendMessage(id: string, text: string) {
   if (agent.status === 'CANCELLED' || agent.status === 'FINALIZING') {
     throw new HttpError(409, 'Não é possível enviar mensagens para este agente agora.');
   }
+  if (agent.workdirRemovedAt) throw copyRemoved();
   // While a question waits, the agent is blocked on it and would never read a plain message (and the question could
   // no longer be answered): the message becomes the answer to every open question.
   const questions = agent.status === 'WAITING_INPUT' && Array.isArray(agent.pendingQuestion) ? (agent.pendingQuestion as { question?: string }[]) : [];
@@ -873,6 +875,11 @@ export async function onAgentIdle(id: string) {
 
 // ---------------------------------------------------------------- helpers
 
+/** The copy of a finished agent was deleted to free disk (see cleanup.ts): there is nothing left to continue. */
+function copyRemoved() {
+  return new HttpError(409, 'A cópia deste agente foi apagada para liberar disco. O trabalho dele está no PR/MR; para continuar, inicie um agente novo.');
+}
+
 async function findOrThrow(id: string) {
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent) throw notFound('Agente não encontrado.');
@@ -927,6 +934,7 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     usage: usageOf(agent),
     errorMessage: agent.errorMessage,
     limitResumeAt: agent.limitResumeAt,
+    workdirRemovedAt: agent.workdirRemovedAt,
     lastActivityAt: agent.lastActivityAt,
     createdAt: agent.createdAt,
     finishedAt: agent.finishedAt,

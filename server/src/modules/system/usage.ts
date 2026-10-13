@@ -21,6 +21,8 @@ export function memoryUsed(stats: ContainerStats) {
 export interface LaunchLimits {
   memoryPercent: number;
   cpuPercent: number;
+  /** Minimum free space (GB) on the disk of the agent copies. */
+  minFreeDiskGb?: number;
 }
 
 export interface UsageTotals {
@@ -28,6 +30,8 @@ export interface UsageTotals {
   memoryPercent: number;
   /** Share of all CPUs (100% = every core busy). */
   cpuPercent: number;
+  /** Free space (GB) on the disk of the agent copies, when known. */
+  freeDiskGb?: number | null;
 }
 
 /** Reasons to ask for confirmation before starting another agent; empty when usage is fine. */
@@ -38,6 +42,9 @@ export function launchWarnings(totals: UsageTotals, limits: LaunchLimits) {
   }
   if (totals.cpuPercent >= limits.cpuPercent) {
     warnings.push(`CPU usada pelo Studio em ${Math.round(totals.cpuPercent)}% (limite ${limits.cpuPercent}%).`);
+  }
+  if (typeof totals.freeDiskGb === 'number' && limits.minFreeDiskGb !== undefined && totals.freeDiskGb < limits.minFreeDiskGb) {
+    warnings.push(`Disco das cópias dos agentes com ${totals.freeDiskGb.toFixed(1)} GB livres (mínimo ${limits.minFreeDiskGb} GB).`);
   }
   return warnings;
 }

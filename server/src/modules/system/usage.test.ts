@@ -43,4 +43,13 @@ describe('launchWarnings', () => {
       'CPU usada pelo Studio em 90% (limite 85%).',
     ]);
   });
+
+  it('warns when the disk of the agent copies is almost full', () => {
+    const withDisk = { ...limits, minFreeDiskGb: 10 };
+    assert.deepEqual(launchWarnings({ memoryPercent: 10, cpuPercent: 10, freeDiskGb: 3.46 }, withDisk), [
+      'Disco das cópias dos agentes com 3.5 GB livres (mínimo 10 GB).',
+    ]);
+    assert.deepEqual(launchWarnings({ memoryPercent: 10, cpuPercent: 10, freeDiskGb: 40 }, withDisk), []);
+    assert.deepEqual(launchWarnings({ memoryPercent: 10, cpuPercent: 10, freeDiskGb: null }, withDisk), []);
+  });
 });

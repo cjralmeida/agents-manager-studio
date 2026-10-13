@@ -106,6 +106,11 @@ export function AgentPage() {
 
       <div className="mt-2 space-y-1">
         <ErrorText error={finalize.error ?? cancel.error ?? remove.error} />
+        {data.workdirRemovedAt && (
+          <p className="text-sm text-slate-400">
+            A cópia deste agente foi apagada para liberar disco. O trabalho dele está no PR/MR; para continuar, inicie um agente novo.
+          </p>
+        )}
         {data.limitResumeAt ? (
           <p className="text-sm text-amber-300">
             Limite do plano Claude atingido: o agente retoma sozinho em{' '}
