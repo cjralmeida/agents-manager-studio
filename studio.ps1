@@ -120,7 +120,16 @@ function Get-HostStats {
   $disks = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object {
     @{ drive = $_.DeviceID; total = [double]$_.Size; free = [double]$_.FreeSpace }
   })
+  # Docker's virtual disk (it grows and only gives space back to Windows when compacted).
+  $dockerDisk = $null
+  try {
+    $settings = Get-Content -LiteralPath (Join-Path $env:APPDATA 'Docker\settings-store.json') -Raw | ConvertFrom-Json
+    $dataDir = if ($settings.CustomWslDistroDir) { $settings.CustomWslDistroDir } else { Join-Path $env:LOCALAPPDATA 'Docker\wsl' }
+    $vhdx = Join-Path $dataDir 'disk\docker_data.vhdx'
+    if (Test-Path -LiteralPath $vhdx) { $dockerDisk = @{ path = $vhdx; size = [double](Get-Item -LiteralPath $vhdx).Length } }
+  } catch { }
   return @{
+    dockerDisk = $dockerDisk
     cpuPercent = [double]$cpu
     memoryTotal = [double]$os.TotalVisibleMemorySize * 1024
     memoryUsed = ([double]$os.TotalVisibleMemorySize - [double]$os.FreePhysicalMemory) * 1024

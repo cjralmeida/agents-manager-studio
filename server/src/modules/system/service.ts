@@ -45,6 +45,8 @@ export interface HostStats {
   memoryPercent: number;
   /** Fixed disks, with the one holding the agent copies marked. */
   disks: { drive: string; total: number; free: number; agents: boolean }[];
+  /** Docker's virtual disk file on Windows, when the helper finds it. */
+  dockerDisk?: { path: string; size: number } | null;
   sampledAt: string;
 }
 
@@ -61,6 +63,11 @@ export interface ResourceUsage {
 
 export interface DiskSummary {
   items: { label: string; bytes: number }[];
+  /**
+   * Docker's virtual disk on Windows (it grows and only gives space back when compacted) next to what Docker really
+   * keeps in it; only for the whole Studio, when the Windows helper measures it.
+   */
+  dockerDisk?: { path: string; fileBytes: number; dataBytes: number } | null;
 }
 
 function kindOf(labels: Record<string, string> | null | undefined): ContainerKind | null {
@@ -126,7 +133,7 @@ const HOST_STATS_STALE_MS = 30_000;
 async function readHostStats(): Promise<HostStats | null> {
   try {
     const state = JSON.parse((await readFile(path.join(config.hostHelperDir, 'helper.json'), 'utf8')).replace(/^﻿/, '')) as {
-      host?: { cpuPercent: number; memoryUsed: number; memoryTotal: number; disks?: { drive: string; total: number; free: number }[]; sampledAt: string } | null;
+      host?: { cpuPercent: number; memoryUsed: number; memoryTotal: number; disks?: { drive: string; total: number; free: number }[]; dockerDisk?: { path: string; size: number } | null; sampledAt: string } | null;
     };
     const host = state.host;
     if (!host || Date.now() - new Date(host.sampledAt).getTime() > HOST_STATS_STALE_MS) return null;
@@ -137,6 +144,7 @@ async function readHostStats(): Promise<HostStats | null> {
       memoryTotal: host.memoryTotal,
       memoryPercent: host.memoryTotal > 0 ? (host.memoryUsed / host.memoryTotal) * 100 : 0,
       disks: (host.disks ?? []).map((disk) => ({ ...disk, agents: disk.drive.toUpperCase() === agentsDrive })),
+      dockerDisk: host.dockerDisk ?? null,
       sampledAt: host.sampledAt,
     };
   } catch {
@@ -199,8 +207,20 @@ function rawDisk(): Promise<RawDisk> {
   return diskCache.value;
 }
 
+/** Everything Docker keeps: image layers, containers, volumes and the build cache. */
+function dockerDataBytes(df: RawDisk) {
+  return (
+    (df.LayersSize ?? 0) +
+    sum((df.Containers ?? []).map((container) => container.SizeRw)) +
+    sum((df.Volumes ?? []).map((volume) => volume.UsageData?.Size)) +
+    sum((df.BuildCache ?? []).map((entry) => entry.Size))
+  );
+}
+
 export async function getDiskUsage(): Promise<DiskSummary> {
-  return studioDisk(await rawDisk());
+  const [df, host] = await Promise.all([rawDisk(), readHostStats()]);
+  const file = host?.dockerDisk;
+  return { ...studioDisk(df), dockerDisk: file ? { path: file.path, fileBytes: file.size, dataBytes: dockerDataBytes(df) } : null };
 }
 
 // ---------------------------------------------------------------- per workspace

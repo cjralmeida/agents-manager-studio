@@ -289,6 +289,9 @@ export function containerStats(id: string) {
 }
 
 export interface DiskUsage {
+  /** Disk taken by all image layers (shared layers counted once). */
+  LayersSize?: number;
+  BuildCache?: { Size?: number }[] | null;
   Images?: { Id: string; RepoTags?: string[] | null; Size?: number }[];
   Containers?: { ImageID?: string; SizeRw?: number; Labels?: Record<string, string> | null }[];
   Volumes?: { Name: string; Labels?: Record<string, string> | null; UsageData?: { Size?: number } }[];

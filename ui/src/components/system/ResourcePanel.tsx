@@ -4,6 +4,8 @@ import { type ContainerKind, type ContainerUsage, formatBytes, useDiskUsage, use
 import { ErrorText } from '../form';
 
 const kindLabels: Record<ContainerKind, string> = { agent: 'Agentes', studio: 'Serviços do Studio' };
+/** Above this gap between Docker's disk file and its data, compacting is worth it. */
+const COMPACT_WARNING_BYTES = 15 * 1024 ** 3;
 
 /** Usage bar with a marker at the launch limit; turns amber/red as it gets close to it. */
 function UsageBar({ label, percent, limit, detail }: { label: string; percent: number; limit: number; detail: string }) {
@@ -137,7 +139,24 @@ export function ResourcePanel({ workspaceId }: { workspaceId?: string }) {
                 <dd className="text-right tabular-nums">{formatBytes(item.bytes)}</dd>
               </Fragment>
             ))}
+            {!workspaceId && disk.data.dockerDisk && (
+              <>
+                <dt className="text-muted" title={disk.data.dockerDisk.path}>
+                  Disco virtual do Docker
+                </dt>
+                <dd className="text-right tabular-nums">
+                  {formatBytes(disk.data.dockerDisk.fileBytes)} <span className="text-muted">({formatBytes(disk.data.dockerDisk.dataBytes)} em uso)</span>
+                </dd>
+              </>
+            )}
           </dl>
+          {!workspaceId && disk.data.dockerDisk && disk.data.dockerDisk.fileBytes - disk.data.dockerDisk.dataBytes > COMPACT_WARNING_BYTES && (
+            <p className="mt-2 rounded-md bg-amber-400/10 px-2.5 py-1.5 text-xs text-amber-200">
+              O disco virtual do Docker ocupa {formatBytes(disk.data.dockerDisk.fileBytes)} no Windows, mas guarda só{' '}
+              {formatBytes(disk.data.dockerDisk.dataBytes)}. Compactá-lo (com o Docker parado) devolveria cerca de{' '}
+              {formatBytes(disk.data.dockerDisk.fileBytes - disk.data.dockerDisk.dataBytes)} ao disco.
+            </p>
+          )}
         </div>
       )}
       <p className="text-[11px] text-muted">

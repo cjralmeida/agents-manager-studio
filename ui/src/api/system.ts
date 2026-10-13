@@ -35,6 +35,8 @@ export interface ResourceUsage {
 
 export interface DiskSummary {
   items: { label: string; bytes: number }[];
+  /** Docker's virtual disk on Windows next to what Docker really keeps in it (whole Studio only). */
+  dockerDisk?: { path: string; fileBytes: number; dataBytes: number } | null;
 }
 
 const scoped = (path: string, workspaceId?: string) => (workspaceId ? `${path}?workspaceId=${workspaceId}` : path);
