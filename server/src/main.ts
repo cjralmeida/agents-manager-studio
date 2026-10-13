@@ -7,7 +7,6 @@ import { startCapacityMonitor } from './modules/capacity/service.js';
 import { startAutoAnswer } from './modules/auto-answer/service.js';
 import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startCopyCleanup } from './modules/agents/cleanup.js';
-import { startCopyMirror } from './modules/agents/mirror.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
@@ -54,9 +53,6 @@ app.addHook('onClose', async () => stopPlanLimitResume());
 // Copies of finished agents are deleted after a while (sooner when the disk is short), so they do not fill the disk.
 const stopCopyCleanup = startCopyCleanup(app.log);
 app.addHook('onClose', async () => stopCopyCleanup());
-// Code of the agent copies kept in the Docker volume is mirrored to the Windows folder when their agents stop.
-const stopCopyMirror = startCopyMirror(app.log);
-app.addHook('onClose', async () => stopCopyMirror());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {

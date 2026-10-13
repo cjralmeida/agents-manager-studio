@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router';
-import { useAgent, useAgentAction, useDeleteAgent } from '../api/agents';
+import { useAgent, useAgentAction, useDeleteAgent, useMirrorAgent } from '../api/agents';
 import { formatTokens, formatUsd, totalTokens } from '../api/usage';
 import { AgentStatusBadge } from '../components/agents/AgentStatusBadge';
 import { AgentResultPanel } from '../components/agents/AgentResultPanel';
@@ -22,6 +22,7 @@ export function AgentPage() {
   const finalize = useAgentAction(agentId, 'finalize');
   const cancel = useAgentAction(agentId, 'cancel');
   const remove = useDeleteAgent();
+  const mirror = useMirrorAgent(agentId);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useTabParam(tabs);
 
@@ -73,7 +74,34 @@ export function AgentPage() {
             )}
             {data.autoConclude && ' · conclui sozinho'}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-muted">{data.workdirHostPath}</p>
+          {data.copyInDocker ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              <span>Cópia no Docker</span>
+              {!data.workdirRemovedAt && (
+                <>
+                  <button
+                    type="button"
+                    className="text-accent hover:underline disabled:opacity-50"
+                    disabled={data.mirroring || mirror.isPending}
+                    onClick={() => mirror.mutate()}
+                    title={`Copia o código (sem .git, node_modules e target) para ${data.workdirHostPath}`}
+                  >
+                    {data.mirroring ? 'Copiando para o Windows...' : 'Copiar para o Windows'}
+                  </button>
+                  <a className="text-accent hover:underline" href={`/api/agents/${data.id}/download`}>
+                    Baixar código (.tar.gz)
+                  </a>
+                </>
+              )}
+              {data.mirroredAt && !data.mirroring && (
+                <span className="font-mono" title="Última cópia do código para o Windows">
+                  {data.workdirHostPath} · {new Date(data.mirroredAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-0.5 font-mono text-xs text-muted">{data.workdirHostPath}</p>
+          )}
           {totalTokens(data.usage) > 0 && (
             <p className="mt-0.5 text-xs text-muted" title="Custo estimado a preço de API; no plano Max não é cobrado à parte.">
               Consumo: {formatTokens(totalTokens(data.usage))} tokens · ≈ {formatUsd(data.usage.costUsd)}

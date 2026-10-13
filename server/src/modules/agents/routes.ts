@@ -4,6 +4,7 @@ import { HttpError } from '../../lib/errors.js';
 import { parseInput } from '../../lib/validation.js';
 import { AGENT_TOOL_NAMES, runAgentTool } from '../agent-tools/service.js';
 import { assertOwnsProfile, assertOwnsProject } from '../auth/ownership.js';
+import { copyArchive, requestMirror } from './mirror.js';
 import { applyRunnerEvents, authenticateRunner, type RunnerEvent, takeInbox } from './runner-api.js';
 import {
   AGENT_MODELS,
@@ -12,6 +13,7 @@ import {
   deleteAgent,
   finalizeAgent,
   getAgent,
+  getAgentRecord,
   agentMedia,
   getAgentDiff,
   launchAgent,
@@ -80,6 +82,20 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/agents/:id/diff', async (request) => getAgentDiff(parseInput(idParams, request.params).id));
 
   // Images and sounds in the agent's copy (art and audio it asks the user to approve), opened from links in its questions.
+  /** Copies the code of the agent's copy (in the Docker volume) to the Windows folder, in the background. */
+  app.post('/agents/:id/mirror', async (request, reply) => {
+    const agent = await getAgentRecord(parseInput(idParams, request.params).id);
+    requestMirror(agent, request.log);
+    return reply.code(202).send({ mirroring: true });
+  });
+
+  /** The code of the agent's copy as a .tar.gz (without .git and build folders). */
+  app.get('/agents/:id/download', async (request, reply) => {
+    const agent = await getAgentRecord(parseInput(idParams, request.params).id);
+    const name = `${agent.workdir.split('/').at(-1) ?? 'copia'}.tar.gz`;
+    return reply.header('Content-Type', 'application/gzip').header('Content-Disposition', `attachment; filename="${name}"`).send(copyArchive(agent.workdir));
+  });
+
   app.get('/agents/:id/files/*', async (request, reply) => {
     const { id } = parseInput(idParams, { id: (request.params as { id: string }).id });
     const file = await agentMedia(id, (request.params as { '*': string })['*']);

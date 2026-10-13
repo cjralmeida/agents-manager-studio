@@ -18,12 +18,13 @@ import { assertPushBranch, assertWorkBase } from './branch-guard.js';
 import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { removeBuildVolumes } from './build-dirs.js';
+import { isMirroring } from './mirror.js';
 import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
-import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
+import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, isVolumeCopy, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
@@ -940,6 +941,11 @@ function copyRemoved() {
   return new HttpError(409, 'A cópia deste agente foi apagada para liberar disco. O trabalho dele está no PR/MR; para continuar, inicie um agente novo.');
 }
 
+/** The agent row itself (e.g. to reach its copy); 404 when it does not exist. */
+export function getAgentRecord(id: string) {
+  return findOrThrow(id);
+}
+
 async function findOrThrow(id: string) {
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent) throw notFound('Agente não encontrado.');
@@ -977,6 +983,10 @@ function toResponse(agent: Agent & Partial<Pick<AgentWithNames, 'project' | 'wor
     baseBranch: agent.baseBranch,
     branch: agent.branch,
     workdirHostPath: workdirHostPath(agent.workdir),
+    /** The copy lives in the Docker volume; workdirHostPath is then where its code is copied on request. */
+    copyInDocker: isVolumeCopy(agent.workdir),
+    mirroring: isMirroring(agent.workdir),
+    mirroredAt: agent.mirroredAt,
     isContainerRunning: agent.containerId !== null,
     pendingQuestion: agent.pendingQuestion,
     prUrl: agent.prUrl,

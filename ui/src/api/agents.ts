@@ -48,6 +48,11 @@ export interface Agent {
   baseBranch: string;
   branch: string;
   workdirHostPath: string;
+  /** The copy lives in the Docker volume; workdirHostPath is then where its code is copied on request. */
+  copyInDocker: boolean;
+  /** The copy's code is being copied to the Windows folder right now. */
+  mirroring: boolean;
+  mirroredAt: string | null;
   isContainerRunning: boolean;
   pendingQuestion: AgentQuestion[] | null;
   prUrl: string | null;
@@ -203,6 +208,15 @@ export function useAgentAction(id: string, action: 'finalize' | 'cancel') {
   const invalidate = useInvalidateAgents();
   return useMutation({
     mutationFn: () => api.post<Agent>(`/agents/${id}/${action}`),
+    onSuccess: invalidate,
+  });
+}
+
+/** Copies the code of the agent's copy (in Docker) to the Windows folder, in the background. */
+export function useMirrorAgent(id: string) {
+  const invalidate = useInvalidateAgents();
+  return useMutation({
+    mutationFn: () => api.post<{ mirroring: boolean }>(`/agents/${id}/mirror`),
     onSuccess: invalidate,
   });
 }
