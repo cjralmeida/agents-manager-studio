@@ -76,6 +76,7 @@ export function decisionPrompt(item: BoardItem, fields: BoardField[] = []) {
     `A tarefa ${ref} está no Backlog esperando uma decisão: ${item.title}`,
     link,
     'Estude a tarefa e decida com o usuário; só mova o card depois da decisão dele.',
+    'Pergunte SEMPRE pela ferramenta AskUserQuestion (o quadro de respostas do Studio, com opções e a recomendada marcada), nunca em texto: o seu trabalho termina quando o turno termina, e uma pergunta escrita no texto encerra a decisão sem resposta.',
     ...(mark
       ? [
           `Depois da decisão, limpe o campo "${mark.field}" (board_update_task com fields {"${mark.field}": ""}) e mova o card para onde a decisão levar ("A fazer" se pode ser feita; fica no Backlog se ainda espera outras tarefas, com a linha "Depende de:").`,
