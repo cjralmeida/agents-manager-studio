@@ -8,15 +8,20 @@ const BOARD_TICK_MS = 15_000;
 /** How often running workflow runs are moved forward. */
 const RUNS_TICK_MS = 10_000;
 const syncing = new Set<string>();
+/** When the board triggers last ran per workspace (a board refreshed from the UI is not synced here again). */
+const lastTriggers = new Map<string, number>();
 
 /** Reads the workspace's sources that are due and runs the board triggers of the workspace; never throws. */
-async function syncAndTrigger(workspaceId: string, log: FastifyBaseLogger) {
+async function syncAndTrigger(workspaceId: string, log: FastifyBaseLogger, triggerAnyway = false) {
   if (syncing.has(workspaceId)) return;
   syncing.add(workspaceId);
   try {
     const { synced, errors } = await syncWorkspaceBoard(workspaceId, true);
     if (errors.length > 0) log.warn({ workspaceId, errors }, 'Board source sync failed');
-    if (synced > 0) await runBoardTriggers(workspaceId, log);
+    if (synced > 0 || triggerAnyway) {
+      lastTriggers.set(workspaceId, Date.now());
+      await runBoardTriggers(workspaceId, log);
+    }
   } catch (err) {
     log.warn({ workspaceId, err }, 'Board sync failed');
   } finally {
@@ -33,8 +38,13 @@ async function boardTick(log: FastifyBaseLogger) {
   const due = new Set(
     boards.filter((board) => !board.lastSyncedAt || now - board.lastSyncedAt.getTime() >= board.refreshIntervalSec * 1000).map((board) => board.workspaceId),
   );
+  // A board refreshed from the UI (or another caller) is not due here, but its triggers must still run on schedule:
+  // otherwise an open board page keeps the workflows from taking new tasks.
+  const triggersDue = new Set(
+    boards.filter((board) => now - (lastTriggers.get(board.workspaceId) ?? 0) >= board.refreshIntervalSec * 1000).map((board) => board.workspaceId),
+  );
   // One workspace after another, to spread the provider calls.
-  for (const workspaceId of due) await syncAndTrigger(workspaceId, log);
+  for (const workspaceId of new Set([...due, ...triggersDue])) await syncAndTrigger(workspaceId, log, triggersDue.has(workspaceId));
 }
 
 function loop(name: string, intervalMs: number, work: () => Promise<void>, log: FastifyBaseLogger) {
