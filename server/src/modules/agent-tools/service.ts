@@ -9,6 +9,7 @@ import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderToo
 import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
 import { createProject, listRepositoryOwners } from '../workspaces/create-project.js';
 import { runStudioTool } from './studio.js';
+import { QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
 export const AGENT_TOOL_NAMES = [
@@ -17,6 +18,9 @@ export const AGENT_TOOL_NAMES = [
   'board_get_task',
   'board_create_task',
   'board_update_task',
+  'quality_list',
+  'quality_log',
+  'quality_update',
   'studio_context',
   'studio_list_runs',
   'studio_list_executions',
@@ -175,6 +179,25 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
   if (name.startsWith('studio_')) {
     if (!agent.tools.includes('studio')) throw new HttpError(403, 'Ferramenta exclusiva do Órbi.');
     return runStudioTool(agent.id, agent.workspaceId, name, args);
+  }
+
+  if (name.startsWith('quality_')) {
+    if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente não tem acesso ao registro de defeitos.');
+    if (name === 'quality_list') return { categories: await listQuality(agent.workspaceId) };
+    if (name === 'quality_log') {
+      const profile = agent.profileId ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true } }) : null;
+      return logOccurrence(agent.workspaceId, {
+        category: text(args.category, 200) ?? '',
+        task: text(args.task, 300) ?? '',
+        expected: text(args.expected, 2000) ?? '',
+        obtained: text(args.obtained, 2000) ?? '',
+        reviewer: profile?.name ?? null,
+        agentId: agent.id,
+      });
+    }
+    const status = text(args.status) as QualityStatus | undefined;
+    if (status && !QUALITY_STATUSES.includes(status)) throw new HttpError(400, `Situação inválida. Use: ${QUALITY_STATUSES.join(', ')}.`);
+    return updateCategory(agent.workspaceId, { category: text(args.category, 200), status, transversalRef: text(args.transversalRef, 300) });
   }
 
   if (!agent.tools.includes('board') && !agent.tools.includes('board_read')) {

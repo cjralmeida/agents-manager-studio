@@ -75,6 +75,33 @@ export function createStudioTools(call, groups) {
         },
         run('board_update_task'),
       ),
+      tool(
+        'quality_list',
+        'Lista o registro de defeitos recorrentes do workspace: categorias, situação (aberta, transversal, resolvida, nao_defeito), tarefa transversal e ocorrências.',
+        {},
+        run('quality_list'),
+      ),
+      tool(
+        'quality_log',
+        'Registra um DEFEITO que bloqueou uma tarefa (reprovação): o resultado diferiu de uma RN, um CA ou do contrato. Nunca registre erro esperado (o teste contrário recebeu a recusa documentada). Devolve quantas tarefas a categoria já tem e o que fazer a seguir.',
+        {
+          category: z.string().describe('Categoria curta e estável do defeito (reuse uma de quality_list se for o mesmo), ex.: "corpo nulo dá 500".'),
+          task: z.string().describe('A tarefa reprovada, "repo#N".'),
+          expected: z.string().describe('O que a regra, o critério ou o contrato mandam.'),
+          obtained: z.string().describe('O que aconteceu.'),
+        },
+        run('quality_log'),
+      ),
+      tool(
+        'quality_update',
+        'Muda a situação de uma categoria do registro: "transversal" com a referência da tarefa transversal criada, "resolvida", "nao_defeito" ou "aberta".',
+        {
+          category: z.string(),
+          status: z.enum(['aberta', 'transversal', 'resolvida', 'nao_defeito']).optional(),
+          transversalRef: z.string().optional().describe('A tarefa transversal, "repo#N".'),
+        },
+        run('quality_update'),
+      ),
     );
   }
 

@@ -9,6 +9,7 @@ import { installAuthGuard } from './modules/auth/guard.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
 import { boardRoutes } from './modules/boards/routes.js';
+import { qualityRoutes } from './modules/quality/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { renderRoutes } from './modules/render/routes.js';
@@ -79,6 +80,7 @@ export async function buildApp() {
       await api.register(skillRoutes);
       await api.register(studioSettingsRoutes);
       await api.register(boardRoutes);
+      await api.register(qualityRoutes);
       await api.register(renderRoutes);
       await api.register(workflowRoutes);
       await api.register(previewRoutes);

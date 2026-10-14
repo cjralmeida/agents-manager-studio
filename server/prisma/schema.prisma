@@ -112,6 +112,7 @@ model Workspace {
   agentVariables  AgentVariable[]
   capacityReviews CapacityReview[]
   processes       WorkflowProcess[]
+  qualityCategories QualityCategory[]
   owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([ownerId])
@@ -881,4 +882,40 @@ model PixellabAccount {
 
   @@index([ownerId])
   @@map("pixellab_accounts")
+}
+
+/// Defects that blocked a task (a reviewer's rejection), grouped by category, to find the ones that repeat and fix
+/// them once in the base. Expected errors (a negative test getting the documented refusal) are never logged.
+model QualityCategory {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  workspaceId    String              @map("workspace_id") @db.Uuid
+  name           String
+  /// "aberta", "transversal" (a task fixing it in the base is open), "resolvida" or "nao_defeito".
+  status         String              @default("aberta")
+  /// The transversal task ("repo#N") fixing the category.
+  transversalRef String?             @map("transversal_ref")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  occurrences    QualityOccurrence[]
+
+  @@unique([workspaceId, name])
+  @@map("quality_categories")
+}
+
+model QualityOccurrence {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  categoryId String          @map("category_id") @db.Uuid
+  /// The task that was rejected ("repo#N").
+  taskRef    String          @map("task_ref")
+  expected   String
+  obtained   String
+  /// Who logged it (the reviewer agent's profile, or "usuário").
+  reviewer   String?
+  agentId    String?         @map("agent_id") @db.Uuid
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  category   QualityCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@map("quality_occurrences")
 }
