@@ -199,6 +199,10 @@ export async function startDeploy(input: StartDeployInput) {
   return toResponse(deployment);
 }
 
+/** Start of a deploy error when the PR/MR could not be merged (usually a conflict with the base): a workflow sends the
+ * work back with the base merged into the copy, as for a conflict found in review. */
+export const MERGE_REFUSED = 'O merge do PR/MR foi recusado';
+
 async function fail(id: string, error: unknown) {
   const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
   await prisma.deployment.update({ where: { id }, data: { status: 'error', error: message, finishedAt: new Date() } });
@@ -225,6 +229,8 @@ async function runDeploy(id: string) {
         number,
         project,
         expectedBase,
+      }).catch((error: unknown) => {
+        throw new Error(`${MERGE_REFUSED}: ${error instanceof Error ? error.message : String(error)}`);
       });
     }
 

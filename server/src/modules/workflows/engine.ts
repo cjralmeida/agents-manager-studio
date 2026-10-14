@@ -14,7 +14,7 @@ import { secrets } from '../../lib/secrets.js';
 import { dependenciesDelivered } from '../boards/dependencies.js';
 import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
-import { getDeployment, startDeploy } from '../render/service.js';
+import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { planBlockedUntil } from '../plan-limit/limit.js';
@@ -674,11 +674,13 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
   const targetLane = laneFor(steps, targetIndex, failed.lane);
   const target = latest(run.steps, step.onFailure.retryStepId, targetLane);
   const output = outputOf(failed);
-  const limit = step.onFailure.maxAttempts + (output.mergeConflict ? CONFLICT_EXTRA_ATTEMPTS : 0);
+  // A publish step whose deploy could not merge the PR/MR is a conflict with the base too (e.g. GitLab answers 405).
+  const mergeConflict = output.mergeConflict || (Boolean(failed.agentId) && (await deployMergeRefused(failed.agentId!, failed.startedAt)));
+  const limit = step.onFailure.maxAttempts + (mergeConflict ? CONFLICT_EXTRA_ATTEMPTS : 0);
   if (!target?.agentId || target.attempt >= limit) return false;
 
   const synced = await syncReviewerCommits(target.agentId, failed.agentId);
-  const report = output.mergeConflict
+  const report = mergeConflict
     ? await conflictReport(target.agentId, step.name, synced)
     : [
         `O passo "${step.name}" encontrou problemas no seu trabalho (tentativa ${target.attempt} de ${step.onFailure.maxAttempts}):`,
@@ -711,6 +713,12 @@ async function sendBack(run: RunWithSteps, steps: WorkflowStep[], failed: Workfl
     },
   });
   return true;
+}
+
+/** Whether the latest deploy the agent started since the given time failed merging its PR/MR. */
+async function deployMergeRefused(agentId: string, since: Date) {
+  const deployment = await prisma.deployment.findFirst({ where: { agentId, startedAt: { gte: since } }, orderBy: { startedAt: 'desc' }, select: { error: true } });
+  return Boolean(deployment?.error?.startsWith(MERGE_REFUSED));
 }
 
 /**
