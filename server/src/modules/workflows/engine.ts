@@ -913,8 +913,37 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
 
 /** Advances every running run; called by the scheduler, so runs resume after a restart. */
 export async function advanceAllRuns(log: FastifyBaseLogger) {
+  await reopenRecoveredRuns(log);
   const runs = await prisma.workflowRun.findMany({ where: { status: 'RUNNING' }, select: { id: true } });
   for (const run of runs) await advanceRun(run.id, log);
+}
+
+/** Only runs that ended this recently are reopened. */
+const RECOVERY_WINDOW_MS = 3 * 24 * 60 * 60_000;
+
+/**
+ * A run that failed because its agent stopped (e.g. the plan limit, a crash) goes on when that same agent later
+ * finishes well — resumed by a message, it delivers its work (a PR/MR) with nobody to take it to the next step. The
+ * failed step is reopened and the run advances from there (the step reads the agent's outcome again).
+ */
+async function reopenRecoveredRuns(log: FastifyBaseLogger) {
+  const runs = await prisma.workflowRun.findMany({
+    where: { status: 'FAILED', finishedAt: { gte: new Date(Date.now() - RECOVERY_WINDOW_MS) }, workflow: { isEnabled: true } },
+    include: { steps: true },
+  });
+  for (const run of runs) {
+    const failed = run.steps.filter((step) => step.status === 'FAILED' && step.agentId);
+    // The failed step must be the last thing that happened in its lane (nothing after it was started).
+    const last = failed.find((step) => !run.steps.some((other) => other.lane === step.lane && other.startedAt > step.startedAt));
+    if (!last) continue;
+    const agent = await prisma.agent.findUnique({ where: { id: last.agentId! }, select: { status: true, errorMessage: true, result: true, finishedAt: true } });
+    const result = (agent?.result ?? {}) as { status?: string };
+    if (agent?.status !== 'COMPLETED' || agent.errorMessage || result.status === 'failure') continue;
+    if (!agent.finishedAt || !run.finishedAt || agent.finishedAt <= run.finishedAt) continue;
+    await prisma.workflowStepRun.update({ where: { id: last.id }, data: { status: 'RUNNING', error: null, finishedAt: null } });
+    await prisma.workflowRun.update({ where: { id: run.id }, data: { status: 'RUNNING', error: null, finishedAt: null } });
+    log.info({ runId: run.id, stepId: last.stepId }, 'Run reopened: the agent of its failed step finished its work afterwards');
+  }
 }
 
 export async function cancelRun(runId: string) {
