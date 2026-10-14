@@ -5,6 +5,7 @@ import { type OverviewItem, useAllTasks, useMoveOverviewTask } from '../../api/b
 import { ErrorText, TextInput } from '../form';
 import { MultiSelect } from '../MultiSelect';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
+import { BoardFilterBar, matchesFilters, useBoardFilters, visibleColumns } from './BoardFilters';
 import { agentsByItem, matchesSearch } from './boardUtils';
 import { useActiveWorkflowTasks, useInActiveWorkflow } from '../../api/workflows';
 import { KanbanView } from './KanbanView';
@@ -21,6 +22,7 @@ export function AllTasksPanel() {
   const [view, setView] = usePersistedView('all-tasks');
   const [search, setSearch] = useState('');
   const [workspaceIds, setWorkspaceIds] = useState<string[]>([]);
+  const filters = useBoardFilters();
 
   const activeTasks = useActiveWorkflowTasks();
   // Keyed like the overview items ("<workspaceId>:<item id>").
@@ -34,8 +36,13 @@ export function AllTasksPanel() {
   const data = overview.data;
 
   const workspaces = [...new Map(data.items.map((item) => [item.workspaceId, item.workspaceName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  const items = data.items.filter((item) => (workspaceIds.length === 0 || workspaceIds.includes(item.workspaceId)) && matchesSearch(item, search));
-  const layout = { columns: data.columns, fields: data.fields, statusMap: data.statusMap };
+  const items = data.items.filter(
+    (item) =>
+      (workspaceIds.length === 0 || workspaceIds.includes(item.workspaceId)) &&
+      matchesSearch(item, search) &&
+      matchesFilters(item, filters.state, agentMap.get(item.id)?.status),
+  );
+  const layout = { columns: visibleColumns(data.columns, filters.state), fields: data.fields, statusMap: data.statusMap };
   const open = (item: OverviewItem) => navigate(`/workspaces/${item.workspaceId}?tab=board&task=${encodeURIComponent(item.itemId)}`);
   const label = (item: OverviewItem) => (item.alsoIn.length > 0 ? `${item.workspaceName} +${item.alsoIn.length}` : item.workspaceName);
 
@@ -58,6 +65,8 @@ export function AllTasksPanel() {
           <ViewToggle view={view} onChange={setView} cardsLabel="Quadro" />
         </div>
       </header>
+
+      <BoardFilterBar fields={data.fields} columns={data.columns} items={data.items} filters={filters} />
 
       {data.excluded.length > 0 && (
         <div className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">

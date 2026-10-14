@@ -9,6 +9,7 @@ import { Badge } from '../Badge';
 import { Button } from '../Button';
 import { ErrorText, Select, TextInput } from '../form';
 import { ViewToggle, usePersistedView } from '../ViewToggle';
+import { BoardFilterBar, matchesFilters, useBoardFilters, visibleColumns } from './BoardFilters';
 import { BoardSetup } from './BoardSetup';
 import { BoardConversionPanel } from './BoardConversionPanel';
 import { agentsByItem, matchesSearch } from './boardUtils';
@@ -104,11 +105,14 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
     setParams(params, { replace: true });
   };
   const projectOptions = useMemo(() => projectsOnBoard(board, workspace), [board, workspace]);
+  const filters = useBoardFilters();
   const items = board.items.filter(
     (item) =>
       matchesSearch(item, search) &&
-      (!projectFilter || (projectFilter === 'none' ? !item.projectId : item.projectId === projectFilter)),
+      (!projectFilter || (projectFilter === 'none' ? !item.projectId : item.projectId === projectFilter)) &&
+      matchesFilters(item, filters.state, agentMap.get(item.id)?.status),
   );
+  const shownBoard = { ...board, columns: visibleColumns(board.columns, filters.state) };
   const openItem = board.items.find((item) => item.id === openItemId);
   const waitingCount = board.items.filter((item) => agentMap.get(item.id)?.status === 'WAITING_INPUT').length;
   const outOfModel = board.sources.filter((source) => source.modelStatus !== 'synced');
@@ -162,6 +166,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           </Button>
         </div>
       </header>
+      <BoardFilterBar fields={board.fields} columns={board.columns} items={board.items} filters={filters} />
       <ErrorText error={refresh.error ?? move.error} />
       {outOfModel.map((source) => (
         <div
@@ -182,7 +187,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
 
       {view === 'cards' ? (
         <KanbanView
-          board={board}
+          board={shownBoard}
           items={items}
           agents={agentMap}
           onOpen={(item) => setOpenItemId(item.id)}
@@ -190,7 +195,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           inWorkflow={inWorkflow}
         />
       ) : (
-        <TaskTable board={board} items={items} agents={agentMap} onOpen={(item) => setOpenItemId(item.id)} inWorkflow={inWorkflow} />
+        <TaskTable board={shownBoard} items={items} agents={agentMap} onOpen={(item) => setOpenItemId(item.id)} inWorkflow={inWorkflow} />
       )}
 
       {openItem && (
