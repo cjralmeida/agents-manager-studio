@@ -7,7 +7,7 @@ const FALLBACK_MS = 30 * 60_000;
 
 /** Whether a turn error is Claude's plan limit (5-hour or weekly window), not a real failure. */
 export function isPlanLimitError(text: string) {
-  return /usage limit|limit reached|hit your (usage )?limit|out of extra usage|limite (do plano|de uso)/i.test(text);
+  return /usage limit|limit reached|hit your (\w+ )?limit|out of extra usage|limite (do plano|de uso)/i.test(text);
 }
 
 /** Older Claude Code messages end with the reset as epoch seconds: "Claude AI usage limit reached|1760000000". */

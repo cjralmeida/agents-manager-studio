@@ -9,6 +9,7 @@ describe('plan limit', () => {
   it('recognizes the limit messages of Claude Code', () => {
     assert.ok(isPlanLimitError('Claude AI usage limit reached|1791860000'));
     assert.ok(isPlanLimitError("You've hit your limit · resets 3am (America/Sao_Paulo)"));
+    assert.ok(isPlanLimitError("You've hit your session limit · resets 3:20pm (UTC)"));
     assert.ok(isPlanLimitError('5-hour limit reached ∙ resets 3am'));
     assert.ok(!isPlanLimitError('npm test failed'));
   });
