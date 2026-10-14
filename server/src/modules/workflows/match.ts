@@ -146,24 +146,50 @@ function waitingLines(waiting: { task: BoardItem; dependents: BoardItem[] }[]) {
   );
 }
 
-/** Message for the agent that tests a whole feature: every task with its full description. */
-export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], doneColumnId: string | null = null) {
-  const ids = feature.tasks.map((task) => task.id);
+/**
+ * Screens (tasks of other repositories) that use the given tasks ("Depende de:") and are already published: in
+ * homologation or done. Testing a backend through them shows what the user really gets.
+ */
+export function screensUsing(items: BoardItem[], tasks: BoardItem[], input: { homologationColumnId: string; doneColumnId: string | null }) {
+  const refs = new Set(tasks.flatMap((task) => (itemRef(task) ? [itemRef(task)!.toLowerCase()] : [])));
+  const ids = new Set(tasks.map((task) => task.id));
+  const repositories = new Set(tasks.map((task) => (task.repository ?? '').toLowerCase()));
+  return items.filter(
+    (item) =>
+      !ids.has(item.id) &&
+      !repositories.has((item.repository ?? '').toLowerCase()) &&
+      ((item.columnId === input.homologationColumnId && !item.isClosed) || item.columnId === input.doneColumnId) &&
+      dependencyRefs(item.body).some((ref) => refs.has(ref.toLowerCase())),
+  );
+}
+
+/** Message for the agent that tests a whole feature: every task with its full description, and the screens using it. */
+export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], doneColumnId: string | null = null, screens: BoardItem[] = []) {
+  const ids = [...feature.tasks, ...screens].map((task) => task.id);
   const waiting = feature.tasks
     .map((task) => ({ task, dependents: pendingDependents(items, task, doneColumnId, ids) }))
     .filter((entry) => entry.dependents.length > 0);
+  const inHomologation = screens.filter((screen) => screen.columnId !== doneColumnId).map((screen) => itemRef(screen) ?? screen.id);
   return [
     `Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`,
     ...feature.tasks.map(taskSection),
-    ...(waiting.length > 0
+    ...(screens.length > 0
       ? [
           [
-            '## Ao aprovar',
-            'Mova para "Concluído" só as tarefas que não aparecem abaixo. Estas são usadas por telas que ainda serão testadas em homologação (o teste da tela as conclui):',
-            ...waitingLines(waiting),
+            '# Telas que usam estas tarefas (já publicadas: em homologação ou concluídas)',
+            'Teste o backend também por estas telas, como o usuário usa: os critérios delas que passam pelas rotas acima, as jornadas e o tráfego da tela contra o contrato. Uma tela concluída que quebrou com o backend novo também é falha.',
           ].join('\n'),
+          ...screens.map((screen) => `${taskSection(screen)}\n\n(Coluna atual: ${screen.columnId === doneColumnId ? 'Concluído' : 'Em homologação'})`),
         ]
       : []),
+    [
+      '## Ao terminar',
+      '- Reprovado: decida de quem é cada falha pela rede (API errada → tarefa de backend; API certa e tela errada → tarefa da tela; as duas no mesmo ponto → as duas, cada uma com a sua parte). Escreva o "Relatório de HOM" em cada tarefa com falha e devolva-a para "A fazer", inclusive uma tela que estava em "Concluído". As sem falha ficam onde estão.',
+      `- Aprovado: mova para "Concluído" as tarefas de backend${waiting.length > 0 ? ' que não aparecem abaixo' : ''}${inHomologation.length > 0 ? ` e as telas em homologação testadas aqui (${inHomologation.join(', ')})` : ''}.`,
+      ...(waiting.length > 0
+        ? ['- Estas tarefas são usadas por telas que ainda não foram publicadas (o teste da tela as conclui depois):', ...waitingLines(waiting)]
+        : []),
+    ].join('\n'),
   ].join('\n\n');
 }
 

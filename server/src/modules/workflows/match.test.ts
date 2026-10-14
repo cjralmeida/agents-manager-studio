@@ -10,6 +10,7 @@ import {
   frontendTasksReady,
   matchesRule,
   pickTasks,
+  screensUsing,
   type TaskRule,
   taskPrompt,
 } from './match.js';
@@ -192,5 +193,27 @@ describe('frontendTasksReady', () => {
     const items = [api(1, 'hom'), screen(10, 'todo', 'org/api#1')];
     const [feature] = featuresReady([items[0]!], { homologationColumnId: 'hom', doneColumnId: 'done', repositories: [] });
     assert.match(featurePrompt(feature!, items, 'done'), /org\/api#1 .* fica em homologação/);
+  });
+});
+
+describe('screensUsing', () => {
+  const columns = { homologationColumnId: 'hom', doneColumnId: 'done' };
+  const api = item({ id: 'api1', title: '[FUNC-001] API', repository: 'org/api', number: 1, columnId: 'hom', body: 'API' });
+  const screen = (number: number, columnId: string, overrides: Partial<BoardItem> = {}) =>
+    item({ id: `front${number}`, title: `[FUNC-001] Front ${number}`, repository: 'org/front', number, columnId, body: 'Depende de: org/api#1', ...overrides });
+
+  it('takes published screens that use the backend: in homologation or done', () => {
+    const items = [api, screen(10, 'hom'), screen(11, 'done'), screen(12, 'todo'), screen(13, 'hom', { body: 'Depende de: org/api#9' })];
+    assert.deepEqual(screensUsing(items, [api], columns).map((entry) => entry.id), ['front10', 'front11']);
+  });
+
+  it('tells the tester to test through the screens and send back a done screen that broke', () => {
+    const items = [api, screen(10, 'hom'), screen(11, 'done'), screen(12, 'todo')];
+    const [feature] = featuresReady(items.filter((entry) => entry.repository === 'org/api'), { ...columns, repositories: [] });
+    const prompt = featurePrompt(feature!, items, 'done', screensUsing(items, [api], columns));
+    assert.match(prompt, /# Telas que usam estas tarefas/);
+    assert.match(prompt, /inclusive uma tela que estava em "Concluído"/);
+    assert.match(prompt, /e as telas em homologação testadas aqui \(org\/front#10\)/);
+    assert.match(prompt, /org\/api#1 .* ainda falta testar org\/front#12/);
   });
 });

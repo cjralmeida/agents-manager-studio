@@ -29,6 +29,7 @@ import {
   frontendPrompt,
   frontendTasksReady,
   pickTasks,
+  screensUsing,
   taskPrompt,
 } from './match.js';
 
@@ -115,7 +116,13 @@ async function startBoardRun(workflow: Workflow, item: BoardItem, log?: FastifyB
   return run;
 }
 
-async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, items: BoardItem[], doneColumnId: string | null, log?: FastifyBaseLogger) {
+async function startFeatureRun(
+  workflow: Workflow,
+  feature: ReadyFeature & { screens: BoardItem[] },
+  items: BoardItem[],
+  doneColumnId: string | null,
+  log?: FastifyBaseLogger,
+) {
   const run = await prisma.workflowRun.create({
     data: {
       workflowId: workflow.id,
@@ -124,8 +131,8 @@ async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, items:
       trigger: {
         featureId: feature.featureId,
         signature: feature.signature,
-        taskItemIds: feature.tasks.map((task) => task.id),
-        message: featurePrompt(feature, items, doneColumnId),
+        taskItemIds: [...feature.tasks, ...feature.screens].map((task) => task.id),
+        message: featurePrompt(feature, items, doneColumnId, feature.screens),
       },
     },
   });
@@ -236,6 +243,14 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
 
   const state = await boardTaskState(workspaceId);
   const { snapshot, projectOf, statusMap, taken, lastRun } = state;
+  // Tasks a homologation test is already going through (a screen run or a feature run): another test of the same
+  // tasks waits for it, so the screen and its backend are not tested twice at the same time.
+  const testing = new Set(
+    (await prisma.workflowRun.findMany({ where: { workspaceId, status: 'RUNNING' }, select: { trigger: true } })).flatMap(
+      (run) => (run.trigger as { taskItemIds?: string[] }).taskItemIds ?? [],
+    ),
+  );
+  const isTesting = (tasks: BoardItem[]) => tasks.some((task) => testing.has(task.id));
 
   for (const workflow of workflows) {
     const trigger = parseTrigger(workflow);
@@ -264,15 +279,23 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       });
       const lastOf = (featureId: string) => previous.find((run) => (run.trigger as { featureId?: string }).featureId === featureId);
       // A feature is tested again only after something changed (e.g. a task came back with a report).
-      const candidates = ready.filter((feature) => {
-        const last = lastOf(feature.featureId);
-        return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== feature.signature);
-      });
+      const homologation = { homologationColumnId: statusMap.homologation, doneColumnId: statusMap.done ?? null };
+      const candidates = ready
+        .map((feature) => ({ feature, screens: screensUsing(snapshot.items, feature.tasks, homologation) }))
+        .filter(({ feature, screens }) => {
+          const last = lastOf(feature.featureId);
+          if (isTesting([...feature.tasks, ...screens])) return false;
+          return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== feature.signature);
+        })
+        .map(({ feature, screens }) => ({ ...feature, screens }));
       if (candidates.length === 0) {
         await report(workflow, 'Vigiando: nenhuma funcionalidade completa nova em homologação.');
         continue;
       }
-      for (const feature of candidates.slice(0, slots)) await startFeatureRun(workflow, feature, snapshot.items, statusMap.done ?? null, log);
+      for (const feature of candidates.slice(0, slots)) {
+        for (const task of [...feature.tasks, ...feature.screens]) testing.add(task.id);
+        await startFeatureRun(workflow, feature, snapshot.items, statusMap.done ?? null, log);
+      }
       await report(workflow, `Iniciou para: ${candidates.slice(0, slots).map((feature) => feature.featureId).join(', ')}.`);
       continue;
     }
@@ -288,6 +311,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       });
       // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed).
       const candidates = ready.filter((entry) => {
+        if (isTesting([entry.task, ...entry.backend])) return false;
         const last = lastRun.get(entry.task.id);
         return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== frontendSignature(entry));
       });
@@ -298,6 +322,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       const started: string[] = [];
       for (const entry of candidates.slice(0, slots)) {
         taken.add(entry.task.id);
+        for (const task of [entry.task, ...entry.backend]) testing.add(task.id);
         await startFrontendRun(workflow, entry, snapshot.items, statusMap.done ?? null, log);
         started.push(`"${entry.task.title}"`);
       }
