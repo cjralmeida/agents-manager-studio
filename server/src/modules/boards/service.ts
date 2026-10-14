@@ -610,6 +610,13 @@ export async function releaseDependents(workspaceId: string) {
     await moveItem(workspaceId, item.id, statusMap.todo!);
     released.push(itemRef(item) ?? item.title);
   }
+  // A closed issue keeps its project status on GitHub (closing does not move the card): it would stay in "A fazer"
+  // or the Backlog as if it were still to do. It goes to done.
+  if (statusMap.done) {
+    for (const item of snapshot.items.filter((entry) => entry.isClosed && entry.columnId !== statusMap.done)) {
+      await moveItem(workspaceId, item.id, statusMap.done).catch(() => undefined);
+    }
+  }
   return released;
 }
 
