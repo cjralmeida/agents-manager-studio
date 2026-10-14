@@ -38,7 +38,7 @@ const ROLE_NAMES: Record<StatusRole, string> = {
   review: 'Em revisão',
   homologation: 'Homologação',
   done: 'Concluído',
-  blocked: 'Aguardando aprovação',
+  blocked: 'Backlog',
 };
 
 export function buildProcessGraph(workflows: Workflow[], profiles: AgentProfile[], board: Board | null) {

@@ -1,4 +1,4 @@
-import type { BoardItem, StatusMap } from './types.js';
+import type { BoardField, BoardItem, StatusMap } from './types.js';
 
 /**
  * Task dependencies written by the task agent: a task blocked in the "blocked" column carries a line
@@ -20,10 +20,28 @@ export const itemRef = (item: Pick<BoardItem, 'repository' | 'number'>) => (item
  * for the whole feature to be tested — which needs the dependent tasks too). A dependency that is not on the
  * board keeps the task blocked: it may be on another board, or the ref may be wrong.
  */
-export function releasableItems(items: BoardItem[], statusMap: StatusMap): BoardItem[] {
+export function releasableItems(items: BoardItem[], statusMap: StatusMap, fields: BoardField[] = []): BoardItem[] {
   if (!statusMap.blocked || !statusMap.todo) return [];
   const delivered = dependenciesDelivered(items, statusMap);
-  return items.filter((item) => item.columnId === statusMap.blocked && dependencyRefs(item.body).length > 0 && delivered(item));
+  // A task that also waits for a decision stays until it is decided (the decision clears the mark).
+  const mark = decisionMark(fields);
+  return items.filter(
+    (item) =>
+      item.columnId === statusMap.blocked &&
+      dependencyRefs(item.body).length > 0 &&
+      !(mark && item.fields[mark.fieldId] === mark.optionId) &&
+      delivered(item),
+  );
+}
+
+/**
+ * The field option that marks a task waiting for a decision between an agent and a person ("Decisão" = "Aguardando
+ * decisão"), when the board has it.
+ */
+export function decisionMark(fields: BoardField[]) {
+  const field = fields.find((entry) => /^decis/i.test(entry.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+  const option = field?.options.find((entry) => /aguard/i.test(entry.name));
+  return field && option ? { fieldId: field.id, optionId: option.id, field: field.name, option: option.name } : null;
 }
 
 /**

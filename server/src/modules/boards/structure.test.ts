@@ -87,7 +87,7 @@ describe('templateStructure', () => {
     assert.equal(templateStructure('GITHUB').columns.length, 6);
     assert.deepEqual(
       templateStructure('GITLAB').columns.map((column) => column.name),
-      ['Em andamento', 'Em validação', 'Em homologação', 'Aguardando aprovação'],
+      ['Backlog', 'Em andamento', 'Em validação', 'Em homologação'],
     );
   });
 });
@@ -100,8 +100,8 @@ describe('matchIdsByName', () => {
       fields: [{ id: 'f9', name: 'Prioridade', options: [{ id: 'p0', name: 'P0 - Crítica', color: 'RED', description: '' }] }],
     };
     const matched = matchIdsByName(desired, created);
-    assert.equal(matched.columns[0]!.id, 'x1');
-    assert.equal(matched.columns[1]!.id, null);
+    assert.equal(matched.columns.find((column) => column.name === 'A fazer')!.id, 'x1');
+    assert.equal(matched.columns.find((column) => column.name === 'Backlog')!.id, null);
     const priority = matched.fields.find((field) => field.name === 'Prioridade')!;
     assert.equal(priority.id, 'f9');
     assert.equal(priority.options[0]!.id, 'p0');

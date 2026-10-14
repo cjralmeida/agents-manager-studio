@@ -605,7 +605,7 @@ export async function createTask(workspaceId: string, task: NewTask) {
 export async function releaseDependents(workspaceId: string) {
   const { snapshot, statusMap } = await boardContext(workspaceId);
   const released: string[] = [];
-  for (const item of releasableItems(snapshot.items, statusMap)) {
+  for (const item of releasableItems(snapshot.items, statusMap, snapshot.fields)) {
     await moveItem(workspaceId, item.id, statusMap.todo!);
     released.push(itemRef(item) ?? item.title);
   }

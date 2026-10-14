@@ -18,13 +18,18 @@ export function findByName<T extends { name: string }>(items: T[], name: string)
  * Turns `{ "Tipo": "Bug", "Prioridade": "P1" }` into board field/option ids. Unknown names are reported
  * back to the agent instead of being silently dropped.
  */
+/** Field values by names; an empty value clears the field. */
 export function resolveFields(fields: BoardField[], values: Record<string, string>) {
-  const resolved: Record<string, string> = {};
+  const resolved: Record<string, string | null> = {};
   const errors: string[] = [];
   for (const [fieldName, optionName] of Object.entries(values)) {
     const field = findByName(fields, fieldName);
     if (!field) {
       errors.push(`Campo "${fieldName}" não existe. Campos: ${fields.map((entry) => entry.name).join(', ')}.`);
+      continue;
+    }
+    if (!optionName?.trim()) {
+      resolved[field.id] = null;
       continue;
     }
     const option = findByName(field.options, optionName);

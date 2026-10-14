@@ -13,7 +13,7 @@ import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
 import { dependenciesDelivered } from '../boards/dependencies.js';
 import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
-import type { BoardItem, StatusMap } from '../boards/types.js';
+import type { BoardField, BoardItem, StatusMap } from '../boards/types.js';
 import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
@@ -334,7 +334,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         await report(workflow, 'Parado: o quadro não tem coluna "Aguardando aprovação" definida.');
         continue;
       }
-      const candidates = awaitingDecision(snapshot.items, statusMap.blocked, trigger.repositories).filter((item) => {
+      const candidates = awaitingDecision(snapshot.items, statusMap.blocked, trigger.repositories, snapshot.fields).filter((item) => {
         if (taken.has(item.id) || !projectOf(item)) return false;
         // Studied once; again only after someone changed the task (a margin covers the agent's own last edit).
         const last = lastRun.get(item.id);
@@ -526,16 +526,21 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   const homologation = parseTrigger(run.workflow).type === 'frontend_in_homologation' && index === 0;
 
   let task: BoardItem | undefined;
+  let decisionFields: BoardField[] = [];
   let projectId: string | null | undefined;
   const taskItemId = isTaskLane ? lane : index === 0 ? trigger.taskItemId : undefined;
   if (taskItemId) {
     const context = await boardContext(run.workspaceId).catch(() => null);
     task = context?.snapshot.items.find((item) => item.id === taskItemId);
+    decisionFields = context?.snapshot.fields ?? [];
     if (task) projectId = context!.projectOf(task);
   }
 
   // A task from a repository the agent does not work on cannot be handled by this step.
   if (homologation) projectId = null;
+  // A decision is studied where the agent keeps the documentation (e.g. the docs repository), not necessarily in the
+  // task's repository: an agent that does not work on the task's project works on its own.
+  if (decision && task && projectId && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) projectId = profile.projectIds[0];
   if (task && projectId && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
     return fail(`A tarefa "${task.title}" é do projeto ${project?.name ?? '?'}, e o agente "${profile.name}" não trabalha nele.`);
@@ -586,7 +591,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     '',
     task && !homologation
       ? decision
-        ? decisionPrompt(task)
+        ? decisionPrompt(task, decisionFields)
         : taskPrompt(task, '')
       : index === 0
         ? (trigger.message ?? run.title)

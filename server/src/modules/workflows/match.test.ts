@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
 import {
   awaitingDecision,
+  decisionPrompt,
   featureIdOf,
   featurePrompt,
   featuresReady,
@@ -215,5 +216,27 @@ describe('screensUsing', () => {
     assert.match(prompt, /inclusive uma tela que estava em "Concluído"/);
     assert.match(prompt, /e as telas em homologação testadas aqui \(org\/front#10\)/);
     assert.match(prompt, /org\/api#1 .* ainda falta testar org\/front#12/);
+  });
+});
+
+describe('awaitingDecision with the decision field', () => {
+  const decision: BoardField = {
+    id: 'dec',
+    name: 'Decisão',
+    options: [{ id: 'wait', name: 'Aguardando decisão', color: '#ff0000', description: null }],
+  };
+
+  it('takes only the tasks marked as waiting for a decision when the board has the field', () => {
+    const items = [
+      item({ id: 'a', columnId: 'blocked', fields: { dec: 'wait' } }),
+      item({ id: 'b', columnId: 'blocked', fields: {} }),
+      item({ id: 'c', columnId: 'blocked', fields: {}, body: 'Depende de: org/repo#1' }),
+      item({ id: 'd', columnId: 'todo', fields: { dec: 'wait' } }),
+    ];
+    assert.deepEqual(awaitingDecision(items, 'blocked', [], [decision]).map((entry) => entry.id), ['a']);
+  });
+
+  it('tells the agent to clear the mark after deciding', () => {
+    assert.match(decisionPrompt(item({ columnId: 'blocked' }), [decision]), /limpe o campo "Decisão"/);
   });
 });

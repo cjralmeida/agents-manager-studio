@@ -1,4 +1,5 @@
 import { HttpError } from '../../lib/errors.js';
+import { networkFailure } from './network.js';
 import type { ParsedBoardUrl } from './board-url.js';
 import { type BoardStructure, type FieldOrder, type StructureOption, templateStructure } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, GITLAB_STATUS_PREFIX } from './template.js';
@@ -68,8 +69,8 @@ export function createGitLabClient(host: string, token: string) {
       headers: { 'PRIVATE-TOKEN': token, ...(body !== undefined && { 'Content-Type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
-    }).catch(() => null);
-    if (!response) throw new HttpError(502, `Não foi possível conectar a ${host}.`);
+    }).catch((error: unknown) => networkFailure(error));
+    if (typeof response === 'string') throw new HttpError(502, `Não foi possível conectar a ${host} (${method} ${path.split('?')[0]}: ${response}).`);
     if (response.status === 401) throw new HttpError(422, 'Token do GitLab inválido ou expirado.');
     return { status: response.status, body: (await response.json().catch(() => null)) as T };
   }

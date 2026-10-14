@@ -68,7 +68,10 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   }
 
   if (tools.includes('board')) {
-    lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
+    lines.push(
+      '- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.',
+      '- Tarefa que ainda não pode ser feita vai para a coluna Backlog: se espera outras tarefas, com a linha "Depende de: repo#N" (o Studio a move para "A fazer" quando forem entregues); se espera uma decisão entre um agente e o usuário (uma dúvida que você não pode resolver sozinho), com o campo Decisão = "Aguardando decisão" — um agente é chamado para decidir com o usuário. Quem decide limpa o campo (fields {"Decisão": ""}).',
+    );
   }
   if (tools.includes('projects')) {
     lines.push(

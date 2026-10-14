@@ -1,4 +1,5 @@
 import { HttpError } from '../../lib/errors.js';
+import { networkFailure } from './network.js';
 import type { ParsedBoardUrl } from './board-url.js';
 import { type BoardStructure, type StructureOption, matchIdsByName, structureOf, templateStructure } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, type GitHubColor } from './template.js';
@@ -40,8 +41,8 @@ export function createGitHubClient(host: string, token: string) {
       headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'agents-manager-studio', 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, variables }),
       signal: AbortSignal.timeout(30_000),
-    }).catch(() => null);
-    if (!response) throw new HttpError(502, `Não foi possível conectar a ${host}.`);
+    }).catch((error: unknown) => networkFailure(error));
+    if (typeof response === 'string') throw new HttpError(502, `Não foi possível conectar a ${host} (${response}).`);
     if (response.status === 401) throw new HttpError(422, 'Token do GitHub inválido ou expirado.');
 
     const body = (await response.json().catch(() => ({}))) as { data?: T; errors?: { type?: string; message?: string }[] };

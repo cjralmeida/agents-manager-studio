@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { dependencyRefs, itemRef } from '../boards/dependencies.js';
+import { decisionMark, dependencyRefs, itemRef } from '../boards/dependencies.js';
 import type { BoardField, BoardItem } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
@@ -51,28 +51,36 @@ export function taskPrompt(item: BoardItem, instructions: string) {
 }
 
 /**
- * Open tasks in the "blocked" column that wait for a decision: the ones with a "Depende de:" line only wait for their
- * dependencies (the Studio releases them), so they are left out.
+ * Open tasks in the "blocked" column (Backlog) that wait for a decision. On a board with the decision field, the
+ * tasks marked with it; without the field, the ones without a "Depende de:" line (those only wait for their
+ * dependencies, which the Studio releases).
  */
-export function awaitingDecision(items: BoardItem[], blockedColumnId: string, repositories: string[]) {
+export function awaitingDecision(items: BoardItem[], blockedColumnId: string, repositories: string[], fields: BoardField[] = []) {
+  const mark = decisionMark(fields);
   return items.filter(
     (item) =>
       item.columnId === blockedColumnId &&
       !item.isClosed &&
       Boolean(item.repository) &&
-      dependencyRefs(item.body).length === 0 &&
+      (mark ? item.fields[mark.fieldId] === mark.optionId : dependencyRefs(item.body).length === 0) &&
       (repositories.length === 0 || repositories.some((path) => path.toLowerCase() === item.repository!.toLowerCase())),
   );
 }
 
 /** Message for an agent that studies a task waiting for a decision and decides it with the user. */
-export function decisionPrompt(item: BoardItem) {
+export function decisionPrompt(item: BoardItem, fields: BoardField[] = []) {
   const ref = item.repository && item.number ? `${item.repository}#${item.number}` : 'do quadro';
   const link = [item.url, `id no quadro: ${item.id}`].filter(Boolean).join(' — ');
+  const mark = decisionMark(fields);
   return [
-    `A tarefa ${ref} está em "Aguardando aprovação" e precisa de uma decisão: ${item.title}`,
+    `A tarefa ${ref} está no Backlog esperando uma decisão: ${item.title}`,
     link,
     'Estude a tarefa e decida com o usuário; só mova o card depois da decisão dele.',
+    ...(mark
+      ? [
+          `Depois da decisão, limpe o campo "${mark.field}" (board_update_task com fields {"${mark.field}": ""}) e mova o card para onde a decisão levar ("A fazer" se pode ser feita; fica no Backlog se ainda espera outras tarefas, com a linha "Depende de:").`,
+        ]
+      : []),
     '',
     item.body.trim(),
   ].join('\n');

@@ -107,7 +107,9 @@ export async function prepareTaskByNames(workspaceId: string, args: Args) {
   const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
   if (errors.length > 0) throw new HttpError(422, errors.join(' '));
   const column = text(args.column) ? resolveColumn(snapshot.columns, text(args.column)!) : null;
-  return { title, body: text(args.body) ?? '', repository: repository?.path ?? null, columnId: column?.id ?? null, fields: resolved };
+  // A new task has no value to clear: empty values are left out.
+  const fields = Object.fromEntries(Object.entries(resolved).filter((entry): entry is [string, string] => entry[1] !== null));
+  return { title, body: text(args.body) ?? '', repository: repository?.path ?? null, columnId: column?.id ?? null, fields };
 }
 
 /**

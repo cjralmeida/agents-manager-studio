@@ -29,6 +29,13 @@ export interface TemplateStatus extends TemplateOption {
  */
 export const BOARD_TEMPLATE = {
   statuses: [
+    {
+      role: 'blocked',
+      name: 'Backlog',
+      color: 'BLUE',
+      description:
+        'Tarefas que ainda não podem ser feitas: esperam as tarefas de "Depende de:" (o Studio move para "A fazer" quando forem entregues) ou uma decisão entre um agente e uma pessoa (campo Decisão = Aguardando decisão). Os agentes não executam este item.',
+    },
     { role: 'todo', name: 'A fazer', color: 'GRAY', description: 'A tarefa foi registrada, mas ainda não começou.' },
     { role: 'inProgress', name: 'Em andamento', color: 'YELLOW', description: 'Existe alguém trabalhando na tarefa.' },
     { role: 'review', name: 'Em validação', color: 'PURPLE', description: 'O trabalho foi realizado e aguarda revisão ou aprovação.' },
@@ -39,12 +46,6 @@ export const BOARD_TEMPLATE = {
       description: 'Publicado em homologação; aguarda o teste da funcionalidade completa.',
     },
     { role: 'done', name: 'Concluído', color: 'GREEN', description: 'O critério de conclusão foi atendido e a entrega foi validada.' },
-    {
-      role: 'blocked',
-      name: 'Aguardando aprovação',
-      color: 'BLUE',
-      description: 'Decisão ou documentação pendente de aprovação humana. Os agentes não executam este item.',
-    },
   ] satisfies TemplateStatus[],
   fields: [
     {
@@ -75,6 +76,16 @@ export const BOARD_TEMPLATE = {
         { name: 'Documentação', color: 'GRAY', description: 'Criação ou atualização de documentação como entrega principal.' },
       ],
     },
+    {
+      name: 'Decisão',
+      options: [
+        {
+          name: 'Aguardando decisão',
+          color: 'RED',
+          description: 'A tarefa espera uma decisão a tomar entre um agente e uma pessoa. Decidida, o campo é limpo.',
+        },
+      ],
+    },
   ] satisfies { name: string; options: TemplateOption[] }[],
   shortDescription: 'Quadro de tarefas do workspace, acompanhado pelo Agents Manager Studio.',
   readme: `# Quadro de tarefas
@@ -103,9 +114,12 @@ Links de protótipo, documento, PR e tarefas relacionadas.
 - P2 - Média: trabalho necessário no planejamento normal.
 - P3 - Baixa: benefício menor ou adiável.
 
-## Aprovação humana
+## Backlog
 
-Use Aguardando aprovação quando houver decisão que dependa de aprovação humana. Os agentes não executam esses itens.
+Tarefas que ainda não podem ser feitas ficam no Backlog, e os agentes não as executam:
+- com a linha "Depende de:", esperam essas tarefas; o Studio as move para "A fazer" quando todas forem entregues;
+- com o campo Decisão = "Aguardando decisão", esperam uma decisão entre um agente e uma pessoa; decidida, o campo é limpo
+  e o card vai para onde a decisão levar.
 `,
 };
 
