@@ -40,17 +40,23 @@ async function api(path, init = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-/** Events are sent in order; failures are retried a few times so the timeline does not get holes. */
+/**
+ * Events are sent in order. Failures are retried for a few minutes, long enough for the Studio server to restart:
+ * a lost event leaves a hole in the timeline, and a lost question leaves the agent waiting for an answer nobody sees.
+ */
+const EVENT_RETRY_MS = 4 * 60_000;
 let eventChain = Promise.resolve();
 function emit(type, data = {}) {
   eventChain = eventChain.then(async () => {
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    const giveUpAt = Date.now() + EVENT_RETRY_MS;
+    for (let attempt = 1; ; attempt++) {
       try {
         await api('/events', { method: 'POST', body: JSON.stringify({ events: [{ type, data }] }) });
         return;
       } catch (error) {
         log('Event delivery failed', { type, attempt, error: String(error) });
-        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        if (Date.now() >= giveUpAt) return;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 1000, 10_000)));
       }
     }
   });
