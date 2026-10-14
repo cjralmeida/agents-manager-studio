@@ -105,6 +105,27 @@ export function createStudioTools(call, groups) {
     );
   }
 
+  if (groups.includes('test_env')) {
+    tools.push(
+      tool(
+        'test_env_start',
+        'Sobe um AMBIENTE DE TESTE local do projeto (a versão mais nova da branch base, pelo docker/test-env/docker-compose.yml dele), para testar quando a homologação não estiver utilizável. Só sobe quando há memória livre no computador; senão fica na fila. Devolve o id: consulte com test_env_status até ficar "ready" e use as URLs.',
+        {
+          project: z.string().describe('Nome do projeto no workspace (ex.: globalfarm).'),
+          variables: z.record(z.string(), z.string()).optional().describe('Variáveis para a stack, ex.: a URL da API de outro ambiente para o front.'),
+        },
+        run('test_env_start'),
+      ),
+      tool(
+        'test_env_status',
+        'Situação de um ambiente de teste (queued, building, ready, failed, stopped) e as URLs dos serviços; sem id, lista os seus.',
+        { id: z.string().optional() },
+        run('test_env_status'),
+      ),
+      tool('test_env_stop', 'Derruba um ambiente de teste (sem id, todos os seus). Chame ao terminar os testes.', { id: z.string().optional() }, run('test_env_stop')),
+    );
+  }
+
   const renderRead = groups.includes('render') || groups.includes('render_read');
   if (renderRead) {
     tools.push(

@@ -919,3 +919,29 @@ model QualityOccurrence {
   @@index([categoryId])
   @@map("quality_occurrences")
 }
+
+/// Throwaway test environment of a project (its docker/test-env compose stack), started for a tester agent when the
+/// homologation environment is not usable, and taken down when the agent is done.
+model TestEnvironment {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  projectId   String    @map("project_id") @db.Uuid
+  agentId     String?   @map("agent_id") @db.Uuid
+  /// "queued" (waiting for room on the machine), "building", "ready", "failed" or "stopped".
+  status      String    @default("queued")
+  commit      String?
+  /// Memory reserved for the stack while it runs (MB).
+  memoryMb    Int       @map("memory_mb")
+  /// Variables passed to the stack (e.g. the URL of another environment's API).
+  variables   Json      @default("{}")
+  /// Exposed services: { name, url }.
+  urls        Json      @default("[]")
+  error       String?
+  log         String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  readyAt     DateTime? @map("ready_at") @db.Timestamptz(3)
+  stoppedAt   DateTime? @map("stopped_at") @db.Timestamptz(3)
+
+  @@index([status])
+  @@map("test_environments")
+}

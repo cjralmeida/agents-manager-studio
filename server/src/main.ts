@@ -9,6 +9,7 @@ import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startCopyCleanup } from './modules/agents/cleanup.js';
 import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
+import { startTestEnvMonitor } from './modules/test-envs/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
 import { startWorkflowScheduler } from './modules/workflows/scheduler.js';
@@ -60,6 +61,9 @@ const stopSeedCapture = startSeedCapture(app.log);
 // Tasks left stuck on the board (no agent, no run, no reason to wait) are found and sorted out.
 const stopBoardWatch = startBoardWatch(app.log);
 app.addHook('onClose', async () => stopBoardWatch());
+// Test environments: queued ones start when the computer has room; finished agents' ones are taken down.
+const stopTestEnvMonitor = startTestEnvMonitor(app.log);
+app.addHook('onClose', async () => stopTestEnvMonitor());
 app.addHook('onClose', async () => stopSeedCapture());
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

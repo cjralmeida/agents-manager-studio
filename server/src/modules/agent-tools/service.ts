@@ -9,6 +9,7 @@ import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderToo
 import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
 import { createProject, listRepositoryOwners } from '../workspaces/create-project.js';
 import { runStudioTool } from './studio.js';
+import { getTestEnv, listTestEnvs, startTestEnv, stopTestEnv } from '../test-envs/service.js';
 import { QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -21,6 +22,9 @@ export const AGENT_TOOL_NAMES = [
   'quality_list',
   'quality_log',
   'quality_update',
+  'test_env_start',
+  'test_env_status',
+  'test_env_stop',
   'studio_context',
   'studio_list_runs',
   'studio_list_executions',
@@ -179,6 +183,18 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
   if (name.startsWith('studio_')) {
     if (!agent.tools.includes('studio')) throw new HttpError(403, 'Ferramenta exclusiva do Órbi.');
     return runStudioTool(agent.id, agent.workspaceId, name, args);
+  }
+
+  if (name.startsWith('test_env_')) {
+    if (!agent.tools.includes('test_env')) throw new HttpError(403, 'Este agente não pode subir ambientes de teste.');
+    if (name === 'test_env_start') {
+      const variables = (args.variables && typeof args.variables === 'object' ? args.variables : {}) as Record<string, string>;
+      return startTestEnv({ workspaceId: agent.workspaceId, projectName: text(args.project, 100) ?? '', agentId: agent.id, variables });
+    }
+    const id = text(args.id, 60);
+    if (name === 'test_env_status') return id ? getTestEnv(id) : { environments: await listTestEnvs({ agentId: agent.id }) };
+    const own = id ? [id] : (await listTestEnvs({ agentId: agent.id, active: true })).map((env) => env.id);
+    return { stopped: await Promise.all(own.map((envId) => stopTestEnv(envId))) };
   }
 
   if (name.startsWith('quality_')) {

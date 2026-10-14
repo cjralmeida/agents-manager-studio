@@ -68,7 +68,7 @@ export function daemonPath(hostPath: string) {
 }
 
 /** Runs the docker CLI (with compose and buildx) against the Studio's Docker, inside the checked-out source. */
-function dockerCli(ws: Pick<Workspace, 'projectId' | 'slug' | 'srcHost'>, script: string, timeoutMs = CHECK_TIMEOUT_MS) {
+export function dockerCli(ws: Pick<Workspace, 'projectId' | 'slug' | 'srcHost'>, script: string, timeoutMs = CHECK_TIMEOUT_MS) {
   const inside = daemonPath(ws.srcHost);
   return runOnce({
     image: CLI_IMAGE,

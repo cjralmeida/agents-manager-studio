@@ -81,6 +81,11 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   if (tools.includes('clickup_read')) {
     lines.push('- Use studio_clickup_hierarchy, studio_clickup_list_tasks e studio_clickup_get_task para LER tarefas do ClickUp (somente leitura; nada é alterado lá).');
   }
+  if (tools.includes('test_env')) {
+    lines.push(
+      '- Use studio_test_env_start / studio_test_env_status / studio_test_env_stop para subir um ambiente de teste local do projeto (Docker) quando a homologação não estiver utilizável; ele só sobe se houver memória livre no computador. Derrube-o ao terminar.',
+    );
+  }
   if (tools.includes('pixellab')) {
     lines.push('- Você tem as ferramentas do PixelLab (servidor MCP "pixellab") para gerar e animar pixel art. Elas custam créditos do usuário: use-as só como a sua skill indica.');
   }

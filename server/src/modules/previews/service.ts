@@ -44,7 +44,7 @@ async function findProject(projectId: string) {
 }
 
 /** Fetch URL with the workspace account's token, and the branch to follow (the base branch, or the remote's default). */
-async function remoteOf(project: Project) {
+export async function remoteOf(project: Project) {
   const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
   if (!remote) throw new HttpError(422, 'O projeto não tem repositório remoto: o Rodar usa a versão do GitHub/GitLab.');
   const account = await findWorkspaceGitAccount(project.workspaceId, [remoteHostname(remote), remote.host]);
@@ -57,7 +57,7 @@ async function remoteOf(project: Project) {
   return { url, cleanUrl: project.gitRemoteUrl!, branch };
 }
 
-async function headCommit(url: string, branch: string) {
+export async function headCommit(url: string, branch: string) {
   const out = await git('/tmp', ['ls-remote', url, `refs/heads/${branch}`], { timeoutMs: 30_000 });
   const commit = out.split(/\s+/)[0];
   if (!commit) throw new HttpError(422, `A branch "${branch}" não existe no repositório remoto.`);

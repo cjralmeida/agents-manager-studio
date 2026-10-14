@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { type ContainerKind, type ContainerUsage, formatBytes, useDiskUsage, useResourceUsage } from '../../api/system';
 import { ErrorText } from '../form';
+import { TestEnvsPanel } from './TestEnvsPanel';
 
 const kindLabels: Record<ContainerKind, string> = { agent: 'Agentes', studio: 'Serviços do Studio' };
 /** Above this gap between Docker's disk file and its data, compacting is worth it. */
@@ -89,6 +90,7 @@ export function ResourcePanel({ workspaceId }: { workspaceId?: string }) {
           })}
         </div>
       )}
+      {!workspaceId && <TestEnvsPanel />}
       <div className="space-y-3">
         {host && !workspaceId && <h3 className="text-xs font-medium tracking-wider text-muted uppercase">Docker</h3>}
         <UsageBar
