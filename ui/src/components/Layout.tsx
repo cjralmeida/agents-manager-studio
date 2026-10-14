@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { isWorking, useAgent, useAgents } from '../api/agents';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { useMe } from '../api/auth';
 import { useCapacitySuggestions } from '../api/capacity';
 import { useWorkspaces } from '../api/workspaces';
@@ -37,6 +37,14 @@ export function Layout() {
   /** Workspaces where the Gestor de Capacidade waits for a decision. */
   const capacityIds = new Set(useCapacitySuggestions().data?.map((suggestion) => suggestion.workspaceId));
   const [orbiConversation, setOrbiConversation] = useState<string | null>(null);
+  // Each page opens at its top (the content area keeps its scroll otherwise, e.g. coming back from a long
+  // conversation); links to a part of a page (#pergunta) scroll there themselves.
+  const { pathname, hash } = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  // Before the pages' own effects, so a conversation still scrolls down to its last message after this.
+  useLayoutEffect(() => {
+    if (!hash) mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname, hash]);
 
   return (
     <div className="flex h-full">
@@ -91,7 +99,7 @@ export function Layout() {
           </div>
         )}
       </aside>
-      <main className="flex-1 overflow-auto p-6">
+      <main ref={mainRef} className="flex-1 overflow-auto p-6">
         <Outlet />
       </main>
 
