@@ -20,9 +20,17 @@ export function Conversation({ agent, speaker = 'Agente', renderEvent, composer 
   const bottomRef = useRef<HTMLDivElement>(null);
   const count = events.data?.length ?? 0;
 
+  // Opening a conversation (or switching to another agent) jumps to its last message; new messages scroll smoothly.
+  const shownAgent = useRef<string | null>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [count, agent.status]);
+    const opening = shownAgent.current !== agent.id;
+    if (count === 0) return;
+    shownAgent.current = agent.id;
+    // To the very end of the page (the message box below the conversation included).
+    const page = bottomRef.current?.closest('main');
+    if (page) page.scrollTo({ top: page.scrollHeight, behavior: opening ? 'auto' : 'smooth' });
+    else bottomRef.current?.scrollIntoView({ behavior: opening ? 'auto' : 'smooth', block: 'end' });
+  }, [agent.id, count, agent.status]);
 
   return (
     <div className="flex flex-col gap-3">
