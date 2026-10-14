@@ -645,10 +645,10 @@ async function reuseHomologationTester(run: RunWithSteps, profileId: string, pro
   if (!previous?.agentId) return null;
   const agent = await prisma.agent.findUnique({
     where: { id: previous.agentId },
-    select: { id: true, profileId: true, status: true, containerId: true, sessionId: true, workdirRemovedAt: true, lastActivityAt: true },
+    select: { id: true, profileId: true, status: true, containerId: true, sessionId: true, workdirRemovedAt: true, lastActivityAt: true, limitResumeAt: true },
   });
   if (!agent || agent.profileId !== profileId || !agent.sessionId || agent.workdirRemovedAt) return null;
-  if (!['COMPLETED', 'READY_FOR_REVIEW'].includes(agent.status)) return null;
+  if (!['COMPLETED', 'READY_FOR_REVIEW'].includes(agent.status) || agent.limitResumeAt) return null;
   if (!agent.lastActivityAt || Date.now() - agent.lastActivityAt.getTime() > TESTER_REUSE_IDLE_MS) return null;
   const handled = await prisma.workflowStepRun.count({ where: { agentId: agent.id, stepIndex: 0, run: { workflowId: run.workflowId } } });
   if (handled >= TESTER_REUSE_LIMIT) return null;
