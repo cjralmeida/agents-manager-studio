@@ -11,7 +11,7 @@ import { dockerCli } from '../previews/runners.js';
 import { headCommit, previewSlug, remoteOf } from '../previews/service.js';
 import { projectEnv, renderDotenv } from '../previews/variables.js';
 import { getResourceUsage } from '../system/service.js';
-import { reservationFits } from './capacity.js';
+import { type ComposeService, exposedServices, reservationFits, stackMemoryMb } from './capacity.js';
 
 /**
  * Test environments: a throwaway copy of a project running on this machine, for testers when the homologation
@@ -21,7 +21,8 @@ import { reservationFits } from './capacity.js';
  * the agents), otherwise it waits in line; it is taken down when its agent is done.
  */
 
-export const TEST_ENV_FILE = 'docker/test-env/docker-compose.yml';
+/** Where a project describes its test stack, in order (a docker-compose.test.yml at the root also counts). */
+export const TEST_ENV_FILES = ['docker/test-env/docker-compose.yml', 'docker-compose.test.yml'];
 const DIR = '.test-envs';
 const OVERRIDE_FILE = '.studio-test.yml';
 const ENV_FILE = '.studio-test.env';
@@ -152,27 +153,25 @@ async function build(env: TestEnvironment, log?: FastifyBaseLogger) {
     await git('/tmp', ['clone', '--quiet', '--depth', '1', '--branch', remote.branch, remote.url, src(env)], { timeoutMs: 300_000 });
     await git(src(env), ['remote', 'set-url', 'origin', remote.cleanUrl]);
     await prisma.testEnvironment.update({ where: { id: env.id }, data: { commit } });
-    if (!(await exists(`${src(env)}/${TEST_ENV_FILE}`))) {
+    let file: string | null = null;
+    for (const candidate of TEST_ENV_FILES) if (!file && (await exists(`${src(env)}/${candidate}`))) file = candidate;
+    if (!file) {
       return fail(
         env,
-        `O projeto ${project.name} ainda não tem ambiente de teste: falta o arquivo ${TEST_ENV_FILE} (banco com dados de teste, o app pelo Dockerfile e o label studio.test: "<porta>" nos serviços que os testes acessam).`,
+        `O projeto ${project.name} ainda não tem ambiente de teste: falta o arquivo ${TEST_ENV_FILES[0]} (ou docker-compose.test.yml) com o banco de teste, o app pelo Dockerfile e o label studio.test: "<porta>" nos serviços que os testes acessam.`,
       );
     }
     const variables = { ...(await projectEnv(project.id)), ...(env.variables as Record<string, string>) };
     await writeFile(`${src(env)}/${ENV_FILE}`, renderDotenv(variables));
     await chmod(`${src(env)}/${ENV_FILE}`, 0o600);
     const cli = cliWorkspace(env);
-    const flags = `--env-file ${ENV_FILE} -f ${TEST_ENV_FILE}`;
+    const flags = `--env-file ${ENV_FILE} -f ${file}`;
     const parsed = await dockerCli(cli, `docker compose ${flags} config --format json`, 120_000);
-    if (parsed.exitCode !== 0) return fail(env, `O ${TEST_ENV_FILE} não é válido.`, `${parsed.stdout}\n${parsed.stderr}`);
-    const services = (JSON.parse(parsed.stdout) as { services: Record<string, { labels?: Record<string, string> }> }).services;
-    const exposed = Object.entries(services).flatMap(([name, service]) => {
-      const port = Number(service.labels?.['studio.test']);
-      return Number.isInteger(port) && port > 0 ? [{ name, port }] : [];
-    });
-    if (exposed.length === 0) return fail(env, `Nenhum serviço do ${TEST_ENV_FILE} tem o label studio.test: "<porta>".`);
-    const memoryMb = Object.values(services).reduce((total, service) => total + (Number(service.labels?.['studio.test.memory']) || 0), 0);
-    if (memoryMb > 0) await prisma.testEnvironment.update({ where: { id: env.id }, data: { memoryMb } });
+    if (parsed.exitCode !== 0) return fail(env, `O ${file} não é válido.`, `${parsed.stdout}\n${parsed.stderr}`);
+    const services = (JSON.parse(parsed.stdout) as { services: Record<string, ComposeService> }).services;
+    const exposed = exposedServices(services);
+    if (exposed.length === 0) return fail(env, `Nenhum serviço do ${file} tem o label studio.test: "<porta>" (nem é construído aqui publicando uma porta).`);
+    await prisma.testEnvironment.update({ where: { id: env.id }, data: { memoryMb: stackMemoryMb(services) } });
     // No published ports (they could clash with the machine's) and no fixed container names.
     await writeFile(
       `${src(env)}/${OVERRIDE_FILE}`,
@@ -193,7 +192,13 @@ async function build(env: TestEnvironment, log?: FastifyBaseLogger) {
       const id = await createContainer({
         image: CADDY_IMAGE,
         name: front,
-        cmd: ['caddy', 'reverse-proxy', '--from', ':80', '--to', `${name}:${port}`],
+        // Without X-Forwarded-Proto: apps behind a TLS proxy in production (e.g. Tomcat's RemoteIpValve) would take the
+        // "http" Caddy sends as a plain request and redirect to HTTPS, which the test environment does not have.
+        cmd: [
+          'sh',
+          '-c',
+          `printf ':80 {\\n\\treverse_proxy ${name}:${port} {\\n\\t\\theader_up -X-Forwarded-Proto\\n\\t}\\n}\\n' > /etc/caddy/Caddyfile && caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`,
+        ],
         network: config.agentNetwork,
         labels: { [LABEL]: env.id },
       });
