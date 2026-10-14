@@ -471,6 +471,9 @@ model TaskBoard {
   modelSyncError     String?       @map("model_sync_error")
   /// The server reads the board from the provider this often (and then runs the sentinels).
   refreshIntervalSec Int           @default(120) @map("refresh_interval_sec")
+  /// The board watch looks for tasks stuck without an agent or a reason to wait this often (minutes).
+  watchIntervalMin   Int           @default(10) @map("watch_interval_min")
+  lastWatchedAt      DateTime?     @map("last_watched_at") @db.Timestamptz(3)
   lastSyncedAt       DateTime?     @map("last_synced_at") @db.Timestamptz(3)
   lastSyncError      String?       @map("last_sync_error")
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)

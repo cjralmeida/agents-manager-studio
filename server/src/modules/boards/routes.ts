@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { listStuckTasks } from '../board-watch/service.js';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
 import { assertOwnsWorkspace } from '../auth/ownership.js';
@@ -70,7 +71,10 @@ const conversionBody = z
 
 
 /** 1 to 15 minutes between automatic reads of the board. */
-const settingsBody = z.object({ refreshIntervalSec: z.number().int().min(60).max(900) }).strict();
+const settingsBody = z
+  .object({ refreshIntervalSec: z.number().int().min(60).max(900).optional(), watchIntervalMin: z.number().int().min(5).max(240).optional() })
+  .strict()
+  .refine((body) => body.refreshIntervalSec !== undefined || body.watchIntervalMin !== undefined, 'Informe uma configuração.');
 
 const taskBody = z
   .object({
@@ -152,6 +156,9 @@ export async function boardRoutes(app: FastifyInstance) {
     const { id } = parseInput(workspaceParams, request.params);
     return updateBoardSettings(id, parseInput(settingsBody, request.body));
   });
+
+  /** Tasks the board watch found stuck, over the workspaces the user sees. */
+  app.get('/boards/stuck', async (request) => listStuckTasks(request.user.id));
 
   app.get('/workspaces/:id/board', async (request) => {
     const { id } = parseInput(workspaceParams, request.params);

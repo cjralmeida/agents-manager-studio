@@ -119,6 +119,7 @@ function BoardBehavior({ workspaceId, sources }: { workspaceId: string; sources:
       </p>
 
       <RefreshInterval workspaceId={workspaceId} sources={sources} />
+      <WatchInterval workspaceId={workspaceId} sources={sources} />
 
       <p className="mt-4 text-xs text-muted">
         Colunas, campos e o papel de cada coluna para os agentes vêm do{' '}
@@ -128,5 +129,33 @@ function BoardBehavior({ workspaceId, sources }: { workspaceId: string; sources:
         , que vale para todos os workspaces.
       </p>
     </>
+  );
+}
+
+const WATCH_INTERVALS = [5, 10, 15, 30, 60, 120];
+
+/** How often the board watch looks for tasks stuck without an agent, a run or a reason to wait. */
+function WatchInterval({ workspaceId, sources }: { workspaceId: string; sources: BoardSource[] }) {
+  const update = useUpdateBoardSettings(workspaceId);
+  return (
+    <div className="mt-4 max-w-sm">
+      <Field
+        label="Vigia do quadro"
+        hint="Procura tarefas em andamento, em validação ou em homologação paradas sem agente, sem execução e sem motivo para esperar; resolve os casos conhecidos e chama o agente de decisões nos outros."
+      >
+        <Select
+          value={sources[0]?.watchIntervalMin ?? 10}
+          onChange={(event) => update.mutate({ watchIntervalMin: Number(event.target.value) })}
+          disabled={update.isPending}
+        >
+          {WATCH_INTERVALS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              A cada {minutes} min{minutes === 10 ? ' (recomendado)' : ''}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <ErrorText error={update.error} />
+    </div>
   );
 }

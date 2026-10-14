@@ -102,7 +102,7 @@ export async function startManualRun(workflow: Workflow, message: string, log?: 
   return run;
 }
 
-async function startBoardRun(workflow: Workflow, item: BoardItem, log?: FastifyBaseLogger) {
+export async function startBoardRun(workflow: Workflow, item: BoardItem, log?: FastifyBaseLogger) {
   const run = await prisma.workflowRun.create({
     data: {
       workflowId: workflow.id,

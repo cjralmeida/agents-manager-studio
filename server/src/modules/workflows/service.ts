@@ -139,7 +139,7 @@ const runInclude = {
 type RunWithDetails = Prisma.WorkflowRunGetPayload<{ include: typeof runInclude }>;
 
 /** Ids of the user's workspaces that the active view profile shows (runs only carry the workspace id). */
-async function visibleWorkspaceIdsOf(userId: string) {
+export async function visibleWorkspaceIdsOf(userId: string) {
   const workspaces = await prisma.workspace.findMany({ where: { ownerId: userId, ...(await visibleWorkspaceFilter(userId)) }, select: { id: true } });
   return workspaces.map((workspace) => workspace.id);
 }

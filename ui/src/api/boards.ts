@@ -17,6 +17,8 @@ export interface BoardSource {
   statusMap: StatusMap;
   /** The server reads the board from the provider this often. */
   refreshIntervalSec: number;
+  /** The board watch looks for stuck tasks this often (minutes). */
+  watchIntervalMin: number;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
   /** "synced" follows the Studio model; "drift" was changed on the provider; "pending" was never converted (not on the board). */
@@ -210,7 +212,7 @@ export function useUnlinkSource(workspaceId: string) {
 export function useUpdateBoardSettings(workspaceId: string) {
   const invalidate = useInvalidateBoard(workspaceId);
   return useMutation({
-    mutationFn: (input: { refreshIntervalSec: number }) => api.put<BoardSource[]>(`${base(workspaceId)}/settings`, input),
+    mutationFn: (input: { refreshIntervalSec?: number; watchIntervalMin?: number }) => api.put<BoardSource[]>(`${base(workspaceId)}/settings`, input),
     onSuccess: invalidate,
   });
 }
@@ -480,4 +482,22 @@ export function useMoveOverviewTask() {
       void queryClient.invalidateQueries({ queryKey: ['board', item.workspaceId] });
     },
   });
+}
+
+export interface StuckTask {
+  workspaceId: string;
+  workspaceName: string;
+  itemId: string;
+  ref: string | null;
+  title: string;
+  url: string | null;
+  column: string;
+  reason: string;
+  action: string | null;
+  agentId: string | null;
+}
+
+/** Tasks the board watch found stuck, over the visible workspaces. */
+export function useStuckTasks() {
+  return useQuery({ queryKey: ['boards', 'stuck'], queryFn: () => api.get<StuckTask[]>('/boards/stuck'), refetchInterval: 60_000 });
 }

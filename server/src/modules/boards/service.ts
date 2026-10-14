@@ -147,6 +147,7 @@ export function sourceResponse(source: TaskBoard) {
     title: source.title,
     url: source.url,
     refreshIntervalSec: source.refreshIntervalSec,
+    watchIntervalMin: source.watchIntervalMin,
     lastSyncedAt: source.lastSyncedAt,
     lastSyncError: source.lastSyncError,
     /** "synced", "drift" (changed on the provider) or "pending" (not converted to the model yet: not on the board). */
@@ -497,8 +498,8 @@ export async function boardContext(workspaceId: string): Promise<JoinedBoard> {
   };
 }
 
-export async function updateBoardSettings(workspaceId: string, input: { refreshIntervalSec: number }) {
-  await prisma.taskBoard.updateMany({ where: { workspaceId }, data: { refreshIntervalSec: input.refreshIntervalSec } });
+export async function updateBoardSettings(workspaceId: string, input: { refreshIntervalSec?: number; watchIntervalMin?: number }) {
+  await prisma.taskBoard.updateMany({ where: { workspaceId }, data: input });
   return getBoardSources(workspaceId);
 }
 

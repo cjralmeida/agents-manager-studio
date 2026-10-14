@@ -12,6 +12,7 @@ import { ClaudeUsagePanel } from '../usage/ClaudeUsagePanel';
 import { Tabs } from '../Tabs';
 import { ActiveWorkflows, useActiveWorkflowRuns } from './ActiveWorkflows';
 import { AgentsOverview } from './AgentsOverview';
+import { StuckTasks } from './StuckTasks';
 
 type DashboardTab = 'agents' | 'workflows';
 
@@ -99,6 +100,7 @@ export function Dashboard({ workspace }: { workspace?: WorkspaceDetail }) {
       </div>
 
       <aside className="w-full shrink-0 space-y-4 xl:w-80">
+        <StuckTasks workspaceId={workspace?.id} />
         <Panel title="Consumo do Claude">
           <ClaudeUsagePanel workspaceId={workspace?.id} />
         </Panel>
