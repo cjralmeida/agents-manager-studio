@@ -71,7 +71,9 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
     lines.push('- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.');
   }
   if (tools.includes('projects')) {
-    lines.push('- Use studio_project_owners e studio_project_create para criar o repositório de um projeto novo (privado), SEMPRE depois de o usuário confirmar o nome e o lugar (AskUserQuestion).');
+    lines.push(
+      '- Use studio_project_owners e studio_project_create para criar o repositório de um projeto novo (privado), SEMPRE depois de o usuário confirmar o nome e o lugar (AskUserQuestion). Para trabalhar num projeto que já existe (ex.: revisar um jogo), use studio_project_use: os próximos passos do workflow trabalham nele.',
+    );
   }
   if (tools.includes('clickup_read')) {
     lines.push('- Use studio_clickup_hierarchy, studio_clickup_list_tasks e studio_clickup_get_task para LER tarefas do ClickUp (somente leitura; nada é alterado lá).');

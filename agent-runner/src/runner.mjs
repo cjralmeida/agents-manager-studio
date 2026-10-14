@@ -171,6 +171,7 @@ const STUDIO_TOOL_LABELS = {
   render_environments: () => 'Render: URLs de homologação',
   project_owners: () => 'Projetos: onde criar',
   project_create: (input) => `Projetos: criar "${input.name ?? ''}"`,
+  project_use: (input) => `Projetos: usar "${input.name ?? ''}"`,
   clickup_hierarchy: () => 'ClickUp: estrutura',
   clickup_list_tasks: (input) => `ClickUp: tarefas da lista ${input.listId ?? ''}${input.page ? ` (página ${input.page})` : ''}`,
   clickup_get_task: (input) => `ClickUp: tarefa ${input.taskId ?? ''}`,

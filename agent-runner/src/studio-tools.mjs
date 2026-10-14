@@ -155,6 +155,12 @@ export function createStudioTools(call, groups) {
         },
         run('project_create'),
       ),
+      tool(
+        'project_use',
+        'Escolhe um projeto que JÁ EXISTE no workspace (ex.: um jogo sendo revisado) para os próximos passos do workflow trabalharem nele, em vez de criar um novo.',
+        { name: z.string().describe('Nome do projeto no workspace (ex.: the-golden-mug).') },
+        run('project_use'),
+      ),
     );
   }
 

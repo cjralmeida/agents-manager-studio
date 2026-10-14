@@ -25,6 +25,7 @@ export const AGENT_TOOL_NAMES = [
   'studio_propose',
   'project_owners',
   'project_create',
+  'project_use',
   'studio_board_options',
   'studio_render_services',
   ...RENDER_TOOL_NAMES,
@@ -115,6 +116,15 @@ export async function prepareTaskByNames(workspaceId: string, args: Args) {
  * so the next workflow steps work on it.
  */
 async function runProjectTool(agent: { id: string; workspaceId: string }, name: string, args: Args) {
+  if (name === 'project_use') {
+    // An existing project (e.g. a game being revised): the next workflow steps work on it, as with a new one.
+    const projectName = text(args.name, 100)?.trim().toLowerCase();
+    const projects = await prisma.project.findMany({ where: { workspaceId: agent.workspaceId }, select: { id: true, name: true } });
+    const project = projects.find((entry) => entry.name.toLowerCase() === projectName);
+    if (!project) throw new HttpError(404, `Projeto "${args.name}" não existe no workspace. Projetos: ${projects.map((entry) => entry.name).join(', ')}.`);
+    await mergeResult(agent.id, { projectId: project.id });
+    return { projectId: project.id, name: project.name, message: 'Projeto escolhido. Os próximos passos do workflow trabalham nele.' };
+  }
   const { accounts } = await listRepositoryOwners(agent.workspaceId);
   if (name === 'project_owners') {
     return { accounts: accounts.map((account) => ({ account: account.label, provider: account.provider, owners: account.owners.map((owner) => ({ owner: owner.path, kind: owner.kind })) })) };
