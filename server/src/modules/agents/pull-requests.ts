@@ -104,12 +104,23 @@ export interface MergeInput {
  */
 export async function mergePullRequest(input: MergeInput): Promise<string | null> {
   let lastReason = '';
-  for (let attempt = 1; attempt <= 6; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     const result = input.provider === 'GITHUB' ? await mergeGitHub(input) : await mergeGitLab(input);
     if (result.merged) return result.commit;
     lastReason = result.reason;
     if (!result.retry) break;
-    await new Promise((resolve) => setTimeout(resolve, attempt * 3_000));
+    if (input.provider === 'GITLAB') {
+      // GitLab refuses a merge (405) both on a real conflict and while its mergeability check is stale or stuck
+      // ("checking", "preparing", even "conflict" with no conflict). A real conflict ends the retries at once (the work
+      // goes back to the builder); otherwise the check is asked again and the merge retried.
+      const state = await gitLabMergeState(input);
+      if (state?.hasConflicts) {
+        lastReason = `${lastReason} — o GitLab confirma conflito com a branch de destino`;
+        break;
+      }
+      await gitLabRecheck(input);
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.min(attempt * 3_000, 15_000)));
   }
   const conflict = /405|406|conflict|cannot be merged|not mergeable/i.test(lastReason);
   throw new HttpError(
@@ -172,6 +183,26 @@ async function mergeGitLab(input: MergeInput) {
   const reason = response.body.message ? JSON.stringify(response.body.message) : `erro ${response.status}`;
   // 405/406/422: still checking mergeability, or a conflict; worth a few retries.
   return { merged: false, commit: null, reason, retry: [405, 406, 422].includes(response.status) };
+}
+
+const gitLabMergeRequestUrl = (input: MergeInput) =>
+  `https://${input.remote.host}/api/v4/projects/${encodeURIComponent(input.remote.path)}/merge_requests`;
+
+/** Whether GitLab sees a real conflict in the MR, and its detailed merge status. Null when it could not be read. */
+async function gitLabMergeState(input: MergeInput) {
+  type MergeRequest = { has_conflicts?: boolean; detailed_merge_status?: string };
+  const response = await api<MergeRequest>(`${gitLabMergeRequestUrl(input)}/${input.number}`, { headers: { 'PRIVATE-TOKEN': input.token } }).catch(
+    () => null,
+  );
+  if (!response || response.status !== 200) return null;
+  return { hasConflicts: response.body.has_conflicts === true, status: response.body.detailed_merge_status ?? null };
+}
+
+/** Asks GitLab to check the MR's mergeability again (a stale check keeps refusing merges). */
+async function gitLabRecheck(input: MergeInput) {
+  await api(`${gitLabMergeRequestUrl(input)}?iids[]=${input.number}&with_merge_status_recheck=true`, { headers: { 'PRIVATE-TOKEN': input.token } }).catch(
+    () => undefined,
+  );
 }
 
 export type PullRequestState = 'open' | 'merged' | 'closed';
