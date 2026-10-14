@@ -84,7 +84,7 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
       {trigger.type === 'task_awaiting_decision' && board && (
         <>
           <p className="text-xs text-muted">
-            Cada tarefa em "Aguardando aprovação" que espera uma decisão (as com "Depende de:" ficam de fora: o Studio as libera sozinho).
+            Cada tarefa no Backlog marcada com Decisão = "Aguardando decisão" (as que só esperam o "Depende de:" ficam de fora: o Studio as libera sozinho).
             O agente estuda a tarefa, decide com você e move o card; o workflow não move nada. Uma tarefa só é estudada de novo depois
             de alterada.
           </p>

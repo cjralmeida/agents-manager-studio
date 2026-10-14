@@ -331,7 +331,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     }
     if (trigger.type === 'task_awaiting_decision') {
       if (!statusMap.blocked) {
-        await report(workflow, 'Parado: o quadro não tem coluna "Aguardando aprovação" definida.');
+        await report(workflow, 'Parado: o quadro não tem a coluna Backlog (papel "Bloqueado para agentes") definida.');
         continue;
       }
       const candidates = awaitingDecision(snapshot.items, statusMap.blocked, trigger.repositories, snapshot.fields).filter((item) => {

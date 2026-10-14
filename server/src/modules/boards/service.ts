@@ -616,7 +616,7 @@ export async function releaseDependents(workspaceId: string) {
 
 /**
  * Validates that an agent may work on a board item and returns what the agent records about it.
- * Items in the "blocked" column (Aguardando aprovação) are off limits for agents.
+ * Items in the "blocked" column (Backlog) are off limits for agents.
  */
 export async function taskForAgent(workspaceId: string, itemId: string) {
   const { snapshot, statusMap } = await boardContext(workspaceId);
