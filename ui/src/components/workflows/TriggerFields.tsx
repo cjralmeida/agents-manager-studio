@@ -2,7 +2,7 @@ import type { Board } from '../../api/boards';
 import type { WorkflowTrigger } from '../../api/workflows';
 import { MultiSelect } from '../MultiSelect';
 import { Field, Select } from '../form';
-import { boardTrigger, decisionTrigger, featureTrigger } from './workflowModel';
+import { boardTrigger, decisionTrigger, featureTrigger, frontendTrigger } from './workflowModel';
 
 interface TriggerFieldsProps {
   trigger: WorkflowTrigger;
@@ -38,7 +38,9 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
                   ? boardTrigger
                   : event.target.value === 'task_awaiting_decision'
                     ? decisionTrigger
-                    : featureTrigger,
+                    : event.target.value === 'frontend_in_homologation'
+                      ? frontendTrigger
+                      : featureTrigger,
             )
           }
         >
@@ -48,6 +50,9 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
           </option>
           <option value="feature_in_homologation" disabled={!board}>
             Uma funcionalidade inteira chega em homologação{board ? '' : ' (vincule um quadro)'}
+          </option>
+          <option value="frontend_in_homologation" disabled={!board}>
+            Uma tarefa de frontend chega em homologação com o backend dela{board ? '' : ' (vincule um quadro)'}
           </option>
           <option value="task_awaiting_decision" disabled={!board}>
             Uma tarefa fica aguardando decisão{board ? '' : ' (vincule um quadro)'}
@@ -60,6 +65,17 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
           <p className="text-xs text-muted">
             Junta as tarefas pelo código no título (ex.: "[FUNC-012] ..."). Quando todas as abertas estão na coluna de homologação, o primeiro
             passo recebe todas elas.
+          </p>
+          {repositories}
+        </>
+      )}
+
+      {trigger.type === 'frontend_in_homologation' && board && (
+        <>
+          <p className="text-xs text-muted">
+            Cada tarefa de frontend (dos repositórios escolhidos) na coluna de homologação cujas tarefas de "Depende de:" estão em
+            homologação ou concluídas. O agente testa a tela com o backend que ela usa; aprovada, a tarefa vai para "Concluído" e o
+            backend também, quando nenhuma outra tela que o usa falta testar. O mesmo agente segue de uma tarefa para a próxima.
           </p>
           {repositories}
         </>

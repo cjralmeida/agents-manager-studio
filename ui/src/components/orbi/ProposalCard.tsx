@@ -23,7 +23,9 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
               ? 'Começa com uma mensagem sua.'
               : trigger.type === 'feature_in_homologation'
                 ? 'Começa quando todas as tarefas de uma funcionalidade estão em homologação.'
-                : trigger.type === 'task_awaiting_decision'
+                : trigger.type === 'frontend_in_homologation'
+                  ? 'Começa quando uma tarefa de frontend e o backend que ela usa estão em homologação.'
+                  : trigger.type === 'task_awaiting_decision'
                   ? 'Começa quando uma tarefa fica aguardando decisão.'
                   : 'Começa quando aparece uma tarefa no quadro que bate com os filtros.'}
           </p>

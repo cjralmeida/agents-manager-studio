@@ -35,6 +35,7 @@ const triggerLabels: Record<Workflow['trigger']['type'], string> = {
   board_task: 'Pega tarefas do quadro',
   task_awaiting_decision: 'Pega tarefas aguardando decisão',
   feature_in_homologation: 'Pega funcionalidades em homologação',
+  frontend_in_homologation: 'Pega telas em homologação',
 };
 
 interface ProcessCanvasProps {

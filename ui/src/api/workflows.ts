@@ -14,6 +14,7 @@ export type WorkflowTrigger =
       moveWhenDone: 'done' | 'homologation';
     }
   | { type: 'feature_in_homologation'; repositories: string[] }
+  | { type: 'frontend_in_homologation'; repositories: string[] }
   | { type: 'task_awaiting_decision'; repositories: string[] };
 
 export interface AgentStep {

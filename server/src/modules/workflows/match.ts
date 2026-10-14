@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { dependencyRefs } from '../boards/dependencies.js';
+import { dependencyRefs, itemRef } from '../boards/dependencies.js';
 import type { BoardField, BoardItem } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
@@ -119,13 +119,101 @@ export function featuresReady(
     .sort((a, b) => a.featureId.localeCompare(b.featureId));
 }
 
-/** Message for the agent that tests a whole feature: every task with its full description. */
-export function featurePrompt(feature: ReadyFeature) {
-  const tasks = feature.tasks.map((task) => {
-    const ref = task.repository && task.number ? `${task.repository}#${task.number}` : task.id;
-    return [`## ${task.title}`, `Tarefa: ${ref} (id ${task.id})${task.url ? ` — ${task.url}` : ''}`, '', task.body.trim()].join('\n');
-  });
-  return [`Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`, ...tasks].join(
-    '\n\n',
+const taskSection = (task: BoardItem) =>
+  [`## ${task.title}`, `Tarefa: ${itemRef(task) ?? task.id} (id ${task.id})${task.url ? ` — ${task.url}` : ''}`, '', task.body.trim()].join('\n');
+
+/**
+ * Open tasks (not done nor closed) that depend on the given one with "Depende de:", e.g. the screens that use an API.
+ * A backend task only goes to done once the screens that use it were tested too.
+ */
+export function pendingDependents(items: BoardItem[], task: BoardItem, doneColumnId: string | null, except: string[] = []) {
+  const ref = itemRef(task)?.toLowerCase();
+  if (!ref) return [];
+  return items.filter(
+    (item) =>
+      !item.isClosed &&
+      item.columnId !== doneColumnId &&
+      !except.includes(item.id) &&
+      dependencyRefs(item.body).some((dependency) => dependency.toLowerCase() === ref),
   );
+}
+
+/** Lines telling the tester which tasks wait for screens still to be tested (they stay in homologation). */
+function waitingLines(waiting: { task: BoardItem; dependents: BoardItem[] }[]) {
+  return waiting.map(
+    ({ task, dependents }) =>
+      `- ${itemRef(task) ?? task.id} (${task.title}) fica em homologação mesmo aprovada: ainda falta testar ${dependents.map((item) => itemRef(item) ?? item.title).join(', ')}, que depende(m) dela.`,
+  );
+}
+
+/** Message for the agent that tests a whole feature: every task with its full description. */
+export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], doneColumnId: string | null = null) {
+  const ids = feature.tasks.map((task) => task.id);
+  const waiting = feature.tasks
+    .map((task) => ({ task, dependents: pendingDependents(items, task, doneColumnId, ids) }))
+    .filter((entry) => entry.dependents.length > 0);
+  return [
+    `Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`,
+    ...feature.tasks.map(taskSection),
+    ...(waiting.length > 0
+      ? [
+          [
+            '## Ao aprovar',
+            'Mova para "Concluído" só as tarefas que não aparecem abaixo. Estas são usadas por telas que ainda serão testadas em homologação (o teste da tela as conclui):',
+            ...waitingLines(waiting),
+          ].join('\n'),
+        ]
+      : []),
+  ].join('\n\n');
+}
+
+export interface ReadyFrontendTask {
+  task: BoardItem;
+  /** Tasks it depends on that are still in homologation (the backend it uses), tested together with it. */
+  backend: BoardItem[];
+}
+
+/**
+ * Frontend tasks in homologation whose "Depende de:" tasks are all in homologation or done (closed counts as done):
+ * the screen can be tested against the published API. Tasks of other repositories are ignored.
+ */
+export function frontendTasksReady(
+  items: BoardItem[],
+  input: { homologationColumnId: string; doneColumnId: string | null; repositories: string[] },
+): ReadyFrontendTask[] {
+  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const accepts = (item: BoardItem) =>
+    input.repositories.length === 0 || input.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase());
+  const ready: ReadyFrontendTask[] = [];
+  for (const task of items) {
+    if (task.isClosed || task.columnId !== input.homologationColumnId || !accepts(task)) continue;
+    const dependencies = dependencyRefs(task.body).map((ref) => byRef.get(ref.toLowerCase()));
+    const delivered = dependencies.every(
+      (dependency) =>
+        dependency && (dependency.isClosed || dependency.columnId === input.doneColumnId || dependency.columnId === input.homologationColumnId),
+    );
+    if (!delivered) continue;
+    const backend = dependencies.filter((dependency): dependency is BoardItem => !dependency!.isClosed && dependency!.columnId === input.homologationColumnId);
+    ready.push({ task, backend });
+  }
+  return ready;
+}
+
+/** Message for the tester of one frontend task: the task, the tasks it uses still in homologation, what to move. */
+export function frontendPrompt(ready: ReadyFrontendTask, items: BoardItem[], doneColumnId: string | null) {
+  const { task, backend } = ready;
+  const withDependents = backend.map((entry) => ({ task: entry, dependents: pendingDependents(items, entry, doneColumnId, [task.id]) }));
+  const concluding = withDependents.filter((entry) => entry.dependents.length === 0).map((entry) => itemRef(entry.task) ?? entry.task.id);
+  return [
+    `Teste em homologação a tarefa de frontend ${itemRef(task) ?? task.id}: ${task.title}. Ela e as tarefas de que depende já estão publicadas em homologação (ou concluídas).`,
+    'Teste a tela de verdade, ligada à API publicada: os critérios desta tarefa e, pela tela e pela API, os das tarefas de backend abaixo que ela usa.',
+    taskSection(task),
+    ...(backend.length > 0 ? ['# Tarefas de backend que esta tela usa (em homologação)', ...backend.map(taskSection)] : []),
+    [
+      '## Ao terminar',
+      `- Aprovado: o Studio move ${itemRef(task) ?? 'a tarefa'} para "Concluído" quando você terminar com sucesso.${concluding.length > 0 ? ` Mova você mesmo para "Concluído" também: ${concluding.join(', ')}.` : ''}`,
+      ...waitingLines(withDependents.filter((entry) => entry.dependents.length > 0)),
+      '- Reprovado: escreva o "Relatório de HOM" em cada tarefa com falha (a tela ou a API, conforme a rede mostrar) e devolva-a para "A fazer"; as sem falha ficam em homologação.',
+    ].join('\n'),
+  ].join('\n\n');
 }

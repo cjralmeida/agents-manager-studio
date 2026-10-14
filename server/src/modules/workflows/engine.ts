@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
@@ -18,7 +19,18 @@ import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { planBlockedUntil } from '../plan-limit/limit.js';
 import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
-import { type ReadyFeature, awaitingDecision, decisionPrompt, featurePrompt, featuresReady, pickTasks, taskPrompt } from './match.js';
+import {
+  type ReadyFeature,
+  type ReadyFrontendTask,
+  awaitingDecision,
+  decisionPrompt,
+  featurePrompt,
+  featuresReady,
+  frontendPrompt,
+  frontendTasksReady,
+  pickTasks,
+  taskPrompt,
+} from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
 export interface StepOutput {
@@ -103,7 +115,7 @@ async function startBoardRun(workflow: Workflow, item: BoardItem, log?: FastifyB
   return run;
 }
 
-async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, log?: FastifyBaseLogger) {
+async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, items: BoardItem[], doneColumnId: string | null, log?: FastifyBaseLogger) {
   const run = await prisma.workflowRun.create({
     data: {
       workflowId: workflow.id,
@@ -113,8 +125,35 @@ async function startFeatureRun(workflow: Workflow, feature: ReadyFeature, log?: 
         featureId: feature.featureId,
         signature: feature.signature,
         taskItemIds: feature.tasks.map((task) => task.id),
-        message: featurePrompt(feature),
+        message: featurePrompt(feature, items, doneColumnId),
       },
+    },
+  });
+  await advanceRun(run.id, log);
+  return run;
+}
+
+/** Changes when the task or the backend it uses changes (e.g. a report written, a fix published): tested again then. */
+const frontendSignature = ({ task, backend }: ReadyFrontendTask) =>
+  createHash('sha256')
+    .update([task, ...backend].map((item) => `${item.id}\n${item.columnId}\n${item.body}`).join('\n---\n'))
+    .digest('hex')
+    .slice(0, 32);
+
+async function startFrontendRun(workflow: Workflow, ready: ReadyFrontendTask, items: BoardItem[], doneColumnId: string | null, log?: FastifyBaseLogger) {
+  const run = await prisma.workflowRun.create({
+    data: {
+      workflowId: workflow.id,
+      workspaceId: workflow.workspaceId,
+      title: `${ready.task.title.slice(0, 100)} — teste em homologação`,
+      trigger: {
+        taskItemId: ready.task.id,
+        title: ready.task.title,
+        signature: frontendSignature(ready),
+        taskItemIds: [ready.task.id, ...ready.backend.map((item) => item.id)],
+        message: frontendPrompt(ready, items, doneColumnId),
+      },
+      taskItemId: ready.task.id,
     },
   });
   await advanceRun(run.id, log);
@@ -140,7 +179,7 @@ export async function boardTaskState(workspaceId: string) {
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({
       where: { workspaceId, taskItemId: { not: null } },
-      select: { taskItemId: true, status: true, finishedAt: true },
+      select: { taskItemId: true, status: true, finishedAt: true, trigger: true },
       orderBy: { startedAt: 'desc' },
     }),
   ]);
@@ -233,8 +272,36 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         await report(workflow, 'Vigiando: nenhuma funcionalidade completa nova em homologação.');
         continue;
       }
-      for (const feature of candidates.slice(0, slots)) await startFeatureRun(workflow, feature, log);
+      for (const feature of candidates.slice(0, slots)) await startFeatureRun(workflow, feature, snapshot.items, statusMap.done ?? null, log);
       await report(workflow, `Iniciou para: ${candidates.slice(0, slots).map((feature) => feature.featureId).join(', ')}.`);
+      continue;
+    }
+    if (trigger.type === 'frontend_in_homologation') {
+      if (!statusMap.homologation) {
+        await report(workflow, 'Parado: o quadro não tem coluna de homologação definida.');
+        continue;
+      }
+      const ready = frontendTasksReady(snapshot.items, {
+        homologationColumnId: statusMap.homologation,
+        doneColumnId: statusMap.done ?? null,
+        repositories: trigger.repositories,
+      });
+      // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed).
+      const candidates = ready.filter((entry) => {
+        const last = lastRun.get(entry.task.id);
+        return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== frontendSignature(entry));
+      });
+      if (candidates.length === 0) {
+        await report(workflow, 'Vigiando: nenhuma tarefa de frontend nova pronta em homologação.');
+        continue;
+      }
+      const started: string[] = [];
+      for (const entry of candidates.slice(0, slots)) {
+        taken.add(entry.task.id);
+        await startFrontendRun(workflow, entry, snapshot.items, statusMap.done ?? null, log);
+        started.push(`"${entry.task.title}"`);
+      }
+      await report(workflow, `Iniciou para: ${started.join(', ')}.`);
       continue;
     }
     if (trigger.type === 'task_awaiting_decision') {
@@ -429,6 +496,9 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   const isTaskLane = lane !== 'main';
   const fanOut = fanOutIndex(steps);
   const decision = parseTrigger(run.workflow).type === 'task_awaiting_decision';
+  // A homologation tester of a frontend task: works on the published service (no copy of the code) with the message
+  // the run was started with (the task, the backend it uses, which cards to move).
+  const homologation = parseTrigger(run.workflow).type === 'frontend_in_homologation' && index === 0;
 
   let task: BoardItem | undefined;
   let projectId: string | null | undefined;
@@ -440,6 +510,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   }
 
   // A task from a repository the agent does not work on cannot be handled by this step.
+  if (homologation) projectId = null;
   if (task && projectId && profile.projectIds.length > 0 && !profile.projectIds.includes(projectId)) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
     return fail(`A tarefa "${task.title}" é do projeto ${project?.name ?? '?'}, e o agente "${profile.name}" não trabalha nele.`);
@@ -488,10 +559,23 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
   const prompt = [
     `Workflow "${run.workflow.name}" — passo ${index + 1} de ${steps.length}: ${step.name}.`,
     '',
-    task ? (decision ? decisionPrompt(task) : taskPrompt(task, '')) : index === 0 ? (trigger.message ?? run.title) : `Pedido original: ${trigger.message ?? run.title}`,
+    task && !homologation
+      ? decision
+        ? decisionPrompt(task)
+        : taskPrompt(task, '')
+      : index === 0
+        ? (trigger.message ?? run.title)
+        : `Pedido original: ${trigger.message ?? run.title}`,
     ...(previous?.run ? ['', previousOutputText(previous.step.name, outputOf(previous.run))] : []),
     ...(step.instructions.trim() ? ['', 'Instruções deste passo:', step.instructions.trim()] : []),
   ].join('\n');
+
+  // The tester of the previous frontend task goes on to this one in the same session: no new container, and it keeps
+  // its test setup, users and what it learned about the service.
+  if (homologation) {
+    const reused = await reuseHomologationTester(run, profile.id, prompt);
+    if (reused) return prisma.workflowStepRun.create({ data: { runId: run.id, stepId: step.id, stepIndex: index, lane, attempt, agentId: reused } });
+  }
 
   try {
     const agent = await launchAgent({
@@ -506,7 +590,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       // Only the step that picks the task moves its card (to "in progress", then review on the PR).
       // Work done outside the Studio keeps its card where it was left until the run ends.
       // A task awaiting a decision stays put: the agent only reads it and moves it after deciding with the user.
-      ...(taskItemId && !pullRequest && !decision && (index === 0 || index === fanOut) && { taskItemId }),
+      ...(taskItemId && !pullRequest && !decision && !homologation && (index === 0 || index === fanOut) && { taskItemId }),
       ...(sourceAgentId && { sourceAgentId }),
       ...(pullRequest && { pullRequest: { url: pullRequest.url, branch: pullRequest.branch, baseBranch: pullRequest.baseBranch } }),
     });
@@ -515,6 +599,47 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     });
   } catch (error) {
     return fail(errorText(error));
+  }
+}
+
+/** Tasks one tester session goes through before a fresh agent takes over (its context keeps growing). */
+const TESTER_REUSE_LIMIT = 8;
+/** A tester idle for longer than this is not resumed: its session and test setup are likely stale. */
+const TESTER_REUSE_IDLE_MS = 6 * 60 * 60_000;
+
+/**
+ * Sends the next frontend task to the tester of this workflow's latest run, when it is idle (finished its task) and
+ * recent. Returns its id, or null to launch a new agent.
+ */
+async function reuseHomologationTester(run: RunWithSteps, profileId: string, prompt: string) {
+  const previous = await prisma.workflowStepRun.findFirst({
+    where: { run: { workflowId: run.workflowId }, runId: { not: run.id }, stepIndex: 0, agentId: { not: null } },
+    orderBy: { startedAt: 'desc' },
+    select: { agentId: true },
+  });
+  if (!previous?.agentId) return null;
+  const agent = await prisma.agent.findUnique({
+    where: { id: previous.agentId },
+    select: { id: true, profileId: true, status: true, containerId: true, sessionId: true, workdirRemovedAt: true, lastActivityAt: true },
+  });
+  if (!agent || agent.profileId !== profileId || !agent.sessionId || agent.workdirRemovedAt) return null;
+  if (!['COMPLETED', 'READY_FOR_REVIEW'].includes(agent.status)) return null;
+  if (!agent.lastActivityAt || Date.now() - agent.lastActivityAt.getTime() > TESTER_REUSE_IDLE_MS) return null;
+  const handled = await prisma.workflowStepRun.count({ where: { agentId: agent.id, stepIndex: 0, run: { workflowId: run.workflowId } } });
+  if (handled >= TESTER_REUSE_LIMIT) return null;
+  try {
+    await prisma.agent.update({ where: { id: agent.id }, data: { workflowRunId: run.id, title: `Testar em HOM: ${run.title}`.slice(0, 120) } });
+    await sendMessage(
+      agent.id,
+      [
+        'Próxima tarefa de homologação. Reaproveite o que já montou (pasta /workspace/hom, configuração do Playwright, usuários de teste), mas comece um plano, dados com um prefixo novo e um relatório novos para esta tarefa: o relatório e o report_result são só dela.',
+        '',
+        prompt,
+      ].join('\n'),
+    );
+    return agent.id;
+  } catch {
+    return null;
   }
 }
 

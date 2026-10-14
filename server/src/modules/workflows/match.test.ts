@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
-import { awaitingDecision, featureIdOf, featuresReady, matchesRule, pickTasks, type TaskRule, taskPrompt } from './match.js';
+import {
+  awaitingDecision,
+  featureIdOf,
+  featurePrompt,
+  featuresReady,
+  frontendPrompt,
+  frontendTasksReady,
+  matchesRule,
+  pickTasks,
+  type TaskRule,
+  taskPrompt,
+} from './match.js';
 
 const priority: BoardField = {
   id: 'prio',
@@ -146,5 +157,40 @@ describe('awaitingDecision', () => {
       awaitingDecision(items, 'blocked', ['ORG/other']).map((entry) => entry.id),
       ['b'],
     );
+  });
+});
+
+describe('frontendTasksReady', () => {
+  const input = { homologationColumnId: 'hom', doneColumnId: 'done', repositories: ['org/front'] };
+  const api = (number: number, columnId: string) =>
+    item({ id: `api${number}`, title: `[FUNC-001] API ${number}`, repository: 'org/api', number, columnId, body: 'API' });
+  const screen = (number: number, columnId: string, depends: string) =>
+    item({ id: `front${number}`, title: `[FUNC-001] Front ${number}`, repository: 'org/front', number, columnId, body: `Tela
+- Depende de: ${depends}` });
+
+  it('takes a screen in homologation whose backend is in homologation or done', () => {
+    const items = [api(1, 'hom'), api(2, 'done'), api(3, 'doing'), screen(10, 'hom', 'org/api#1, org/api#2'), screen(11, 'hom', 'org/api#3'), screen(12, 'todo', 'org/api#1')];
+    const ready = frontendTasksReady(items, input);
+    assert.deepEqual(ready.map((entry) => entry.task.id), ['front10']);
+    assert.deepEqual(ready[0]!.backend.map((entry) => entry.id), ['api1']);
+  });
+
+  it('ignores other repositories and screens depending on tasks missing from the board', () => {
+    const items = [api(1, 'hom'), screen(10, 'hom', 'org/api#9'), item({ id: 'x', repository: 'org/other', columnId: 'hom', body: 'Depende de: org/api#1' })];
+    assert.deepEqual(frontendTasksReady(items, input), []);
+  });
+
+  it('tells the tester to conclude the backend only when no other screen still needs it', () => {
+    const items = [api(1, 'hom'), api(2, 'hom'), screen(10, 'hom', 'org/api#1, org/api#2'), screen(11, 'todo', 'org/api#2')];
+    const [ready] = frontendTasksReady(items, input);
+    const prompt = frontendPrompt(ready!, items, 'done');
+    assert.match(prompt, /Mova você mesmo para "Concluído" também: org\/api#1\./);
+    assert.match(prompt, /org\/api#2 .* fica em homologação mesmo aprovada: ainda falta testar org\/front#11/);
+  });
+
+  it('keeps a feature task used by an untested screen in homologation', () => {
+    const items = [api(1, 'hom'), screen(10, 'todo', 'org/api#1')];
+    const [feature] = featuresReady([items[0]!], { homologationColumnId: 'hom', doneColumnId: 'done', repositories: [] });
+    assert.match(featurePrompt(feature!, items, 'done'), /org\/api#1 .* fica em homologação/);
   });
 });

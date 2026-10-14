@@ -29,6 +29,7 @@ export const boardTrigger: Extract<WorkflowTrigger, { type: 'board_task' }> = {
 };
 
 export const featureTrigger: WorkflowTrigger = { type: 'feature_in_homologation', repositories: [] };
+export const frontendTrigger: WorkflowTrigger = { type: 'frontend_in_homologation', repositories: [] };
 
 export const decisionTrigger: WorkflowTrigger = { type: 'task_awaiting_decision', repositories: [] };
 

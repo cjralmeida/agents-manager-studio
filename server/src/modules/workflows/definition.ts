@@ -6,6 +6,9 @@ import { z } from 'zod';
  * - "board_task": a task appears on the board matching the filters;
  * - "feature_in_homologation": every open task of a feature ("[FUNC-NNN]" in the title) reached the homologation
  *   column, so the whole feature can be tested there;
+ * - "frontend_in_homologation": a frontend task reached the homologation column and every task it depends on (the
+ *   backend it uses) is in homologation or done, so the screen can be tested against the published API. One tester
+ *   agent goes from task to task, keeping its session;
  * - "task_awaiting_decision": a task waits in the "blocked" column for a decision (not only for its dependencies), so
  *   an agent can study it and decide it with the user. The run never moves the card; the agent does, after deciding.
  */
@@ -26,6 +29,13 @@ export const triggerSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('feature_in_homologation'),
+      repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('frontend_in_homologation'),
+      /** Frontend repositories watched; empty accepts all. */
       repositories: z.array(z.string().trim().min(1).max(300)).max(100).default([]),
     })
     .strict(),
