@@ -155,7 +155,30 @@ function helpPrompt(found: Found) {
 }
 
 /** One round over a workspace: lists what is stuck and acts on it. */
+/**
+ * Keeps the recurring defects registry in step with the board: a category whose transversal task was delivered (done
+ * or closed) is resolved; if that task opens again, the category goes back to "transversal".
+ */
+async function syncQualityCategories(workspaceId: string, log: FastifyBaseLogger) {
+  const categories = await prisma.qualityCategory.findMany({
+    where: { workspaceId, status: { in: ['transversal', 'resolvida'] }, transversalRef: { not: null } },
+  });
+  if (categories.length === 0) return;
+  const { snapshot, statusMap } = await boardContext(workspaceId);
+  const byRef = new Map(snapshot.items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  for (const category of categories) {
+    const task = byRef.get(category.transversalRef!.trim().toLowerCase());
+    if (!task) continue;
+    const delivered = task.isClosed || task.columnId === statusMap.done;
+    const status = delivered ? 'resolvida' : 'transversal';
+    if (status === category.status) continue;
+    await prisma.qualityCategory.update({ where: { id: category.id }, data: { status } });
+    log.info({ category: category.name, status }, 'Quality category follows its transversal task');
+  }
+}
+
 async function watchWorkspace(workspaceId: string, log: FastifyBaseLogger) {
+  await syncQualityCategories(workspaceId, log).catch((err: unknown) => log.warn({ workspaceId, err }, 'Quality registry sync failed'));
   const { found } = await findStuck(workspaceId);
   if (found.length === 0) return;
   const profileId = await decisionProfile(workspaceId);

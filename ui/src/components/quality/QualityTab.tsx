@@ -30,7 +30,8 @@ export function QualityTab({ workspace }: { workspace: WorkspaceDetail }) {
       <p className="max-w-3xl text-sm text-muted">
         Defeitos que fizeram os revisores reprovar uma entrega, agrupados por categoria — sempre "esperado × obtido" contra uma regra, um
         critério ou o contrato; erro esperado de um teste contrário não entra. Quando uma categoria aparece em {THRESHOLD} tarefas diferentes, o
-        revisor abre uma tarefa transversal no Backlog (com Decisão = "Aguardando decisão") para corrigir na base.
+        revisor abre uma tarefa transversal no Backlog (com Decisão = "Aguardando decisão") para corrigir na base; quando ela é
+        concluída, a categoria fica "Resolvida" sozinha.
       </p>
       {quality.data.length === 0 ? (
         <p className="text-sm text-muted">Nenhum defeito registrado ainda.</p>
