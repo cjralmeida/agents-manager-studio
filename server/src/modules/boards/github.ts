@@ -12,8 +12,8 @@ import type {
   BoardSnapshot,
 } from './types.js';
 
-/** Max items read from a project (pages of 100). */
-const MAX_ITEM_PAGES = 5;
+/** Pages of 100 items read from a project (archived items count too, so a long-lived project needs many). */
+const MAX_ITEM_PAGES = 50;
 
 type Json = any; // GraphQL responses are narrowed where they are read.
 
