@@ -276,23 +276,27 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       });
       const previous = await prisma.workflowRun.findMany({
         where: { workflowId: workflow.id },
-        select: { status: true, trigger: true },
+        select: { status: true, trigger: true, finishedAt: true },
         orderBy: { startedAt: 'desc' },
         take: 300,
       });
       const lastOf = (featureId: string) => previous.find((run) => (run.trigger as { featureId?: string }).featureId === featureId);
-      // A feature is tested again only after something changed (e.g. a task came back with a report).
+      // A feature is tested again only after something changed (e.g. a task came back with a report), or a while after
+      // a test that failed without deciding its tasks (they are still here, e.g. HOM went down in the middle of it).
       const homologation = { homologationColumnId: statusMap.homologation, doneColumnId: statusMap.done ?? null };
       const candidates = ready
         .map((feature) => ({ feature, screens: screensUsing(snapshot.items, feature.tasks, homologation) }))
         .filter(({ feature, screens }) => {
           const last = lastOf(feature.featureId);
           if (feature.tasks.some((task) => featureTesting.has(task.id))) return false;
-          return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== feature.signature);
+          if (!last) return true;
+          if (last.status === 'RUNNING') return false;
+          if ((last.trigger as { signature?: string }).signature !== feature.signature) return true;
+          return last.status === 'FAILED' && Boolean(last.finishedAt) && Date.now() - last.finishedAt!.getTime() > FEATURE_RETEST_AFTER_MS;
         })
         .map(({ feature, screens }) => ({ ...feature, screens }));
       if (candidates.length === 0) {
-        await report(workflow, 'Vigiando: nenhuma funcionalidade completa nova em homologação.');
+        await report(workflow, 'Vigiando: nenhuma tarefa nova em homologação para testar.');
         continue;
       }
       for (const feature of candidates.slice(0, slots)) {
@@ -636,6 +640,9 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
 }
 
 /** Tasks one tester session goes through before a fresh agent takes over (its context keeps growing). */
+/** A feature test that failed leaving its tasks in homologation is tried again after this long. */
+const FEATURE_RETEST_AFTER_MS = 30 * 60_000;
+
 const TESTER_REUSE_LIMIT = 8;
 /** A tester idle for longer than this is not resumed: its session and test setup are likely stale. */
 const TESTER_REUSE_IDLE_MS = 6 * 60 * 60_000;

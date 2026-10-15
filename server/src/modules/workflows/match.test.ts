@@ -112,7 +112,8 @@ describe('featuresReady', () => {
       task('f', 'Sem funcionalidade', 'hom'),
     ];
     const ready = featuresReady(items, input);
-    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-001', 'FUNC-002']);
+    // "Sem funcionalidade" is in homologation too: it is tested on its own.
+    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-001', 'FUNC-002', 'org/repo#7']);
     assert.deepEqual(ready[0]!.tasks.map((entry) => entry.id), ['a', 'b']);
     assert.deepEqual(ready[1]!.tasks.map((entry) => entry.id), ['d']);
     assert.deepEqual(ready[1]!.pending.map((entry) => entry.id), ['e']);
@@ -126,6 +127,13 @@ describe('featuresReady', () => {
     assert.deepEqual(ready[0]!.pending.map((entry) => entry.id), ['b']);
     assert.match(featurePrompt(ready[0]!), /que já estão em homologação/);
     assert.match(featurePrompt(ready[0]!), /Não teste estas/);
+  });
+
+  it('tests a task outside any feature on its own once it is in homologation', () => {
+    const items = [task('t', '[Transversal] API — memória', 'hom'), task('u', '[Transversal] API — robustez', 'todo')];
+    const ready = featuresReady(items, input);
+    assert.deepEqual(ready.map((feature) => feature.tasks.map((entry) => entry.id)), [['t']]);
+    assert.match(featurePrompt(ready[0]!), /não faz parte de uma funcionalidade/);
   });
 
   it('ignores closed tasks and other repositories', () => {

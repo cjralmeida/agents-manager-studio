@@ -116,8 +116,10 @@ export function featuresReady(
     input.repositories.length === 0 || input.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase());
   const groups = new Map<string, BoardItem[]>();
   for (const item of items) {
-    const featureId = featureIdOf(item.title);
-    if (!featureId || item.isClosed || item.columnId === input.doneColumnId || !accepts(item)) continue;
+    if (item.isClosed || item.columnId === input.doneColumnId || !accepts(item)) continue;
+    // A task outside any feature (e.g. "[Transversal] ...") is tested on its own once in homologation.
+    const featureId = featureIdOf(item.title) ?? (item.columnId === input.homologationColumnId ? (itemRef(item) ?? item.id) : null);
+    if (!featureId) continue;
     groups.set(featureId, [...(groups.get(featureId) ?? []), item]);
   }
   return [...groups.entries()]
@@ -174,7 +176,9 @@ export function screensUsing(items: BoardItem[], tasks: BoardItem[], input: { ho
 export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], doneColumnId: string | null = null, screens: BoardItem[] = []) {
   const inHomologation = screens.filter((screen) => screen.columnId !== doneColumnId).map((screen) => itemRef(screen) ?? screen.id);
   return [
-    feature.pending.length === 0
+    !featureIdOf(feature.tasks[0]?.title ?? '')
+      ? 'Teste em homologação esta tarefa (ela não faz parte de uma funcionalidade FUNC-NNN; teste o que a descrição pede, pela API e pelas telas que já a usam):'
+      : feature.pending.length === 0
       ? `Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`
       : `Teste em homologação as tarefas da funcionalidade ${feature.featureId} que já estão em homologação:`,
     ...feature.tasks.map(taskSection),
