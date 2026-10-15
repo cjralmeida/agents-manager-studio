@@ -42,6 +42,13 @@ export function OrbiPage() {
   const selected = params.get('c');
   const current = selected === 'new' ? null : (selected ?? conversations.data?.[0]?.id ?? null);
   const open = (id: string | 'new') => setParams(id ? { c: id } : {}, { replace: false });
+  const workspaces = useWorkspaces();
+  // The pilot covers several workspaces: its conversation shows them, not the workspace it happened to start in.
+  const pilotScope = !pilot.data
+    ? ''
+    : pilot.data.allWorkspaces
+      ? 'Todos os workspaces'
+      : (workspaces.data ?? []).filter((workspace) => pilot.data!.workspaceIds.includes(workspace.id)).map((workspace) => workspace.name).join(', ');
 
   return (
     <div className="mx-auto grid max-w-[1600px] gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_23rem]">
@@ -53,6 +60,7 @@ export function OrbiPage() {
         <ConversationList
           conversations={conversations.data ?? []}
           pilotId={pilot.data?.conversationId ?? null}
+          pilotScope={pilotScope}
           current={current}
           onOpen={open}
         />
@@ -98,11 +106,13 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
 function ConversationList({
   conversations,
   pilotId,
+  pilotScope,
   current,
   onOpen,
 }: {
   conversations: Conversation[];
   pilotId: string | null;
+  pilotScope: string;
   current: string | null;
   onOpen: (id: string) => void;
 }) {
@@ -129,7 +139,7 @@ function ConversationList({
                 <span className="truncate text-sm">{conversation.title}</span>
               </div>
               <div className="mt-0.5 flex justify-between gap-2 text-[11px] text-muted">
-                <span className="truncate">{conversation.workspaceName}</span>
+                <span className="truncate">{isPilot ? pilotScope : conversation.workspaceName}</span>
                 <span className="shrink-0">{timeAgo(conversation.lastActivityAt)}</span>
               </div>
             </button>

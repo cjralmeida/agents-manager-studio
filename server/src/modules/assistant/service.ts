@@ -14,7 +14,7 @@ function withContext(message: string, context?: string) {
 export async function listConversations(ownerId: string) {
   const conversations = await prisma.agent.findMany({
     // The Gestor de Capacidade's analyses are Órbi conversations too, but they live in the Workflows tab.
-    where: { kind: 'ASSISTANT', workspace: { ownerId }, capacityReviews: { none: {} } },
+    where: { kind: 'ASSISTANT', workspace: { ownerId }, capacityReviews: { none: {} }, NOT: { title: { startsWith: 'Órbi: Gestor de Capacidade' } } },
     orderBy: { lastActivityAt: 'desc' },
     take: 40,
     select: { id: true, title: true, status: true, lastActivityAt: true, createdAt: true, workspaceId: true, workspace: { select: { name: true } } },
