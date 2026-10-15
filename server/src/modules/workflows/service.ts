@@ -154,11 +154,14 @@ export function runTaskIds(run: Pick<RunWithDetails, 'taskItemId' | 'trigger' | 
 /** Tasks that active runs are working on, over the workspaces the user sees (to light their cards up). */
 export async function activeRunTasks(userId: string) {
   const runs = await prisma.workflowRun.findMany({
-    // A switched-off workflow is paused: its cards do not light up as worked on. A run that already ended still lights
-    // its tasks while one of its agents works again (e.g. resumed by a message to finish a decision).
+    // A card lights up while one of its run's agents works, even after the run ended (e.g. resumed by a message to
+    // finish a decision) or with the workflow switched off (finishing what it had started). Between steps, only a
+    // switched-on workflow's run lights its cards: a switched-off one counts as paused.
     where: {
-      OR: [{ status: 'RUNNING' }, { agents: { some: { status: { in: ['PREPARING', 'RUNNING', 'WAITING_INPUT'] } } } }],
-      workflow: { isEnabled: true },
+      OR: [
+        { status: 'RUNNING', workflow: { isEnabled: true } },
+        { agents: { some: { status: { in: ['PREPARING', 'RUNNING', 'WAITING_INPUT'] } } } },
+      ],
       workspaceId: { in: await visibleWorkspaceIdsOf(userId) },
     },
     include: { steps: { select: { lane: true } } },
