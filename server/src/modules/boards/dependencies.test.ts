@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { dependenciesDelivered, dependencyRefs, releasableItems } from './dependencies.js';
+import { dependenciesDelivered, dependencyRefs, reblockableItems, releasableItems } from './dependencies.js';
 import type { BoardItem } from './types.js';
 
 const item = (repository: string, number: number, columnId: string, body = '', isClosed = false) =>
@@ -64,5 +64,25 @@ describe('dependenciesDelivered', () => {
     const delivered = dependenciesDelivered(items, statusMap);
     assert.equal(delivered(items[1]!), false);
     assert.equal(delivered(items[2]!), false);
+  });
+});
+
+describe('reblockableItems', () => {
+  const statusMap = { blocked: 'blocked', todo: 'todo', done: 'done', homologation: 'hom' };
+
+  it('sends back to the blocked column a task in todo whose dependency on the board is not delivered', () => {
+    const items = [
+      item('org/ui', 6, 'todo', 'Tela base'),
+      item('org/ui', 9, 'todo', 'Depende de: org/ui#6'),
+      item('org/ui', 10, 'todo', 'Depende de: org/api#1'),
+      item('org/api', 1, 'hom', 'API'),
+      item('org/api', 2, 'todo', 'Depende de: org/docs#3'),
+    ];
+    assert.deepEqual(reblockableItems(items, statusMap).map((entry) => entry.id), ['org/ui#9']);
+  });
+
+  it('leaves alone a task someone is working on', () => {
+    const items = [item('org/ui', 6, 'todo', 'Tela base'), item('org/ui', 9, 'todo', 'Depende de: org/ui#6')];
+    assert.deepEqual(reblockableItems(items, statusMap, new Set(['org/ui#9'])), []);
   });
 });
