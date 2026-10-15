@@ -41,7 +41,8 @@ export interface PilotSettings {
   model: 'sonnet' | 'opus';
   /**
    * Tasks pilot: "technical" while the user is around (agent questions and rule decisions stay with them); "full"
-   * while away (everything). The agents pilot only makes technical decisions.
+   * while away (everything). Agents pilot: "technical" flags what changes how the user works (e.g. pausing a whole
+   * workspace); "full" decides that too.
    */
   mode: 'technical' | 'full';
   /** The user's own rules for the pilot. */
@@ -187,7 +188,9 @@ async function pilotConversation(userId: string, kind: PilotKind, settings: Pilo
 function pilotMessage(kind: PilotKind, settings: PilotSettings, lines: string[]) {
   const head =
     kind === 'agents'
-      ? '[Piloto de agentes] Eventos sobre agentes, capacidade e recursos. Resolva seguindo o PILOTO DE AGENTES; o que for decisão de regra, escopo ou negócio vai para o usuário com studio_flag:'
+      ? settings.mode === 'technical'
+        ? '[Piloto de agentes] Eventos sobre agentes, capacidade e recursos. Resolva seguindo o PILOTO DE AGENTES; o que for decisão de regra, escopo ou negócio vai para o usuário com studio_flag:'
+        : '[Piloto de agentes — o usuário está FORA] Eventos sobre agentes, capacidade e recursos. Resolva seguindo o PILOTO DE AGENTES sem esperar o usuário: ajuste agentes por etapa, pause e retome agentes, workflows e workspaces quando for preciso para o trabalho andar (registre o porquê). Só apagar coisas, credenciais e gastos ficam com studio_flag:'
       : settings.mode === 'technical'
         ? '[Piloto técnico] O usuário está por aqui. Resolva só os problemas técnicos destes eventos, seguindo o MODO PILOTO (técnico); decisões de regra, escopo ou negócio vão para ele com studio_flag:'
         : '[Piloto] Novos eventos para você resolver em nome do usuário, seguindo o MODO PILOTO:';

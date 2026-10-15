@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { getUserSetting, setUserSetting } from '../users/settings.js';
 import { parseInput } from '../../lib/validation.js';
-import { discussFlag, listActivity, resolveFlag } from './activity.js';
+import { discussFlag, getPendingMode, listActivity, resolveFlag, setPendingMode } from './activity.js';
 import { overview, ownerWorkspaces, pendingItems } from './ops.js';
 import { PILOT_KINDS, type PilotKind, getPilot, pilotConversationIds, updatePilot } from './pilot.js';
 
@@ -75,6 +75,13 @@ export async function orbiRoutes(app: FastifyInstance) {
   app.post('/orbi/flags/:id/discuss', async (request) => discussFlag(request.user.id, parseInput(idParams, request.params).id));
 
   app.post('/orbi/flags/:id/resolve', async (request) => resolveFlag(request.user.id, parseInput(idParams, request.params).id));
+
+  // Pendências: "technical" while the user is around (flags wait for them), "full" while away (Órbi sorts them out).
+  app.get('/orbi/pending/mode', async (request) => ({ mode: await getPendingMode(request.user.id) }));
+
+  app.put('/orbi/pending/mode', async (request) =>
+    setPendingMode(request.user.id, parseInput(z.object({ mode: z.enum(['technical', 'full']) }), request.body).mode),
+  );
 
   const kindParams = z.object({ kind: z.enum(PILOT_KINDS as [PilotKind, ...PilotKind[]]) });
 

@@ -17,7 +17,7 @@ export async function logActivity(input: {
   details?: unknown;
   link?: string | null;
 }) {
-  return prisma.orbiActivity.create({
+  const row = await prisma.orbiActivity.create({
     data: {
       ownerId: input.ownerId,
       workspaceId: input.workspaceId ?? null,
@@ -28,6 +28,31 @@ export async function logActivity(input: {
       link: input.link ?? null,
     },
   });
+  // With the user away, a new flag goes straight to the Pendências conversation, which sorts it out alone.
+  // (Not a flag the Pendências conversation left itself: that one waits for the user.)
+  const pendingConversation = await getUserSetting<string>(input.ownerId, PENDING_CONVERSATION_KEY);
+  if (input.kind === 'flag' && input.conversationId !== pendingConversation && (await getPendingMode(input.ownerId)) === 'full') {
+    await discussFlag(input.ownerId, row.id).catch(() => undefined);
+  }
+  return row;
+}
+
+const PENDING_MODE_KEY = 'orbiPendingMode';
+export type PendingMode = 'technical' | 'full';
+
+/** "technical" (the user is around: flags wait for them) or "full" (away: Órbi sorts new flags out by itself). */
+export async function getPendingMode(ownerId: string): Promise<PendingMode> {
+  return (await getUserSetting<PendingMode>(ownerId, PENDING_MODE_KEY)) === 'full' ? 'full' : 'technical';
+}
+
+/** Switching to "away" also hands Órbi the flags still open that it has not brought up yet. */
+export async function setPendingMode(ownerId: string, mode: PendingMode) {
+  await setUserSetting(ownerId, PENDING_MODE_KEY, mode);
+  if (mode === 'full') {
+    const open = await prisma.orbiActivity.findMany({ where: { ownerId, kind: 'flag', resolvedAt: null }, orderBy: { createdAt: 'asc' }, take: 20 });
+    for (const flag of open) await discussFlag(ownerId, flag.id).catch(() => undefined);
+  }
+  return { mode };
 }
 
 async function withWorkspaceNames<T extends { workspaceId: string | null }>(rows: T[]) {
@@ -70,7 +95,19 @@ export async function discussFlag(ownerId: string, id: string) {
   // Already brought to the current conversation: just open it.
   if (usable && details.discussionId === current.id) return { conversationId: current.id };
 
-  const message = [
+  const away = (await getPendingMode(ownerId)) === 'full';
+  const message = away
+    ? [
+        'Nova pendência — um aviso que um piloto deixou. O usuário está FORA agora: resolva você, sem perguntar a ele.',
+        `"${flag.summary}"`,
+        ...(details.details ? ['', `Detalhes: ${details.details}`] : []),
+        ...(flag.link ? ['', `Link: ${flag.link}`] : []),
+        '',
+        `(id da pendência: ${flag.id})`,
+        'Veja a situação (a tarefa, as execuções e o que os agentes já fizeram) e decida pela opção mais segura e reversível que mantenha o trabalho andando, seguindo as regras do projeto e as decisões já registradas. Faça você mesmo o que for preciso com as suas ferramentas, registre na tarefa (ou na resposta) o que decidiu e por quê, e marque com studio_resolve_flag. Não pergunte nada ao usuário.',
+        'Só NÃO decida sozinho: apagar coisas, credenciais, gastos ou uma mudança grande de escopo ou de regra de negócio. Nesses casos, deixe a pendência aberta e escreva aqui o que propõe, para o usuário ver quando voltar.',
+      ].join('\n')
+    : [
     'Nova pendência para resolvermos juntos — um aviso que um piloto deixou para mim:',
     `"${flag.summary}"`,
     ...(details.details ? ['', `Detalhes: ${details.details}`] : []),

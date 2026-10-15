@@ -16,6 +16,8 @@ import {
   usePinnedConversations,
   useResolveFlag,
   useUpdatePilot,
+  usePendingMode,
+  useSetPendingMode,
 } from '../api/orbi';
 import { useDecideCapacity } from '../api/capacity';
 import { useWorkspaces } from '../api/workspaces';
@@ -329,7 +331,7 @@ function PilotCard({ kind }: { kind: PilotKind }) {
 
   return (
     <Card title={text.title} aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label={`Ligar o ${text.title}`} />}>
-      {kind === 'tasks' && (
+      {(
       <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
         {(
           [
@@ -353,7 +355,9 @@ function PilotCard({ kind }: { kind: PilotKind }) {
         {!settings.enabled
           ? text.off
           : kind === 'agents'
-            ? 'Ligado: ajusto os agentes de cada etapa pelas filas, retomo agentes parados e cuido da memória, do plano Claude e dos ambientes de teste. O que precisar de você vira aviso.'
+            ? settings.mode === 'technical'
+              ? 'Ligado, com você por aqui: ajusto os agentes de cada etapa pelas filas, retomo agentes parados e cuido da memória, do plano Claude e dos ambientes de teste. O que mudar o seu jeito de trabalhar vira aviso.'
+              : 'Ligado, com você fora: além disso, pauso e retomo agentes, workflows e workspaces quando for preciso, sem esperar você. Só apagar coisas, credenciais e gastos viram aviso.'
             : settings.mode === 'technical'
               ? 'Ligado, com você por aqui: resolvo falhas técnicas, conflitos de merge, tarefas travadas e publicação. Perguntas dos agentes e decisões de regra ficam com você (viram aviso).'
               : 'Ligado, com você fora: respondo os agentes sobre as tarefas, cuido das falhas e registro tudo abaixo. O que for grande demais vira aviso.'}
@@ -441,6 +445,8 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
   const resolve = useResolveFlag();
   const seen = useMarkSeen();
   const discuss = useDiscussFlag();
+  const pendingMode = usePendingMode();
+  const setPendingMode = useSetPendingMode();
   const data = pending.data;
   const name = (id: string | null) => data?.workspaces.find((workspace) => workspace.id === id)?.name ?? '';
   const total = data ? data.questions.length + data.failedRuns.length + data.capacitySuggestions.length + data.proposals.length + data.flags.length : 0;
@@ -467,6 +473,31 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
         ) : undefined
       }
     >
+      <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
+        {(
+          [
+            ['technical', 'Estou por aqui', 'Os avisos esperam você'],
+            ['full', 'Estou fora', 'O Órbi resolve os avisos'],
+          ] as const
+        ).map(([mode, label, hint]) => (
+          <button
+            key={mode}
+            type="button"
+            disabled={setPendingMode.isPending}
+            onClick={() => setPendingMode.mutate(mode)}
+            className={`rounded-md px-2 py-1.5 text-left transition-colors ${pendingMode.data?.mode === mode ? 'bg-accent/15 text-accent' : 'text-muted hover:text-white'}`}
+          >
+            <span className="block text-xs font-medium">{label}</span>
+            <span className="block text-[10px]">{hint}</span>
+          </button>
+        ))}
+      </div>
+      {pendingMode.data?.mode === 'full' && (
+        <p className="mb-3 text-[11px] text-muted">
+          Cada aviso novo vai direto para a conversa "Resolução de pendências", e o Órbi decide pela opção mais segura e registra o porquê. Apagar coisas,
+          credenciais, gastos e mudanças grandes de escopo ficam abertos para você.
+        </p>
+      )}
       {!data ? (
         pending.error ? <ErrorText error={pending.error} /> : <p className="text-xs text-muted">Carregando...</p>
       ) : total === 0 ? (

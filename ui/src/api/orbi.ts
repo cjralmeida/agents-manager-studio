@@ -88,6 +88,24 @@ export function useDiscussFlag() {
   });
 }
 
+export type PendingMode = 'technical' | 'full';
+
+/** Pendências: "technical" (flags wait for the user) or "full" (away: Órbi sorts new flags out by itself). */
+export function usePendingMode() {
+  return useQuery({ queryKey: ['orbi', 'pending-mode'], queryFn: () => api.get<{ mode: PendingMode }>('/orbi/pending/mode') });
+}
+
+export function useSetPendingMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: PendingMode) => api.put<{ mode: PendingMode }>('/orbi/pending/mode', { mode }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['orbi', 'pending-mode'], data);
+      void queryClient.invalidateQueries({ queryKey: keys.pending });
+    },
+  });
+}
+
 /** Conversations pinned on the Órbi page: both pilots' and the one where pending items are sorted out. */
 export function usePinnedConversations() {
   return useQuery({
