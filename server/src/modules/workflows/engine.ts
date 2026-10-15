@@ -11,7 +11,7 @@ import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-r
 import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
-import { dependenciesDelivered } from '../boards/dependencies.js';
+import { dependenciesDelivered, dependencyRefs, itemRef } from '../boards/dependencies.js';
 import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
 import type { BoardField, BoardItem, StatusMap } from '../boards/types.js';
 import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
@@ -259,6 +259,25 @@ async function hasFreeAgent(run: RunWithSteps, step: WorkflowStep) {
   return busy < step.agents;
 }
 
+/** "#12 espera #6, #9" for the first few tasks waiting for their dependencies. */
+function waitingText(waiting: BoardItem[], items: BoardItem[], state: BoardTaskState) {
+  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const short = (item: BoardItem) => (item.number ? `#${item.number}` : item.title);
+  const parts = waiting.slice(0, 3).map((item) => {
+    const missing = dependencyRefs(item.body)
+      .map((ref) => byRef.get(ref.toLowerCase()))
+      .filter((dependency): dependency is BoardItem => Boolean(dependency) && !isDelivered(dependency!, state));
+    return `${short(item)} espera ${missing.map(short).join(', ') || 'dependência fora do quadro'}`;
+  });
+  return `${parts.join('; ')}${waiting.length > 3 ? '…' : ''}`;
+}
+
+/** A task counts as delivered once it is done, closed or in homologation. */
+function isDelivered(item: BoardItem, state: BoardTaskState) {
+  const { statusMap } = state;
+  return item.isClosed || item.columnId === statusMap.done || (Boolean(statusMap.homologation) && item.columnId === statusMap.homologation);
+}
+
 export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLogger, onlyWorkflowId?: string) {
   const workflows = (
     await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true, ...(onlyWorkflowId && { id: onlyWorkflowId }) }, orderBy: { createdAt: 'asc' } })
@@ -403,9 +422,16 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     }
     if (trigger.type !== 'board_task') continue;
 
-    const { ready: candidates, columnId } = boardTaskQueue(trigger, state);
+    const { ready: candidates, waiting, columnId } = boardTaskQueue(trigger, state);
     if (candidates.length === 0) {
-      await report(workflow, columnId ? 'Vigiando: nenhuma tarefa nova.' : 'Parado: o quadro não tem coluna "A fazer" definida.');
+      await report(
+        workflow,
+        !columnId
+          ? 'Parado: o quadro não tem coluna "A fazer" definida.'
+          : waiting.length > 0
+            ? `Vigiando: ${waiting.length} tarefa(s) esperando dependências — ${waitingText(waiting, snapshot.items, state)}.`
+            : 'Vigiando: nenhuma tarefa nova.',
+      );
       continue;
     }
     const started: string[] = [];
