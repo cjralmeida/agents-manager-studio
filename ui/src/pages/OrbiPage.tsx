@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAgent } from '../api/agents';
-import { type Conversation, useConversations, useRenameConversation } from '../api/assistant';
+import { type Conversation, useConversations, useDeleteConversation, useRenameConversation } from '../api/assistant';
 import {
   type OrbiActivity,
   type OrbiPending,
@@ -75,7 +75,7 @@ export function OrbiPage() {
       </aside>
 
       <section className="min-w-0">
-        {current ? <CurrentConversation key={current} id={current} /> : <StartConversation onStarted={open} />}
+        {current ? <CurrentConversation key={current} id={current} onDeleted={() => open('new')} /> : <StartConversation onStarted={open} />}
       </section>
 
       <aside className="space-y-4 lg:col-span-2 xl:sticky xl:top-0 xl:col-span-1 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
@@ -158,7 +158,7 @@ function ConversationList({
   );
 }
 
-function CurrentConversation({ id }: { id: string }) {
+function CurrentConversation({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const agent = useAgent(id);
   const [, setAnswering] = useState(false);
   if (!agent.data) return <ErrorText error={agent.error} />;
@@ -166,10 +166,38 @@ function CurrentConversation({ id }: { id: string }) {
     <div className="space-y-3">
       <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
         <EditableTitle id={id} title={agent.data.title.replace(/^Órbi: /, '')} />
-        <span className="shrink-0 text-xs text-muted">Foco: {agent.data.workspaceName}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-xs text-muted">Foco: {agent.data.workspaceName}</span>
+          <DeleteConversation id={id} onDeleted={onDeleted} />
+        </div>
       </div>
       <OrbiConversation agentId={id} workspaceId={agent.data.workspaceId} onAnswering={setAnswering} />
     </div>
+  );
+}
+
+/** "Apagar" with a confirmation right there (no browser dialog). */
+function DeleteConversation({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+  const remove = useDeleteConversation();
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming) {
+    return (
+      <button type="button" onClick={() => setConfirming(true)} className="text-xs text-muted hover:text-red-300" title="Apagar esta conversa">
+        Apagar
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1.5 text-xs">
+      <span className="text-red-300">Apagar a conversa?</span>
+      <Button size="sm" variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(id, { onSuccess: onDeleted })}>
+        Apagar
+      </Button>
+      <Button size="sm" onClick={() => setConfirming(false)}>
+        Não
+      </Button>
+      <ErrorText error={remove.error} />
+    </span>
   );
 }
 

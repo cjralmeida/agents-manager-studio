@@ -75,6 +75,18 @@ export function useSendToConversation(agentId: string) {
   });
 }
 
+/** Deletes an Órbi conversation (its history goes with it; a pilot or the Pendências conversation starts a new one). */
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/agents/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.conversations });
+      void queryClient.invalidateQueries({ queryKey: ['orbi'] });
+    },
+  });
+}
+
 export function useRenameConversation() {
   const queryClient = useQueryClient();
   return useMutation({
