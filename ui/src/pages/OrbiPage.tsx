@@ -5,12 +5,13 @@ import { type Conversation, useConversations, useRenameConversation } from '../a
 import {
   type OrbiActivity,
   type OrbiPending,
+  type PilotKind,
   type PilotSettings,
   useDecideSuggestion,
   useMarkSeen,
   useOrbiActivity,
   useOrbiPending,
-  usePilot,
+  usePilots,
   useResolveFlag,
   useUpdatePilot,
 } from '../api/orbi';
@@ -40,29 +41,33 @@ function storedFocus() {
 export function OrbiPage() {
   const [params, setParams] = useSearchParams();
   const conversations = useConversations();
-  const pilot = usePilot();
+  const pilots = usePilots();
   const selected = params.get('c');
   const current = selected === 'new' ? null : (selected ?? conversations.data?.[0]?.id ?? null);
   const open = (id: string | 'new') => setParams(id ? { c: id } : {}, { replace: false });
   const workspaces = useWorkspaces();
-  // The pilot covers several workspaces: its conversation shows them, not the workspace it happened to start in.
-  const pilotScope = !pilot.data
-    ? ''
-    : pilot.data.allWorkspaces
-      ? 'Todos os workspaces'
-      : (workspaces.data ?? []).filter((workspace) => pilot.data!.workspaceIds.includes(workspace.id)).map((workspace) => workspace.name).join(', ');
+  // A pilot covers several workspaces: its conversation shows them, not the workspace it happened to start in.
+  const scopeOf = (settings?: PilotSettings) =>
+    !settings
+      ? ''
+      : settings.allWorkspaces
+        ? 'Todos os workspaces'
+        : (workspaces.data ?? []).filter((workspace) => settings.workspaceIds.includes(workspace.id)).map((workspace) => workspace.name).join(', ');
+  const pilotConversations = (['tasks', 'agents'] as const).flatMap((kind) => {
+    const settings = pilots.data?.[kind];
+    return settings?.conversationId ? [{ id: settings.conversationId, kind, scope: scopeOf(settings) }] : [];
+  });
 
   return (
     <div className="mx-auto grid max-w-[1600px] gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_23rem]">
       <aside className="space-y-3 lg:sticky lg:top-0 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-        <OrbiHeader pilot={pilot.data} />
+        <OrbiHeader on={Boolean(pilots.data?.tasks.enabled || pilots.data?.agents.enabled)} />
         <Button variant="primary" className="w-full" onClick={() => open('new')}>
           Nova conversa
         </Button>
         <ConversationList
           conversations={conversations.data ?? []}
-          pilotId={pilot.data?.conversationId ?? null}
-          pilotScope={pilotScope}
+          pilots={pilotConversations}
           current={current}
           onOpen={open}
         />
@@ -73,7 +78,8 @@ export function OrbiPage() {
       </section>
 
       <aside className="space-y-4 lg:col-span-2 xl:sticky xl:top-0 xl:col-span-1 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
-        <PilotCard />
+        <PilotCard kind="tasks" />
+        <PilotCard kind="agents" />
         <PendingCard onOpenConversation={open} />
         <ActivityCard onOpenConversation={open} />
       </aside>
@@ -81,13 +87,13 @@ export function OrbiPage() {
   );
 }
 
-function OrbiHeader({ pilot }: { pilot?: PilotSettings }) {
+function OrbiHeader({ on }: { on: boolean }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-gradient-to-br from-accent/15 to-transparent p-3">
-      <Logo size={40} working={pilot?.enabled} />
+      <Logo size={40} working={on} />
       <div className="min-w-0">
         <h1 className="text-lg leading-tight font-semibold">Órbi</h1>
-        <p className="text-xs text-muted">{pilot?.enabled ? 'Piloto ligado' : 'Opera o Studio com você'}</p>
+        <p className="text-xs text-muted">{on ? 'Piloto ligado' : 'Opera o Studio com você'}</p>
       </div>
     </div>
   );
@@ -107,25 +113,24 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
 
 function ConversationList({
   conversations,
-  pilotId,
-  pilotScope,
+  pilots,
   current,
   onOpen,
 }: {
   conversations: Conversation[];
-  pilotId: string | null;
-  pilotScope: string;
+  pilots: { id: string; kind: PilotKind; scope: string }[];
   current: string | null;
   onOpen: (id: string) => void;
 }) {
   if (conversations.length === 0) return <p className="px-1 text-xs text-muted">Nenhuma conversa ainda.</p>;
-  // The pilot's conversation first: it is where Órbi tells what it handled by itself.
-  const sorted = [...conversations].sort((a, b) => Number(b.id === pilotId) - Number(a.id === pilotId));
+  // The pilots' conversations first: they are where Órbi tells what it handled by itself.
+  const pilotOf = (id: string) => pilots.find((pilot) => pilot.id === id);
+  const sorted = [...conversations].sort((a, b) => Number(Boolean(pilotOf(b.id))) - Number(Boolean(pilotOf(a.id))));
   return (
     <ul className="space-y-1">
       {sorted.map((conversation) => {
         const busy = conversation.status === 'RUNNING' || conversation.status === 'PREPARING';
-        const isPilot = conversation.id === pilotId;
+        const pilot = pilotOf(conversation.id);
         return (
           <li key={conversation.id}>
             <button
@@ -136,12 +141,12 @@ function ConversationList({
               } ${busy ? 'glow-working-row' : ''}`}
             >
               <div className="flex items-center gap-1.5">
-                {isPilot && <Badge tone="info">Piloto</Badge>}
+                {pilot && <Badge tone="info">{pilot.kind === 'tasks' ? 'Tarefas' : 'Agentes'}</Badge>}
                 {conversation.status === 'WAITING_INPUT' && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Esperando você" />}
                 <span className="truncate text-sm">{conversation.title}</span>
               </div>
               <div className="mt-0.5 flex justify-between gap-2 text-[11px] text-muted">
-                <span className="truncate">{isPilot ? pilotScope : conversation.workspaceName}</span>
+                <span className="truncate">{pilot ? pilot.scope : conversation.workspaceName}</span>
                 <span className="shrink-0">{timeAgo(conversation.lastActivityAt)}</span>
               </div>
             </button>
@@ -256,18 +261,34 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (val
   );
 }
 
-function PilotCard() {
-  const pilot = usePilot();
-  const update = useUpdatePilot();
+const PILOT_TEXT: Record<PilotKind, { title: string; off: string; placeholder: string }> = {
+  tasks: {
+    title: 'Piloto de tarefas',
+    off: 'Desligado. Quando ligado, cuida do trabalho no quadro: falhas e reprovações, conflitos de merge, tarefas travadas e publicação.',
+    placeholder: 'Ex.: "mudança grande de escopo espera por mim"; "no Celcode aprove arte só depois de ver as imagens".',
+  },
+  agents: {
+    title: 'Piloto de agentes',
+    off: 'Desligado. Quando ligado, cuida de quem trabalha e quanto: agentes por etapa, agentes parados, memória, plano Claude e ambientes de teste.',
+    placeholder: 'Ex.: "no backend, no máximo 3 programando"; "nunca pause um workspace sem me avisar".',
+  },
+};
+
+function PilotCard({ kind }: { kind: PilotKind }) {
+  const pilots = usePilots();
+  const pilot = { data: pilots.data?.[kind], error: pilots.error };
+  const update = useUpdatePilot(kind);
+  const text = PILOT_TEXT[kind];
   const workspaces = useWorkspaces();
   const available = workspaces.data?.filter((workspace) => !workspace.isMissing && !workspace.isIgnored) ?? [];
   const [instructions, setInstructions] = useState<string | null>(null);
   const settings = pilot.data;
-  if (!settings) return <Card title="Modo piloto">{pilot.error ? <ErrorText error={pilot.error} /> : <p className="text-xs text-muted">Carregando...</p>}</Card>;
+  if (!settings) return <Card title={text.title}>{pilot.error ? <ErrorText error={pilot.error} /> : <p className="text-xs text-muted">Carregando...</p>}</Card>;
   const draft = instructions ?? settings.instructions;
 
   return (
-    <Card title="Modo piloto" aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label="Ligar o modo piloto" />}>
+    <Card title={text.title} aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label={`Ligar o ${text.title.toLowerCase()}`} />}>
+      {kind === 'tasks' && (
       <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
         {(
           [
@@ -286,12 +307,15 @@ function PilotCard() {
           </button>
         ))}
       </div>
+      )}
       <p className="mt-2 text-xs text-muted">
         {!settings.enabled
-          ? 'Desligado: eu só ajo quando você me chama.'
-          : settings.mode === 'technical'
-            ? 'Ligado, com você por aqui: resolvo conflitos de merge, agentes parados, falhas técnicas e a capacidade. Perguntas dos agentes e decisões de regra ficam com você (viram aviso).'
-            : 'Ligado, com você fora: respondo os agentes, cuido das falhas e da capacidade e registro tudo abaixo. O que for grande demais vira aviso.'}
+          ? text.off
+          : kind === 'agents'
+            ? 'Ligado: ajusto os agentes de cada etapa pelas filas, retomo agentes parados e cuido da memória, do plano Claude e dos ambientes de teste. O que precisar de você vira aviso.'
+            : settings.mode === 'technical'
+              ? 'Ligado, com você por aqui: resolvo falhas técnicas, conflitos de merge, tarefas travadas e publicação. Perguntas dos agentes e decisões de regra ficam com você (viram aviso).'
+              : 'Ligado, com você fora: respondo os agentes sobre as tarefas, cuido das falhas e registro tudo abaixo. O que for grande demais vira aviso.'}
       </p>
       {settings.lastEventAt && <p className="mt-1 text-[11px] text-muted">Último evento tratado {timeAgo(settings.lastEventAt)}.</p>}
 
@@ -335,7 +359,7 @@ function PilotCard() {
             value={draft}
             onChange={(event) => setInstructions(event.target.value)}
             rows={3}
-            placeholder='Ex.: "mudança grande de escopo espera por mim"; "no Celcode aprove arte só depois de ver as imagens".'
+            placeholder={text.placeholder}
             className="w-full resize-y rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"
           />
           {instructions !== null && instructions !== settings.instructions && (

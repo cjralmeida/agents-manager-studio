@@ -5,7 +5,7 @@ import { getUserSetting, setUserSetting } from '../users/settings.js';
 import { parseInput } from '../../lib/validation.js';
 import { listActivity, resolveFlag } from './activity.js';
 import { overview, ownerWorkspaces, pendingItems } from './ops.js';
-import { getPilot, updatePilot } from './pilot.js';
+import { PILOT_KINDS, type PilotKind, getPilot, pilotConversationIds, updatePilot } from './pilot.js';
 
 const idParams = z.object({ id: z.uuid() });
 const seenBody = z.object({ runIds: z.array(z.uuid()).max(200).optional() }).strict();
@@ -74,7 +74,16 @@ export async function orbiRoutes(app: FastifyInstance) {
 
   app.post('/orbi/flags/:id/resolve', async (request) => resolveFlag(request.user.id, parseInput(idParams, request.params).id));
 
-  app.get('/orbi/pilot', async (request) => getPilot(request.user.id));
+  const kindParams = z.object({ kind: z.enum(PILOT_KINDS as [PilotKind, ...PilotKind[]]) });
 
-  app.put('/orbi/pilot', async (request) => updatePilot(request.user.id, parseInput(pilotBody, request.body)));
+  app.get('/orbi/pilots', async (request) => {
+    const [tasks, agents] = await Promise.all([getPilot(request.user.id, 'tasks'), getPilot(request.user.id, 'agents')]);
+    return { tasks, agents };
+  });
+
+  app.get('/orbi/pilots/conversations', async (request) => pilotConversationIds(request.user.id));
+
+  app.put('/orbi/pilots/:kind', async (request) =>
+    updatePilot(request.user.id, parseInput(kindParams, request.params).kind, parseInput(pilotBody, request.body)),
+  );
 }

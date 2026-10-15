@@ -160,7 +160,7 @@ async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
   if (lastRaised && Date.now() - lastRaised.createdAt.getTime() < COOLDOWN_MS) return;
 
   const summary = signals.map(signalLine).join('\n');
-  const delivered = await notifyPilot(workspace.ownerId, workspaceId, pilotLines(signals, loads, plan, machine)).catch(() => false);
+  const delivered = await notifyPilot(workspace.ownerId, 'agents', workspaceId, pilotLines(signals, loads, plan, machine)).catch(() => false);
   await prisma.capacityReview.create({
     data: { workspaceId, signature, signals: signals as unknown as Prisma.InputJsonValue, summary, status: delivered ? 'pilot' : 'pending' },
   });

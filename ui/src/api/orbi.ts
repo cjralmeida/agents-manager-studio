@@ -24,6 +24,8 @@ export interface OrbiPending {
   workspaces: { id: string; name: string }[];
 }
 
+export type PilotKind = 'tasks' | 'agents';
+
 export interface PilotSettings {
   enabled: boolean;
   allWorkspaces: boolean;
@@ -39,7 +41,7 @@ export interface PilotSettings {
 const keys = {
   pending: ['orbi', 'pending'] as const,
   activity: ['orbi', 'activity'] as const,
-  pilot: ['orbi', 'pilot'] as const,
+  pilots: ['orbi', 'pilots'] as const,
 };
 
 export function useOrbiPending() {
@@ -73,15 +75,16 @@ export function useMarkSeen() {
   });
 }
 
-export function usePilot() {
-  return useQuery({ queryKey: keys.pilot, queryFn: () => api.get<PilotSettings>('/orbi/pilot'), refetchInterval: 30_000 });
+/** Both pilots: tasks (the work on the board) and agents (who works and how much). */
+export function usePilots() {
+  return useQuery({ queryKey: keys.pilots, queryFn: () => api.get<Record<PilotKind, PilotSettings>>('/orbi/pilots'), refetchInterval: 30_000 });
 }
 
-export function useUpdatePilot() {
+export function useUpdatePilot(kind: PilotKind) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Omit<PilotSettings, 'conversationId' | 'lastEventAt'>>) => api.put<PilotSettings>('/orbi/pilot', patch),
-    onSuccess: (data) => queryClient.setQueryData(keys.pilot, data),
+    mutationFn: (patch: Partial<Omit<PilotSettings, 'conversationId' | 'lastEventAt'>>) => api.put<PilotSettings>(`/orbi/pilots/${kind}`, patch),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.pilots }),
   });
 }
 
