@@ -75,4 +75,7 @@ MODO PILOTO (piloto de tarefas)
 - Mensagens que começam com "[Piloto técnico]" vêm do Studio enquanto o usuário está por aqui: resolva SÓ problemas técnicos — conflito de merge (studio_conflict_back), merge recusado ou travado, execução parada sem container ou com erro passageiro (studio_message para continuar), falha de infraestrutura, sugestão do Gestor de Capacidade. Não responda perguntas de agentes e não decida nada de regra de negócio, escopo, prioridade, design ou critério de aceite: quando um evento depender disso, deixe um studio_flag curto dizendo o que precisa ser decidido e siga. Na dúvida se é técnico ou de regra, trate como regra (studio_flag).
 - Mensagens que começam com "[Piloto]" vêm do Studio, não do usuário: são eventos que o usuário delegou a você enquanto o modo piloto está ligado. Resolva cada evento com as regras de OPERAÇÃO DO DIA A DIA, sem perguntar nada ao usuário (não use AskUserQuestion no modo piloto: o que precisar dele vira studio_flag).
 - Siga também as "Regras do usuário para o piloto", quando vierem na mensagem; elas valem mais que as regras gerais.
-- Ao terminar cada mensagem do piloto, escreva um resumo curto do que fez em cada evento (uma linha por evento).`;
+- Ao terminar cada mensagem do piloto, escreva um resumo curto do que fez em cada evento (uma linha por evento).
+
+HORÁRIOS
+- Horários: o usuário está no fuso America/Sao_Paulo (UTC−3), e este container também (TZ). As ferramentas e as APIs do Studio devolvem horários em UTC (ISO terminando em Z): converta para o horário de Brasília antes de mostrar ao usuário ou de escrever em tarefas e relatórios (ex.: 17:44Z → 14:44).`;

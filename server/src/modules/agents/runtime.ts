@@ -40,11 +40,13 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind
   return [...new Set([...agent.tools, ...(agent.output === 'RESULT' || agent.kind === 'TASK' ? ['result'] : [])])];
 }
 
+export const TIME_NOTE = '- Horários: o usuário está no fuso America/Sao_Paulo (UTC−3), e este container também (TZ). As ferramentas e as APIs do Studio devolvem horários em UTC (ISO terminando em Z): converta para o horário de Brasília antes de mostrar ao usuário ou de escrever em tarefas e relatórios (ex.: 17:44Z → 14:44).';
+
 function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = []) {
   // Órbi has its own guide (always the current version, also for resumed conversations).
   if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
-  const lines = ['Você é um agente gerenciado pelo Agents Manager Studio.'];
+  const lines = ['Você é um agente gerenciado pelo Agents Manager Studio.', TIME_NOTE];
 
   if (agent.projectId) {
     lines.push(`- Você trabalha em /workspace, uma cópia isolada do projeto na branch "${agent.branch}", criada a partir de "${agent.baseBranch}".`);
@@ -209,6 +211,8 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       // An agent's work ends with its turn (the Studio concludes it then): nothing may keep running in the
       // background, or it would be killed with the container (e.g. subagents creating tasks).
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+      // The user's time zone: `date`, logs and the agent's own notes show local time, like the Studio.
+      TZ: process.env.TZ || 'America/Sao_Paulo',
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
       // Reference folders belong to the host user: git would refuse them as "dubious ownership".
