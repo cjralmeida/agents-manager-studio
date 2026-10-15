@@ -25,7 +25,7 @@ export function CapacitySuggestions({ workspaceId }: { workspaceId: string }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="text-sm font-medium">Gestor de Capacidade</h3>
         <p className="text-xs text-muted">
-          Acompanha o quadro e o plano Claude e sugere quantas tarefas cada workflow roda ao mesmo tempo.
+          Acompanha o quadro e o plano Claude e sugere quantos agentes trabalham na primeira etapa de cada workflow (os que pegam tarefas novas).
           {data.lastAnalysisAt && <> Última análise {timeAgo(data.lastAnalysisAt)}.</>}
           {data.lastConversationId && (
             <>
