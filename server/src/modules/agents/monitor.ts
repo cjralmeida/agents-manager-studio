@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
 import { containerLogs, inspectContainer, removeContainer } from '../../lib/docker.js';
-import { addEvent, ensureContainer, markFailed, sendMessage } from './service.js';
+import { addEvent, ensureContainer, markFailed, onAgentIdle, sendMessage } from './service.js';
 
 const INTERVAL_MS = 5_000;
 const MAX_CRASH_RESUMES = 2;
@@ -11,6 +11,10 @@ const CRASH_RESUME_MARK = 'O container do agente parou de forma inesperada';
 const CRASH_RESUME_MESSAGE =
   'O seu container parou de forma inesperada (ex.: o computador desligou) e foi reiniciado. Continue exatamente de onde parou: ' +
   'confira o estado da sua cópia (git status, arquivos gerados, testes) e siga a tarefa até o fim.';
+
+/** An automatic agent that finished but whose delivery failed (e.g. Docker timed out removing its container) is retried. */
+const UNDELIVERED_AFTER_MS = 5 * 60_000;
+const deliveryRetries = new Map<string, number>();
 
 /** How many times this agent was resumed after a crash in the last hour. */
 function recentCrashResumes(agentId: string) {
@@ -83,6 +87,27 @@ async function checkContainers(log: FastifyBaseLogger) {
   for (const agent of stranded) {
     log.info({ agentId: agent.id }, 'Starting an agent for a message that was waiting');
     await ensureContainer(agent.id).catch((err: unknown) => log.warn({ agentId: agent.id, err }, 'Could not start the agent for its message'));
+  }
+
+  // An automatic agent left in "ready for review" (its delivery threw, e.g. a Docker timeout) holds its workflow step
+  // forever: the delivery is tried again, at most every few minutes per agent.
+  const now = Date.now();
+  const undelivered = await prisma.agent.findMany({
+    where: {
+      autoConclude: true,
+      status: 'READY_FOR_REVIEW',
+      errorMessage: null,
+      limitResumeAt: null,
+      lastActivityAt: { lt: new Date(now - UNDELIVERED_AFTER_MS) },
+    },
+    select: { id: true },
+  });
+  for (const agent of undelivered) {
+    if (now - (deliveryRetries.get(agent.id) ?? 0) < UNDELIVERED_AFTER_MS) continue;
+    deliveryRetries.set(agent.id, now);
+    log.info({ agentId: agent.id }, 'Delivering an automatic agent whose delivery had failed');
+    await addEvent(agent.id, 'status', { message: 'A entrega não tinha terminado (ex.: o Docker demorou para responder): tentando de novo.' });
+    await onAgentIdle(agent.id).catch((err: unknown) => log.warn({ agentId: agent.id, err }, 'Could not deliver the agent'));
   }
 }
 
