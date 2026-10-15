@@ -85,24 +85,26 @@ export function BoardConnection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-const INTERVALS = [1, 2, 5, 10, 15];
+/** Seconds; the server looks for due boards every 15 s, so that is the shortest interval. */
+const INTERVALS = [15, 30, 60, 120, 300, 600, 900];
 
-/** How often the server reads the boards (and starts board-triggered workflows); 2 minutes keeps provider calls low. */
+const intervalLabel = (seconds: number) => (seconds < 60 ? `A cada ${seconds} s` : `A cada ${seconds / 60} min`);
+
+/** How often the server reads the boards (and starts board-triggered workflows). */
 function RefreshInterval({ workspaceId, sources }: { workspaceId: string; sources: BoardSource[] }) {
   const update = useUpdateBoardSettings(workspaceId);
+  const current = sources[0]?.refreshIntervalSec ?? 120;
   return (
     <div className="mt-4 max-w-sm">
       <Field label="Atualização automática" hint="O server lê os quadros nesse intervalo e, em seguida, inicia os workflows que vigiam o quadro.">
-        <Select
-          value={Math.round((sources[0]?.refreshIntervalSec ?? 120) / 60)}
-          onChange={(event) => update.mutate({ refreshIntervalSec: Number(event.target.value) * 60 })}
-          disabled={update.isPending}
-        >
-          {INTERVALS.map((minutes) => (
-            <option key={minutes} value={minutes}>
-              A cada {minutes} min{minutes === 2 ? ' (recomendado)' : ''}
-            </option>
-          ))}
+        <Select value={current} onChange={(event) => update.mutate({ refreshIntervalSec: Number(event.target.value) })} disabled={update.isPending}>
+          {[...new Set([...INTERVALS, current])]
+            .sort((x, y) => x - y)
+            .map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {intervalLabel(seconds)}
+              </option>
+            ))}
         </Select>
       </Field>
       <ErrorText error={update.error} />

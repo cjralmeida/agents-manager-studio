@@ -72,7 +72,7 @@ const conversionBody = z
 
 /** 1 to 15 minutes between automatic reads of the board. */
 const settingsBody = z
-  .object({ refreshIntervalSec: z.number().int().min(60).max(900).optional(), watchIntervalMin: z.number().int().min(5).max(240).optional() })
+  .object({ refreshIntervalSec: z.number().int().min(15).max(900).optional(), watchIntervalMin: z.number().int().min(5).max(240).optional() })
   .strict()
   .refine((body) => body.refreshIntervalSec !== undefined || body.watchIntervalMin !== undefined, 'Informe uma configuração.');
 
