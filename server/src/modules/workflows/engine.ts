@@ -561,7 +561,17 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     } catch (error) {
       return fail(errorText(error));
     }
-    if (!pullRequest) return fail(`Nenhum PR/MR aberto cita a tarefa "${task.title}". Peça para citar a tarefa na descrição (ex.: "Closes #${task.number}").`);
+    if (!pullRequest) {
+      // Nothing to publish: the task goes back to whoever makes it, instead of waiting in validation forever.
+      const notice = [
+        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '',
+        `Nenhum PR/MR cita esta tarefa, então não há o que publicar. Abra o PR/MR para a branch base citando a tarefa na descrição (ex.: "Closes #${task.number}") e mova a tarefa de novo para a coluna de validação.`,
+      ].join('\n');
+      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
+      return fail(`Nenhum PR/MR cita a tarefa "${task.title}". A tarefa voltou para "A fazer" com o aviso.`);
+    }
     // Work done outside the Studio is only published when it targets the project's base branch (never "master" or "hom").
     const { baseBranch } = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { baseBranch: true } });
     if (baseBranch && pullRequest.baseBranch !== baseBranch) {
@@ -605,6 +615,12 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
         : `Pedido original: ${trigger.message ?? run.title}`,
     ...(previous?.run ? ['', previousOutputText(previous.step.name, outputOf(previous.run))] : []),
     ...(step.instructions.trim() ? ['', 'Instruções deste passo:', step.instructions.trim()] : []),
+    ...(pullRequest?.merged
+      ? [
+          '',
+          `Atenção: o PR/MR desta tarefa (${pullRequest.url}) já foi mesclado em \`${pullRequest.baseBranch}\`. A sua cópia é essa branch: não faça commits nela. Só publique em homologação (o deploy pega a branch como está) e confira. Se precisar mudar código ou configuração, reporte failure explicando o que falta.`,
+        ]
+      : []),
   ].join('\n');
 
   // The tester of the previous frontend task goes on to this one in the same session: no new container, and it keeps
@@ -629,7 +645,10 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       // A task awaiting a decision stays put: the agent only reads it and moves it after deciding with the user.
       ...(taskItemId && !pullRequest && !decision && !homologation && (index === 0 || index === fanOut) && { taskItemId }),
       ...(sourceAgentId && { sourceAgentId }),
-      ...(pullRequest && { pullRequest: { url: pullRequest.url, branch: pullRequest.branch, baseBranch: pullRequest.baseBranch } }),
+      // A PR/MR merged already: the agent starts from the base (the source branch may be gone) and only publishes it.
+      ...(pullRequest && {
+        pullRequest: { url: pullRequest.url, branch: pullRequest.merged ? pullRequest.baseBranch : pullRequest.branch, baseBranch: pullRequest.baseBranch },
+      }),
     });
     return prisma.workflowStepRun.create({
       data: { runId: run.id, stepId: step.id, stepIndex: index, lane, attempt, agentId: agent.id },

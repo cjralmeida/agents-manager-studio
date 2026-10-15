@@ -239,7 +239,9 @@ export async function pullRequestState(input: MergeInput): Promise<PullRequestSt
  */
 export async function mergeIntoBase(input: MergeInput & { project: GuardedProject; expectedBase: string }) {
   const label = `${input.provider === 'GITHUB' ? 'O PR #' : 'O MR !'}${input.number}`;
-  const { target } = await pullRequestInfo(input);
+  const { state, target } = await pullRequestInfo(input);
   assertMergeTarget(input.project, input.expectedBase, target, label);
+  // Merged already (e.g. by whoever made it outside the Studio): the deploy takes the base as it is.
+  if (state === 'merged') return null;
   return mergePullRequest(input);
 }
