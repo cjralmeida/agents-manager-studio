@@ -24,6 +24,8 @@ const MAX_RETRIES_PER_DAY = 2;
 const WATCH_TITLE = 'Destravar';
 const ACTIVE = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
 
+const TEST_TRIGGERS = ['feature_in_homologation', 'frontend_in_homologation'];
+
 export interface StuckTask {
   workspaceId: string;
   workspaceName: string;
@@ -72,12 +74,21 @@ async function findStuck(workspaceId: string): Promise<{ found: Found[]; statusM
   for (const run of runs) if (run.status === 'RUNNING' || activeRunIds.has(run.id)) for (const id of runTaskIds(run)) busy.add(id);
 
   const delivered = dependenciesDelivered(snapshot.items, statusMap);
+  // Homologation tests that pick tasks from the homologation column: a task waiting for its turn there is not stuck.
+  const tests = (await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, select: { trigger: true } }))
+    .map((workflow) => workflow.trigger as { type?: string; repositories?: string[] })
+    .filter((trigger) => trigger.type === 'feature_in_homologation' || trigger.type === 'frontend_in_homologation');
+  const isTest = (run: (typeof runs)[number]) => tests.length > 0 && TEST_TRIGGERS.includes((run.workflow.trigger as { type?: string }).type ?? '');
+  const testedBy = (item: { repository: string | null }) =>
+    tests.some((trigger) => !trigger.repositories?.length || trigger.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase()));
   const found: Found[] = [];
   for (const item of candidates) {
     if (busy.has(item.id)) continue;
     // Waiting for its dependencies is a reason (e.g. a screen whose API is not published yet).
     if (dependencyRefs(item.body).length > 0 && !delivered(item)) continue;
     const lastRun = runs.find((run) => runTaskIds(run).includes(item.id)) ?? null;
+    // Delivered to homologation and not tested since: it waits for its turn in the homologation test.
+    if (watched.get(item.columnId!) === 'homologation' && testedBy(item) && (!lastRun || !isTest(lastRun))) continue;
     // Work done outside the Studio (someone assigned, no Studio run or agent on it) is theirs to move.
     if (!lastRun && item.assignees.length > 0 && !(await handledByStudio(workspaceId, item.id))) continue;
     const changedAt = Math.max(new Date(item.updatedAt).getTime(), lastRun?.finishedAt?.getTime() ?? 0);

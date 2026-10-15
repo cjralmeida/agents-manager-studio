@@ -5,6 +5,8 @@ import { addEvent, ensureContainer, markFailed, sendMessage } from './service.js
 
 const INTERVAL_MS = 5_000;
 const MAX_CRASH_RESUMES = 2;
+/** A queued message older than this with no container for the agent is taken as stranded. */
+const STRANDED_AFTER_MS = 2 * 60_000;
 const CRASH_RESUME_MARK = 'O container do agente parou de forma inesperada';
 const CRASH_RESUME_MESSAGE =
   'O seu container parou de forma inesperada (ex.: o computador desligou) e foi reiniciado. Continue exatamente de onde parou: ' +
@@ -65,6 +67,22 @@ async function checkContainers(log: FastifyBaseLogger) {
 
     const pending = await prisma.agentInbox.count({ where: { agentId: agent.id, deliveredAt: null } });
     if (pending > 0 && agent.status !== 'CANCELLED') await ensureContainer(agent.id);
+  }
+
+  // A message or answer that arrived while no container was starting it (e.g. the server restarted right after it was
+  // queued) would wait forever: the agent is started for it. Agents held for the plan limit wait for their time.
+  const stranded = await prisma.agent.findMany({
+    where: {
+      containerId: null,
+      limitResumeAt: null,
+      status: { in: ['PREPARING', 'RUNNING'] },
+      inbox: { some: { deliveredAt: null, createdAt: { lt: new Date(Date.now() - STRANDED_AFTER_MS) } } },
+    },
+    select: { id: true },
+  });
+  for (const agent of stranded) {
+    log.info({ agentId: agent.id }, 'Starting an agent for a message that was waiting');
+    await ensureContainer(agent.id).catch((err: unknown) => log.warn({ agentId: agent.id, err }, 'Could not start the agent for its message'));
   }
 }
 
