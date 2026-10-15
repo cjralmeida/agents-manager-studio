@@ -142,8 +142,9 @@ function prompt(signals: CapacitySignal[], plan: PlanState, details: unknown[], 
   return `Você está agindo como o Gestor de Capacidade do Studio. Esta conversa foi aberta pelo Studio (não pelo usuário) porque as regras de capacidade mudaram de sinal.
 
 SUA TAREFA
-Para cada workflow abaixo, decida se vale mudar "Execuções ao mesmo tempo" (maxConcurrentRuns, de 1 a 5) e, se valer, proponha com studio_propose:
-  kind "update_workflow", payload {"id": "<workflowId>", "maxConcurrentRuns": N}, summary "<nome do workflow>: X → N execuções ao mesmo tempo".
+Cada workflow é uma linha de produção: cada etapa tem um número de agentes trabalhando ao mesmo tempo, e as tarefas esperam na fila de uma etapa quando os agentes dela estão ocupados. Para cada workflow abaixo, decida se vale mudar os agentes da PRIMEIRA etapa (quem pega tarefas novas do quadro; o campo maxConcurrentRuns, de 1 a 5) e, se valer, proponha com studio_propose:
+  kind "update_workflow", payload {"id": "<workflowId>", "maxConcurrentRuns": N}, summary "<nome do workflow>: X → N agentes em <nome da primeira etapa>".
+As outras etapas (revisão, publicação, testes) o usuário ajusta no editor do workflow; se a fila de uma delas estiver crescendo, diga isso na explicação.
 Depois explique cada decisão em 1 a 3 frases, em português, para o usuário ler. Não pergunte nada (sem AskUserQuestion): se não valer a pena, diga o motivo em uma frase e não proponha. No máximo uma proposta por workflow. Você só sugere; o usuário aplica no cartão.
 
 COMO DECIDIR
@@ -153,6 +154,7 @@ COMO DECIDIR
 - Cada execução a mais também pesa no computador (CPU, memória e o disco das cópias, que é um HD mecânico): com o computador perto dos limites, não suba; com memória ou disco no limite, desça. A CPU oscila muito entre amostras: sozinha, ela só impede subir.
 - Descer é seguro: proponha quando o plano ou o computador estiverem perto do limite ou quando houve conflito de merge.
 - O número sugerido pelas regras é só um ponto de partida (ex.: subir para 2 em vez de 3 se só duas tarefas são independentes).
+- A publicação em homologação é uma só (um HOM): mais agentes na primeira etapa só adiantam se a fila da publicação não estiver cheia.
 
 PLANO CLAUDE
 janela de 5 h: ${percent(plan.sessionPercent)} · semanal: ${percent(plan.weekPercent)} · pausa dos workflows em ${plan.limitPercent}%

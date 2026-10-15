@@ -140,7 +140,11 @@ function WorkflowNodeView({ data }: NodeProps<WorkflowNode>) {
         ) : (
           <span>parado</span>
         )}
-        {boardTriggered && <span title="Execuções ao mesmo tempo">· máx. {workflow.maxConcurrentRuns}</span>}
+        {boardTriggered && (
+          <span title="Agentes em cada etapa">
+            · {workflow.steps.map((step) => step.agents).join('/')} agente(s)
+          </span>
+        )}
       </div>
       <Handles />
     </button>

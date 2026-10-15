@@ -22,6 +22,8 @@ export interface AgentStep {
   name: string;
   kind: 'agent';
   profileId: string;
+  /** Agents working this step at the same time, over all the tasks going through the workflow. */
+  agents: number;
   forEachTask: boolean;
   maxParallel: number;
   continueFromPrevious: boolean;
@@ -36,6 +38,7 @@ export interface DeployStep {
   id: string;
   name: string;
   kind: 'deploy';
+  agents: number;
   environment: DeployEnvironment;
 }
 
@@ -49,7 +52,10 @@ export interface Workflow {
   isEnabled: boolean;
   trigger: WorkflowTrigger;
   steps: WorkflowStep[];
+  /** Agents of the first step (older name). */
   maxConcurrentRuns: number;
+  /** Per step: agents set, agents at work now and tasks waiting for a free agent there. */
+  stepLoad: { stepId: string; agents: number; active: number; queued: number }[];
   /** Process the workflow belongs to, if any. */
   processId: string | null;
   lastCheckedAt: string | null;
@@ -58,7 +64,7 @@ export interface Workflow {
   totalRuns: number;
 }
 
-export type WorkflowInput = Pick<Workflow, 'name' | 'description' | 'isEnabled' | 'trigger' | 'steps' | 'maxConcurrentRuns'>;
+export type WorkflowInput = Pick<Workflow, 'name' | 'description' | 'isEnabled' | 'trigger' | 'steps'>;
 
 export type StepRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'RETRIED' | 'CANCELLED';
 

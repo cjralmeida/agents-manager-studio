@@ -226,6 +226,39 @@ export function boardTaskQueue(trigger: Extract<WorkflowTrigger, { type: 'board_
  * column after its last run finished (e.g. sent back with a homologation report); after a failed run, only once
  * someone changed the task.
  */
+/** Tasks a workflow lets wait between its steps before its first step takes new ones (so finished work does not pile up). */
+const LINE_QUEUE_LIMIT = 2;
+
+/**
+ * How a workflow's line is doing: agents busy on its first step (a run just created counts, it is about to start
+ * there) and tasks waiting for a free agent at a later step. New tasks come in while the first step has a free agent
+ * and the line is not backed up.
+ */
+async function lineState(workflow: Workflow) {
+  const steps = parseSteps(workflow);
+  const first = steps[0]!;
+  const runs = await prisma.workflowRun.findMany({
+    where: { workflowId: workflow.id, status: 'RUNNING' },
+    select: { steps: { select: { stepId: true, status: true, lane: true } } },
+  });
+  let firstBusy = 0;
+  let waiting = 0;
+  for (const run of runs) {
+    const running = run.steps.filter((step) => step.status === 'RUNNING');
+    if (run.steps.length === 0 || running.some((step) => step.stepId === first.id && step.lane === 'main')) firstBusy++;
+    else if (running.length === 0) waiting++;
+  }
+  return { first, firstBusy, waiting, free: workflow.isEnabled ? Math.max(0, first.agents - firstBusy) : 0, backedUp: waiting >= LINE_QUEUE_LIMIT };
+}
+
+/** Whether a step has an agent free: its agents working it now, over all the workflow's tasks, are below its limit. */
+async function hasFreeAgent(run: RunWithSteps, step: WorkflowStep) {
+  const busy = await prisma.workflowStepRun.count({
+    where: { stepId: step.id, status: 'RUNNING', run: { workflowId: run.workflowId, status: 'RUNNING' }, NOT: { runId: run.id } },
+  });
+  return busy < step.agents;
+}
+
 export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLogger, onlyWorkflowId?: string) {
   const workflows = (
     await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true, ...(onlyWorkflowId && { id: onlyWorkflowId }) }, orderBy: { createdAt: 'asc' } })
@@ -257,10 +290,16 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
 
   for (const workflow of workflows) {
     const trigger = parseTrigger(workflow);
-    const running = await prisma.workflowRun.count({ where: { workflowId: workflow.id, status: 'RUNNING' } });
-    const slots = workflow.maxConcurrentRuns - running;
+    // New tasks enter while the first step has a free agent and the line is not backed up further on.
+    const line = await lineState(workflow);
+    const slots = line.backedUp ? 0 : line.free;
     if (slots <= 0) {
-      await report(workflow, `Ocupado: ${running} execução(ões) em andamento.`);
+      await report(
+        workflow,
+        line.backedUp
+          ? `Ocupado: ${line.waiting} tarefa(s) esperando a próxima etapa; "${line.first.name}" pega novas quando a fila andar.`
+          : `Ocupado: ${line.firstBusy}/${line.first.agents} agente(s) em "${line.first.name}".`,
+      );
       continue;
     }
 
@@ -888,6 +927,11 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
           pending = true;
           return;
         }
+        // The step's agents are all busy with other tasks: this one waits in its queue (the oldest task goes first).
+        if (!(await hasFreeAgent(run, steps[index]!))) {
+          pending = true;
+          return;
+        }
         await startStep(run, steps, index, stepLane, (current?.attempt ?? 0) + 1);
         run = await load();
         pending = true;
@@ -943,7 +987,8 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
 /** Advances every running run; called by the scheduler, so runs resume after a restart. */
 export async function advanceAllRuns(log: FastifyBaseLogger) {
   await reopenRecoveredRuns(log);
-  const runs = await prisma.workflowRun.findMany({ where: { status: 'RUNNING' }, select: { id: true } });
+  // Oldest first: a task waiting at a step gets its free agent before a newer one.
+  const runs = await prisma.workflowRun.findMany({ where: { status: 'RUNNING' }, select: { id: true }, orderBy: { startedAt: 'asc' } });
   for (const run of runs) await advanceRun(run.id, log);
 }
 

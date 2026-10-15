@@ -55,6 +55,11 @@ export const stepSchema = z.discriminatedUnion('kind', [
       name: z.string().trim().min(1).max(80),
       kind: z.literal('agent'),
       profileId: z.uuid(),
+      /**
+       * Agents working this step at the same time, over all the tasks going through the workflow: when one finishes,
+       * it takes the next task waiting at this step. Steps with a single resource (one homologation) keep 1.
+       */
+      agents: z.number().int().min(1).max(5).default(1),
       /** Runs once per task the previous step created on the board (one lane per task). */
       forEachTask: z.boolean().default(false),
       /**
@@ -82,6 +87,11 @@ export const stepSchema = z.discriminatedUnion('kind', [
       id: z.string().min(1).max(40),
       name: z.string().trim().min(1).max(80),
       kind: z.literal('deploy'),
+      /**
+       * Agents working this step at the same time, over all the tasks going through the workflow: when one finishes,
+       * it takes the next task waiting at this step. Steps with a single resource (one homologation) keep 1.
+       */
+      agents: z.number().int().min(1).max(5).default(1),
       /** Deploys always start in homologation. */
       environment: z.enum(['HOMOLOGACAO', 'PRODUCAO']).default('HOMOLOGACAO'),
     })
@@ -98,7 +108,11 @@ export const workflowSchema = z
     isEnabled: z.boolean().default(true),
     trigger: triggerSchema,
     steps: z.array(stepSchema).min(1).max(12),
-    maxConcurrentRuns: z.number().int().min(1).max(5).default(1),
+    /**
+     * Kept for older callers (Órbi, capacity suggestions): agents of the first step. The workflow's capacity is the
+     * agents of each step.
+     */
+    maxConcurrentRuns: z.number().int().min(1).max(5).optional(),
   })
   .strict();
 

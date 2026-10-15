@@ -8,6 +8,7 @@ export const agentStep = (profileId: string): AgentStep => ({
   name: '',
   kind: 'agent',
   profileId,
+  agents: 1,
   forEachTask: false,
   maxParallel: 1,
   continueFromPrevious: false,
@@ -17,7 +18,7 @@ export const agentStep = (profileId: string): AgentStep => ({
   onFailure: null,
 });
 
-export const deployStep = (): DeployStep => ({ id: newStepId(), name: 'Deploy em homologação', kind: 'deploy', environment: 'HOMOLOGACAO' });
+export const deployStep = (): DeployStep => ({ id: newStepId(), name: 'Deploy em homologação', kind: 'deploy', agents: 1, environment: 'HOMOLOGACAO' });
 
 export const boardTrigger: Extract<WorkflowTrigger, { type: 'board_task' }> = {
   type: 'board_task',

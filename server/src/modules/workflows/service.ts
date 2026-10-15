@@ -13,7 +13,17 @@ export interface WorkflowInput {
   isEnabled: boolean;
   trigger: WorkflowTrigger;
   steps: WorkflowStep[];
-  maxConcurrentRuns: number;
+  /** Older callers: agents of the first step. */
+  maxConcurrentRuns?: number;
+}
+
+/**
+ * The first step's agents and the old "runs at the same time" are the same number: a change to either sets both, so
+ * older callers (Órbi, capacity suggestions) keep working.
+ */
+function withFirstStepAgents(steps: WorkflowStep[], maxConcurrentRuns: number | undefined) {
+  if (maxConcurrentRuns === undefined || steps.length === 0) return steps;
+  return steps.map((step, index) => (index === 0 ? { ...step, agents: maxConcurrentRuns } : step));
 }
 
 /** Same checks as saving; Órbi uses them to validate a proposal before showing it. */
@@ -38,10 +48,38 @@ function duplicateName(error: unknown) {
   return error instanceof PrismaNamespace.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
+/**
+ * Per step: agents working it now and tasks waiting for a free agent there (their previous step done). Only the main
+ * lane is counted; per-task lanes after a fan-out keep their own limit.
+ */
+async function stepLoad(workflow: Workflow, steps: WorkflowStep[]) {
+  const runs = await prisma.workflowRun.findMany({
+    where: { workflowId: workflow.id, status: 'RUNNING' },
+    select: { steps: { select: { stepId: true, status: true, lane: true, startedAt: true } } },
+  });
+  return steps.map((step, index) => {
+    let active = 0;
+    let queued = 0;
+    for (const run of runs) {
+      const latest = (stepId: string) =>
+        run.steps.filter((entry) => entry.stepId === stepId && entry.lane === 'main').sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
+      const current = latest(step.id);
+      if (current?.status === 'RUNNING') active++;
+      else if (!current || current.status === 'RETRIED') {
+        const previous = index === 0 ? null : latest(steps[index - 1]!.id);
+        if (index > 0 && previous?.status === 'SUCCEEDED') queued++;
+      }
+    }
+    return { stepId: step.id, agents: step.agents, active, queued };
+  });
+}
+
 async function toResponse(workflow: Workflow) {
-  const [running, total] = await Promise.all([
+  const steps = parseSteps(workflow);
+  const [running, total, load] = await Promise.all([
     prisma.workflowRun.count({ where: { workflowId: workflow.id, status: 'RUNNING' } }),
     prisma.workflowRun.count({ where: { workflowId: workflow.id } }),
+    stepLoad(workflow, steps),
   ]);
   return {
     id: workflow.id,
@@ -50,8 +88,10 @@ async function toResponse(workflow: Workflow) {
     description: workflow.description,
     isEnabled: workflow.isEnabled,
     trigger: parseTrigger(workflow),
-    steps: parseSteps(workflow),
-    maxConcurrentRuns: workflow.maxConcurrentRuns,
+    steps,
+    maxConcurrentRuns: steps[0]?.agents ?? workflow.maxConcurrentRuns,
+    /** Agents at work and tasks waiting, per step. */
+    stepLoad: workflow.isEnabled ? load : load.map((entry) => ({ ...entry, active: 0 })),
     processId: workflow.processId,
     lastCheckedAt: workflow.lastCheckedAt,
     statusMessage: workflow.statusMessage,
@@ -70,13 +110,16 @@ export async function listWorkflows(workspaceId: string) {
 export async function createWorkflow(workspaceId: string, input: WorkflowInput) {
   if (!(await prisma.workspace.findUnique({ where: { id: workspaceId } }))) throw notFound('Workspace não encontrado.');
   await validateWorkflow(workspaceId, input);
+  // An older caller's "runs at the same time" fills the first step when it did not say how many agents it has.
+  const steps = input.maxConcurrentRuns && input.steps[0]?.agents === 1 ? withFirstStepAgents(input.steps, input.maxConcurrentRuns) : input.steps;
   try {
     const workflow = await prisma.workflow.create({
       data: {
         workspaceId,
         ...input,
+        maxConcurrentRuns: steps[0]?.agents ?? 1,
         trigger: input.trigger as Prisma.InputJsonValue,
-        steps: input.steps as unknown as Prisma.InputJsonValue,
+        steps: steps as unknown as Prisma.InputJsonValue,
       },
     });
     return toResponse(workflow);
@@ -91,13 +134,16 @@ export async function updateWorkflow(id: string, input: Partial<WorkflowInput>) 
   if (input.steps || input.trigger) {
     await validateWorkflow(current.workspaceId, { steps: input.steps ?? parseSteps(current), trigger: input.trigger ?? parseTrigger(current) });
   }
+  // Steps sent win; otherwise an older caller's "runs at the same time" becomes the first step's agents.
+  const steps = input.steps ?? (input.maxConcurrentRuns !== undefined ? withFirstStepAgents(parseSteps(current), input.maxConcurrentRuns) : undefined);
   try {
     const workflow = await prisma.workflow.update({
       where: { id },
       data: {
         ...input,
+        ...(steps && { maxConcurrentRuns: steps[0]?.agents ?? 1 }),
         ...(input.trigger && { trigger: input.trigger as Prisma.InputJsonValue }),
-        ...(input.steps && { steps: input.steps as unknown as Prisma.InputJsonValue }),
+        ...(steps && { steps: steps as unknown as Prisma.InputJsonValue }),
         statusMessage: input.isEnabled === false ? 'Desativado.' : current.statusMessage,
       },
     });

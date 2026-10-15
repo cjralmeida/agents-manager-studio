@@ -44,6 +44,15 @@ describe('validateSteps', () => {
   });
 });
 
+describe('agents per step', () => {
+  it('gives every step one agent unless it says how many', () => {
+    assert.equal(agent('exec', 2).agents, 1);
+    assert.equal(deploy('deploy').agents, 1);
+    assert.equal(agent('exec', 2, { agents: 3 }).agents, 3);
+    assert.throws(() => agent('exec', 2, { agents: 6 }));
+  });
+});
+
 describe('laneFor', () => {
   it('runs steps before the fan-out once and the rest per task', () => {
     assert.equal(laneFor(fullFlow, 1, 'task-1'), 'main');

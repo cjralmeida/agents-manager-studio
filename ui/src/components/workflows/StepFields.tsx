@@ -24,7 +24,7 @@ export function StepFields({ step, index, steps, profiles, onChange }: StepField
           onChange={(event) =>
             onChange(
               event.target.value === 'deploy'
-                ? { id: step.id, name: step.name, kind: 'deploy', environment: 'HOMOLOGACAO' }
+                ? { id: step.id, name: step.name, kind: 'deploy', agents: 1, environment: 'HOMOLOGACAO' }
                 : { ...agentStep(profiles[0]?.id ?? ''), id: step.id, name: step.name },
             )
           }
@@ -58,6 +58,23 @@ export function StepFields({ step, index, steps, profiles, onChange }: StepField
 
       <Field label="Nome do passo">
         <TextInput value={step.name} onChange={(event) => patch({ name: event.target.value })} placeholder="Usa o nome do agente" />
+      </Field>
+
+      <Field
+        label="Agentes nesta etapa"
+        hint={
+          step.kind === 'deploy'
+            ? 'Quantos deploys ao mesmo tempo. Um HOM só aguenta 1.'
+            : 'Quantos agentes trabalham nesta etapa ao mesmo tempo. Quando um termina, pega a próxima tarefa que espera aqui.'
+        }
+      >
+        <Select value={step.agents} onChange={(event) => patch({ agents: Number(event.target.value) })}>
+          {[1, 2, 3, 4, 5].map((count) => (
+            <option key={count} value={count}>
+              {count === 1 ? '1 agente' : `${count} agentes`}
+            </option>
+          ))}
+        </Select>
       </Field>
 
       {step.kind === 'agent' && (

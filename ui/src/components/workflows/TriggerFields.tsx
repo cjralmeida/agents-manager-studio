@@ -7,12 +7,10 @@ import { boardTrigger, decisionTrigger, featureTrigger, frontendTrigger } from '
 interface TriggerFieldsProps {
   trigger: WorkflowTrigger;
   board: Board | null;
-  maxConcurrentRuns: number;
   onChange: (trigger: WorkflowTrigger) => void;
-  onMaxConcurrentRunsChange: (count: number) => void;
 }
 
-export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onMaxConcurrentRunsChange }: TriggerFieldsProps) {
+export function TriggerFields({ trigger, board, onChange }: TriggerFieldsProps) {
   const repositories =
     board && board.repositories.length > 1 && trigger.type !== 'manual' ? (
       <Field label="Repositório">
@@ -123,15 +121,6 @@ export function TriggerFields({ trigger, board, maxConcurrentRuns, onChange, onM
             <Select value={trigger.moveWhenDone} onChange={(event) => onChange({ ...trigger, moveWhenDone: event.target.value as 'done' | 'homologation' })}>
               <option value="done">Concluído</option>
               <option value="homologation">Em homologação</option>
-            </Select>
-          </Field>
-          <Field label="Execuções ao mesmo tempo">
-            <Select value={maxConcurrentRuns} onChange={(event) => onMaxConcurrentRunsChange(Number(event.target.value))}>
-              {[1, 2, 3, 4, 5].map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
             </Select>
           </Field>
         </>

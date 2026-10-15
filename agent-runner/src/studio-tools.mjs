@@ -344,8 +344,14 @@ export function createStudioTools(call, groups) {
       ),
       tool(
         'studio_set_workflow',
-        'Liga ou desliga um workflow e/ou muda quantas execuções ele roda ao mesmo tempo (1 a 5). Não altera gatilho nem passos (isso é proposta).',
-        { workflowId: z.string(), enabled: z.boolean().optional(), maxConcurrentRuns: z.number().int().optional(), reason: z.string().optional() },
+        'Liga ou desliga um workflow e/ou muda quantos agentes trabalham em cada etapa (1 a 5): maxConcurrentRuns é a primeira etapa; stepAgents muda qualquer etapa, ex.: {"Revisar": 2}. Não altera gatilho nem passos (isso é proposta).',
+        {
+          workflowId: z.string(),
+          enabled: z.boolean().optional(),
+          maxConcurrentRuns: z.number().int().optional().describe('Agentes da primeira etapa.'),
+          stepAgents: z.record(z.string(), z.number().int()).optional().describe('Agentes por etapa, pelo nome ou id da etapa.'),
+          reason: z.string().optional(),
+        },
         run('studio_set_workflow'),
       ),
       tool(

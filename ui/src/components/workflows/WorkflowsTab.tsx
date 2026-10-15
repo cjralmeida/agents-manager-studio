@@ -256,16 +256,32 @@ function WorkflowCard({
       )}
 
       <ol className="mt-3 flex flex-wrap items-center gap-1 text-xs">
-        {workflow.steps.map((step, index) => (
-          <li key={step.id} className="flex items-center gap-1">
-            {index > 0 && <span className="text-muted">→</span>}
-            <span className="rounded-full border border-border px-2 py-0.5" title={step.kind === 'agent' ? profiles.find((profile) => profile.id === step.profileId)?.name : undefined}>
-              {step.name}
-              {step.kind === 'agent' && step.forEachTask && ' (cada tarefa)'}
-              {step.kind === 'deploy' && ` · ${environmentLabels[step.environment]}`}
-            </span>
-          </li>
-        ))}
+        {workflow.steps.map((step, index) => {
+          const load = workflow.stepLoad?.find((entry) => entry.stepId === step.id);
+          const busy = Boolean(load && load.active > 0 && workflow.isEnabled);
+          return (
+            <li key={step.id} className="flex items-center gap-1">
+              {index > 0 && <span className="text-muted">→</span>}
+              <span
+                className={`rounded-full border px-2 py-0.5 ${busy ? 'border-purple-400/60 text-purple-200' : 'border-border'}`}
+                title={[
+                  step.kind === 'agent' ? profiles.find((profile) => profile.id === step.profileId)?.name : undefined,
+                  load ? `${load.active} de ${load.agents} agente(s) trabalhando${load.queued > 0 ? `, ${load.queued} tarefa(s) na fila` : ''}` : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              >
+                {step.name}
+                {step.kind === 'agent' && step.forEachTask && ' (cada tarefa)'}
+                {step.kind === 'deploy' && ` · ${environmentLabels[step.environment]}`}
+                <span className="ml-1 text-muted">
+                  {load ? `${load.active}/${load.agents}` : `·${step.agents}`}
+                  {load && load.queued > 0 && <span className="text-amber-300"> +{load.queued} na fila</span>}
+                </span>
+              </span>
+            </li>
+          );
+        })}
       </ol>
 
       {workflow.statusMessage && <p className="mt-3 text-xs text-gray-300">{workflow.statusMessage}</p>}

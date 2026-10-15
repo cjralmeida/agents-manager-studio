@@ -27,7 +27,6 @@ export function WorkflowEditor({ profiles, board, initial, runningStepIds, pendi
   const [description, setDescription] = useState(initial?.description ?? '');
   const [isEnabled, setIsEnabled] = useState(initial?.isEnabled ?? true);
   const [trigger, setTrigger] = useState<WorkflowTrigger>(initial?.trigger ?? { type: 'manual' });
-  const [maxConcurrentRuns, setMaxConcurrentRuns] = useState(initial?.maxConcurrentRuns ?? 1);
   const [steps, setSteps] = useState<WorkflowStep[]>(initial?.steps ?? (profiles[0] ? [agentStep(profiles[0].id)] : []));
   const [selectedId, setSelectedId] = useState<string>(initial ? 'trigger' : (steps[0]?.id ?? 'trigger'));
 
@@ -58,7 +57,7 @@ export function WorkflowEditor({ profiles, board, initial, runningStepIds, pendi
     event.preventDefault();
     // Steps without a name take the name of their agent.
     const named = steps.map((step) => ({ ...step, name: stepLabel(step, profiles) }));
-    onSubmit({ name, description, isEnabled, trigger, steps: named, maxConcurrentRuns });
+    onSubmit({ name, description, isEnabled, trigger, steps: named });
   };
 
   const selectedIndex = steps.findIndex((step) => step.id === selectedId);
@@ -130,13 +129,7 @@ export function WorkflowEditor({ profiles, board, initial, runningStepIds, pendi
           ) : (
             <>
               <h3 className="text-sm font-semibold">Gatilho</h3>
-              <TriggerFields
-                trigger={trigger}
-                board={board}
-                maxConcurrentRuns={maxConcurrentRuns}
-                onChange={setTrigger}
-                onMaxConcurrentRunsChange={setMaxConcurrentRuns}
-              />
+              <TriggerFields trigger={trigger} board={board} onChange={setTrigger} />
             </>
           )}
           {profiles.length === 0 && <p className="text-sm text-amber-300">Crie agentes na aba Agentes para usá-los nos passos.</p>}

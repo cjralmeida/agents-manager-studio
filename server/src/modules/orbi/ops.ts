@@ -7,6 +7,8 @@ import { listStuckTasks } from '../board-watch/service.js';
 import { getResourceUsage } from '../system/service.js';
 import { listTestEnvs, testEnvCapacity } from '../test-envs/service.js';
 import { getUserSetting, setUserSetting } from '../users/settings.js';
+import type { WorkflowStep } from '../workflows/definition.js';
+import { parseSteps } from '../workflows/engine.js';
 import { updateWorkflow } from '../workflows/service.js';
 import { listOpenFlags, logActivity } from './activity.js';
 
@@ -271,18 +273,32 @@ async function message(caller: Caller, args: Args) {
 async function setWorkflow(caller: Caller, args: Args) {
   const workflow = await prisma.workflow.findUnique({ where: { id: text(args.workflowId, 60) }, include: { workspace: { select: { ownerId: true } } } });
   if (!workflow || workflow.workspace.ownerId !== caller.ownerId) throw notFound('Workflow não encontrado.');
-  const changes: { isEnabled?: boolean; maxConcurrentRuns?: number } = {};
+  const changes: { isEnabled?: boolean; maxConcurrentRuns?: number; steps?: WorkflowStep[] } = {};
   if (typeof args.enabled === 'boolean') changes.isEnabled = args.enabled;
+  // Agents per step, by step id or name: {"Revisar": 2}.
+  if (args.stepAgents && typeof args.stepAgents === 'object') {
+    const wanted = args.stepAgents as Record<string, unknown>;
+    const steps = parseSteps(workflow);
+    for (const [key, value] of Object.entries(wanted)) {
+      const step = steps.find((entry) => entry.id === key || entry.name.toLowerCase() === key.toLowerCase());
+      const count = Number(value);
+      if (!step) throw new HttpError(404, `Etapa "${key}" não existe. Etapas: ${steps.map((entry) => entry.name).join(', ')}.`);
+      if (!Number.isInteger(count) || count < 1 || count > 5) throw new HttpError(400, 'Os agentes de uma etapa vão de 1 a 5.');
+      step.agents = count;
+    }
+    changes.steps = steps;
+  }
   if (args.maxConcurrentRuns !== undefined) {
     const value = Number(args.maxConcurrentRuns);
     if (!Number.isInteger(value) || value < 1 || value > 5) throw new HttpError(400, 'maxConcurrentRuns vai de 1 a 5.');
     changes.maxConcurrentRuns = value;
   }
-  if (Object.keys(changes).length === 0) throw new HttpError(400, 'Diga o que mudar: enabled e/ou maxConcurrentRuns.');
+  if (Object.keys(changes).length === 0) throw new HttpError(400, 'Diga o que mudar: enabled, maxConcurrentRuns (agentes da primeira etapa) e/ou stepAgents.');
   await updateWorkflow(workflow.id, changes);
   const parts = [
     ...(changes.isEnabled !== undefined ? [changes.isEnabled ? 'ligou' : 'desligou'] : []),
-    ...(changes.maxConcurrentRuns !== undefined ? [`${changes.maxConcurrentRuns} execução(ões) ao mesmo tempo`] : []),
+    ...(changes.maxConcurrentRuns !== undefined ? [`${changes.maxConcurrentRuns} agente(s) na primeira etapa`] : []),
+    ...(changes.steps ? [`agentes por etapa: ${changes.steps.map((step) => `${step.name} ${step.agents}`).join(', ')}`] : []),
   ];
   await logActivity({ ...activityBase(caller, workflow.workspaceId), kind: 'workflow', summary: `Workflow "${workflow.name}": ${parts.join(', ')}`, details: { reason: text(args.reason, 2000) || null } });
   return { ok: true, workflow: workflow.name, ...changes };
