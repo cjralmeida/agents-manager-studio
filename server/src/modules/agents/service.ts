@@ -687,6 +687,10 @@ async function finalizeInBackground(id: string) {
     const continuesOpenPr =
       inheritedNumber !== null && (await pullRequestState({ provider, remote, token, number: inheritedNumber }).catch(() => 'closed')) === 'open';
 
+    // The first step of a workflow line brings the base in before its work goes on to review: a conflict is resolved
+    // now by the agent that wrote the code, not after the review when publishing (which costs a whole new round).
+    if (await conflictsWithBaseFirst(agent)) return;
+
     await commitAndPush({
       workdir: agent.workdir,
       baseCommit: agent.baseCommit,
@@ -892,6 +896,50 @@ async function resolveOwnConflict(agent: Agent, prUrl: string) {
     data: { prUrl, result: { ...result, conflictRounds: rounds + 1 }, status: 'RUNNING', errorMessage: null, finishedAt: null, lastActivityAt: new Date() },
   });
   await addEvent(agent.id, 'status', { message: 'O merge do PR/MR teve conflito: a branch de destino foi trazida para a cópia e o agente vai resolver.' });
+  await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text } } });
+  await addEvent(agent.id, 'user_message', { text });
+  wake(agent.id);
+  return true;
+}
+
+const MAX_EARLY_MERGE_ROUNDS = 3;
+
+/**
+ * Before the first step of a workflow line (the builder) hands its work over, the latest base branch is merged into
+ * its copy. A clean merge goes on with the work (the review then runs on the merged code); conflicts send the agent
+ * back to resolve them right away. Returns true when the agent went back to work. Not for work that merges itself,
+ * a reported failure, or after a few rounds (the merge at publish time still catches what is left).
+ */
+async function conflictsWithBaseFirst(agent: Agent) {
+  if (agent.autoMerge || agent.output !== 'PULL_REQUEST') return false;
+  const result = (agent.result ?? {}) as Prisma.JsonObject;
+  if (result.status === 'failure') return false;
+  const rounds = typeof result.earlyMergeRounds === 'number' ? result.earlyMergeRounds : 0;
+  if (rounds >= MAX_EARLY_MERGE_ROUNDS) return false;
+  const firstStep = await prisma.workflowStepRun.findFirst({ where: { agentId: agent.id, stepIndex: 0, run: { status: 'RUNNING' } }, select: { id: true } });
+  if (!firstStep) return false;
+  let conflicts: string[];
+  try {
+    conflicts = await mergeBaseIntoCopy(agent.id);
+  } catch (error) {
+    await addEvent(agent.id, 'status', { message: `Não foi possível trazer a branch de destino antes da revisão (${errorMessage(error)}); segue como está.` });
+    return false;
+  }
+  if (conflicts.length === 0) {
+    await addEvent(agent.id, 'status', { message: `Branch de destino (${agent.baseBranch}) trazida para a cópia antes da revisão, sem conflito.` });
+    return false;
+  }
+  const text = [
+    `Antes de o seu trabalho seguir para a revisão, o Studio trouxe a versão mais recente da branch de destino (${agent.baseBranch}) para a sua cópia: outras tarefas foram entregues nela enquanto você trabalhava. O merge está em andamento e ficaram com conflito:`,
+    ...conflicts.map((file) => `- ${file}`),
+    '',
+    'Resolva cada conflito mantendo as duas mudanças (o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo). Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, rode o build e os testes da sua tarefa e das áreas que a junção mexeu, corrija o que quebrar e termine de novo; o Studio envia para o mesmo PR/MR e a revisão começa sobre o código já juntado.',
+  ].join('\n');
+  await prisma.agent.update({
+    where: { id: agent.id },
+    data: { result: { ...result, earlyMergeRounds: rounds + 1 }, status: 'RUNNING', errorMessage: null, finishedAt: null, lastActivityAt: new Date() },
+  });
+  await addEvent(agent.id, 'status', { message: 'A branch de destino foi trazida para a cópia antes da revisão e teve conflito: o agente vai resolver.' });
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text } } });
   await addEvent(agent.id, 'user_message', { text });
   wake(agent.id);
