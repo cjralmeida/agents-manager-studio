@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Link } from 'react-router';
-import { type ContainerKind, type ContainerUsage, formatBytes, useDiskUsage, useResourceUsage } from '../../api/system';
+import { type ContainerKind, type ContainerUsage, formatBytes, useDiskMaintenance, useDiskUsage, useResourceUsage } from '../../api/system';
+import { timeAgo } from '../../lib/time';
 import { ErrorText } from '../form';
 import { TestEnvsPanel } from './TestEnvsPanel';
 
@@ -91,6 +92,7 @@ export function ResourcePanel({ workspaceId }: { workspaceId?: string }) {
         </div>
       )}
       {!workspaceId && <TestEnvsPanel />}
+      {!workspaceId && <MaintenanceLine />}
       <div className="space-y-3">
         {host && !workspaceId && <h3 className="text-xs font-medium tracking-wider text-muted uppercase">Docker</h3>}
         <UsageBar
@@ -170,5 +172,34 @@ export function ResourcePanel({ workspaceId }: { workspaceId?: string }) {
           : `Percentuais sobre a VM do Docker (${docker.os}, Docker ${docker.version}). Rode o studio.ps1 no Windows para medir o computador inteiro.`}
       </p>
     </div>
+  );
+}
+
+/** Last automatic upkeep of Docker's disk; compacting the disk file stays a manual, on-request step. */
+function MaintenanceLine() {
+  const maintenance = useDiskMaintenance();
+  const run = maintenance.data;
+  if (!run) {
+    return (
+      <p className="text-xs text-muted">
+        <Link to="/sistema/compressao" className="text-accent hover:underline">
+          Comprimir o disco do Docker
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted">
+      Limpeza automática do disco do Docker {timeAgo(run.at)}:{' '}
+      {run.error
+        ? `falhou (${run.error})`
+        : `${run.buildCacheGb} GB de cache de build e ${run.imagesGb} GB de imagens órfãs liberados, espaço livre devolvido (trim)`}
+      {run.freeDiskGb !== null && ` · disco das cópias com ${run.freeDiskGb} GB livres`}. Roda todo dia (antes, se o disco ficar abaixo de 25 GB);
+      a compressão do arquivo do disco só a pedido:{' '}
+      <Link to="/sistema/compressao" className="text-accent hover:underline">
+        Comprimir o disco do Docker
+      </Link>
+      .
+    </p>
   );
 }

@@ -113,6 +113,9 @@ export interface ContainerSpec {
   network?: string;
   /** User inside the container (e.g. "0" for root); empty keeps the image's. */
   user?: string;
+  /** Host access for maintenance tasks (e.g. trimming the Docker disk): privileged, in the host's PID namespace. */
+  privileged?: boolean;
+  pidMode?: 'host';
 }
 
 export async function createContainer(spec: ContainerSpec): Promise<string> {
@@ -124,7 +127,13 @@ export async function createContainer(spec: ContainerSpec): Promise<string> {
     Labels: spec.labels ?? {},
     ...(spec.user && { User: spec.user }),
     Tty: false,
-    HostConfig: { Binds: spec.binds ?? [], ...(spec.mounts && { Mounts: spec.mounts }), ...(spec.network && { NetworkMode: spec.network }) },
+    HostConfig: {
+      Binds: spec.binds ?? [],
+      ...(spec.mounts && { Mounts: spec.mounts }),
+      ...(spec.network && { NetworkMode: spec.network }),
+      ...(spec.privileged && { Privileged: true }),
+      ...(spec.pidMode && { PidMode: spec.pidMode }),
+    },
   });
   return Id;
 }
@@ -300,4 +309,26 @@ export interface DiskUsage {
 /** Can take a few seconds on large installations. */
 export function diskUsage() {
   return call<DiskUsage>('GET', '/system/df', undefined, 60_000);
+}
+
+// ---------------------------------------------------------------- disk maintenance
+
+/** Deletes the whole build cache; returns the bytes freed. */
+export async function pruneBuildCache() {
+  const result = await call<{ SpaceReclaimed?: number }>('POST', '/build/prune?all=1', undefined, 15 * 60_000);
+  return result?.SpaceReclaimed ?? 0;
+}
+
+/** Deletes images no tag points to (left behind by rebuilds); returns the bytes freed. */
+export async function pruneDanglingImages() {
+  const filters = encodeURIComponent(JSON.stringify({ dangling: ['true'] }));
+  const result = await call<{ SpaceReclaimed?: number }>('POST', `/images/prune?filters=${filters}`, undefined, 5 * 60_000);
+  return result?.SpaceReclaimed ?? 0;
+}
+
+/** Pulls an image when it is not there yet. */
+export async function ensureImage(image: string) {
+  if (await imageExists(image)) return;
+  const [name, tag = 'latest'] = image.split(':');
+  await call('POST', `/images/create?fromImage=${encodeURIComponent(name!)}&tag=${encodeURIComponent(tag)}`, undefined, 5 * 60_000);
 }

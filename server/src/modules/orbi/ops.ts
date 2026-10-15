@@ -39,8 +39,8 @@ interface PausedWorkspace {
 }
 
 export interface Caller {
-  /** The Órbi conversation calling the tool. */
-  conversationId: string;
+  /** The Órbi conversation calling the tool (null when the Studio itself acts, e.g. around a disk compaction). */
+  conversationId: string | null;
   ownerId: string;
 }
 
@@ -372,7 +372,7 @@ export async function resumeWorkspace(caller: Caller, args: Args) {
 /** A pending suggestion of the Gestor de Capacidade (when the pilot was off), applied or discarded. */
 async function decideCapacity(caller: Caller, args: Args) {
   const decision = args.decision === 'discard' ? 'discard' : 'apply';
-  return decideCapacitySuggestion(caller.ownerId, text(args.proposalId, 60), decision, { conversationId: caller.conversationId, reason: text(args.reason, 2000) || undefined });
+  return decideCapacitySuggestion(caller.ownerId, text(args.proposalId, 60), decision, { conversationId: caller.conversationId ?? undefined, reason: text(args.reason, 2000) || undefined });
 }
 
 /** A real merge conflict goes back to the agent that built the work: the base is merged into its copy and it resolves. */
@@ -444,6 +444,7 @@ async function taskPullRequest(workspaceId: string, args: Args) {
 /** Moves the conversation's focus: the board and workspace tools then act on that workspace. */
 async function focus(caller: Caller, args: Args) {
   const workspace = await resolveWorkspace(caller.ownerId, args.workspace);
+  if (!caller.conversationId) throw new HttpError(400, 'Só uma conversa do Órbi muda de foco.');
   await prisma.agent.update({ where: { id: caller.conversationId }, data: { workspaceId: workspace.id } });
   return { ok: true, workspace: workspace.name, message: `Agora as ferramentas do quadro e do workspace atuam em ${workspace.name}.` };
 }

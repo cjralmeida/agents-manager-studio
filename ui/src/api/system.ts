@@ -76,3 +76,21 @@ export function formatBytes(bytes: number) {
   }
   return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
+
+export interface MaintenanceRun {
+  at: string;
+  buildCacheGb: number;
+  imagesGb: number;
+  trimmed: string | null;
+  freeDiskGb: number | null;
+  error: string | null;
+}
+
+/** The last automatic Docker disk upkeep (build cache, orphan images, trim). */
+export function useDiskMaintenance() {
+  return useQuery({
+    queryKey: ['system', 'maintenance'],
+    queryFn: () => api.get<MaintenanceRun | null>('/system/maintenance'),
+    refetchInterval: 300_000,
+  });
+}

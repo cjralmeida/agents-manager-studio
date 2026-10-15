@@ -10,6 +10,8 @@ import { startCopyCleanup } from './modules/agents/cleanup.js';
 import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
 import { startOrbiPilot } from './modules/orbi/pilot.js';
+import { startDiskMaintenance } from './modules/system/maintenance.js';
+import { startCompactionWatch } from './modules/system/compaction.js';
 import { startTestEnvMonitor } from './modules/test-envs/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
@@ -65,6 +67,12 @@ app.addHook('onClose', async () => stopBoardWatch());
 // Órbi's pilot mode: when it is on, Órbi deals with agent questions, failed runs and capacity suggestions by itself.
 const stopOrbiPilot = startOrbiPilot(app.log);
 app.addHook('onClose', async () => stopOrbiPilot());
+// Docker disk upkeep: build cache and orphan images deleted and free space trimmed, daily (sooner when the disk is short).
+const stopDiskMaintenance = startDiskMaintenance(app.log);
+app.addHook('onClose', async () => stopDiskMaintenance());
+// Back from a disk compaction (the Windows helper stopped and restarted Docker): resumes what was paused for it.
+const stopCompactionWatch = startCompactionWatch(app.log);
+app.addHook('onClose', async () => stopCompactionWatch());
 // Test environments: queued ones start when the computer has room; finished agents' ones are taken down.
 const stopTestEnvMonitor = startTestEnvMonitor(app.log);
 app.addHook('onClose', async () => stopTestEnvMonitor());

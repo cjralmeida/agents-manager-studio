@@ -31,7 +31,7 @@ interface HelperResult {
   at: string;
 }
 
-async function readJson<T>(name: string): Promise<T | null> {
+export async function readJson<T>(name: string): Promise<T | null> {
   try {
     const text = await readFile(path.join(config.hostHelperDir, name), 'utf8');
     return JSON.parse(text.replace(/^﻿/, '')) as T;
@@ -41,7 +41,7 @@ async function readJson<T>(name: string): Promise<T | null> {
 }
 
 /** Writes through a temp file so the helper never reads half a request. */
-async function writeJson(name: string, value: unknown) {
+export async function writeJson(name: string, value: unknown) {
   await mkdir(config.hostHelperDir, { recursive: true });
   const target = path.join(config.hostHelperDir, name);
   await writeFile(`${target}.tmp`, JSON.stringify(value), 'utf8');
