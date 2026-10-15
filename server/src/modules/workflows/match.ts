@@ -140,7 +140,6 @@ const taskSection = (task: BoardItem) =>
 
 /**
  * Open tasks (not done nor closed) that depend on the given one with "Depende de:", e.g. the screens that use an API.
- * A backend task only goes to done once the screens that use it were tested too.
  */
 export function pendingDependents(items: BoardItem[], task: BoardItem, doneColumnId: string | null, except: string[] = []) {
   const ref = itemRef(task)?.toLowerCase();
@@ -151,14 +150,6 @@ export function pendingDependents(items: BoardItem[], task: BoardItem, doneColum
       item.columnId !== doneColumnId &&
       !except.includes(item.id) &&
       dependencyRefs(item.body).some((dependency) => dependency.toLowerCase() === ref),
-  );
-}
-
-/** Lines telling the tester which tasks wait for screens still to be tested (they stay in homologation). */
-function waitingLines(waiting: { task: BoardItem; dependents: BoardItem[] }[]) {
-  return waiting.map(
-    ({ task, dependents }) =>
-      `- ${itemRef(task) ?? task.id} (${task.title}) fica em homologação mesmo aprovada: ainda falta testar ${dependents.map((item) => itemRef(item) ?? item.title).join(', ')}, que depende(m) dela.`,
   );
 }
 
@@ -181,10 +172,6 @@ export function screensUsing(items: BoardItem[], tasks: BoardItem[], input: { ho
 
 /** Message for the agent that tests a whole feature: every task with its full description, and the screens using it. */
 export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], doneColumnId: string | null = null, screens: BoardItem[] = []) {
-  const ids = [...feature.tasks, ...screens].map((task) => task.id);
-  const waiting = feature.tasks
-    .map((task) => ({ task, dependents: pendingDependents(items, task, doneColumnId, ids) }))
-    .filter((entry) => entry.dependents.length > 0);
   const inHomologation = screens.filter((screen) => screen.columnId !== doneColumnId).map((screen) => itemRef(screen) ?? screen.id);
   return [
     feature.pending.length === 0
@@ -211,11 +198,8 @@ export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], do
       : []),
     [
       '## Ao terminar',
-      '- Reprovado: decida de quem é cada falha pela rede (API errada → tarefa de backend; API certa e tela errada → tarefa da tela; as duas no mesmo ponto → as duas, cada uma com a sua parte). Escreva o "Relatório de HOM" em cada tarefa com falha e devolva-a para "A fazer", inclusive uma tela que estava em "Concluído". As sem falha ficam onde estão.',
-      `- Aprovado: mova para "Concluído" as tarefas de backend${waiting.length > 0 ? ' que não aparecem abaixo' : ''}${inHomologation.length > 0 ? ` e as telas em homologação testadas aqui (${inHomologation.join(', ')})` : ''}.`,
-      ...(waiting.length > 0
-        ? ['- Estas tarefas são usadas por telas que ainda não foram publicadas (o teste da tela as conclui depois):', ...waitingLines(waiting)]
-        : []),
+      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato (API fora do contrato → tarefa de backend; API certa e tela errada → tarefa da tela; o próprio contrato errado ou incompleto → decisão). Escreva o "Relatório de HOM" em cada tarefa com falha e devolva-a para "A fazer", inclusive uma tela que estava em "Concluído". Contrato errado: crie uma tarefa no "Backlog" com o campo Decisão "Aguardando decisão" explicando o que falta decidir. As sem falha seguem as regras de aprovado.',
+      `- Aprovado: mova para "Concluído" todas as tarefas testadas aqui${inHomologation.length > 0 ? `, inclusive as telas em homologação (${inHomologation.join(', ')})` : ''}. As telas que ainda vão usar estas rotas são testadas depois; se uma delas achar a API fora do contrato, abre uma tarefa de bug (não reabre esta).`,
     ].join('\n'),
   ].join('\n\n');
 }
@@ -261,18 +245,20 @@ export function frontendTasksReady(
 /** Message for the tester of one frontend task: the task, the tasks it uses still in homologation, what to move. */
 export function frontendPrompt(ready: ReadyFrontendTask, items: BoardItem[], doneColumnId: string | null) {
   const { task, backend } = ready;
-  const withDependents = backend.map((entry) => ({ task: entry, dependents: pendingDependents(items, entry, doneColumnId, [task.id]) }));
-  const concluding = withDependents.filter((entry) => entry.dependents.length === 0).map((entry) => itemRef(entry.task) ?? entry.task.id);
+  const ref = itemRef(task) ?? task.id;
   return [
-    `Teste em homologação a tarefa de frontend ${itemRef(task) ?? task.id}: ${task.title}. Ela e as tarefas de que depende já estão publicadas em homologação (ou concluídas).`,
-    'Teste a tela de verdade, ligada à API publicada: os critérios desta tarefa e, pela tela e pela API, os das tarefas de backend abaixo que ela usa.',
+    `Teste em homologação a tarefa de frontend ${ref}: ${task.title}. Ela e as tarefas de que depende já estão publicadas em homologação (ou concluídas).`,
+    'Teste a tela de verdade, ligada à API publicada: os critérios desta tarefa e, pela tela e pela API, o tráfego contra o contrato (openapi) das rotas que ela usa.',
     taskSection(task),
-    ...(backend.length > 0 ? ['# Tarefas de backend que esta tela usa (em homologação)', ...backend.map(taskSection)] : []),
+    ...(backend.length > 0 ? ['# Tarefas de backend que esta tela usa (ainda em homologação; o teste da API cuida de concluí-las)', ...backend.map(taskSection)] : []),
     [
       '## Ao terminar',
-      `- Aprovado: o Studio move ${itemRef(task) ?? 'a tarefa'} para "Concluído" quando você terminar com sucesso.${concluding.length > 0 ? ` Mova você mesmo para "Concluído" também: ${concluding.join(', ')}.` : ''}`,
-      ...waitingLines(withDependents.filter((entry) => entry.dependents.length > 0)),
-      '- Reprovado: escreva o "Relatório de HOM" em cada tarefa com falha (a tela ou a API, conforme a rede mostrar) e devolva-a para "A fazer"; as sem falha ficam em homologação.',
+      `- Aprovado: o Studio move ${ref} para "Concluído" quando você terminar com sucesso. Não mova as tarefas de backend: o teste da API conclui cada uma.`,
+      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato, e escreva o "Relatório de HOM" onde couber:',
+      `  - Tela errada (a API segue o contrato): devolva ${ref} para "A fazer" com o relatório.`,
+      `  - API fora do contrato (campo, tipo, status ou erro diferente do openapi): se a tarefa de backend ainda está em homologação, escreva o relatório nela e devolva-a para "A fazer". Se ela já está em "Concluído", não a reabra: crie uma tarefa de bug no repositório da API com o título "[FUNC-NNN] Bug API — <o que está errado>", Área Backend, Tipo Bug, a mesma prioridade da tela, o relatório (o que a tela pediu, o que a API respondeu, o que o contrato diz) e a linha "Relacionada: <tarefa de backend original>". Nos dois casos, ${ref} fica em homologação e ganha (ou mantém) na linha "Depende de:" a tarefa de backend devolvida ou o bug criado: o Studio testa a tela de novo sozinho quando a correção chegar em homologação.`,
+      `  - O próprio contrato está errado ou incompleto: crie uma tarefa no "Backlog" com o campo Decisão "Aguardando decisão" explicando o que falta decidir, e ponha-a na linha "Depende de:" de ${ref}, que fica em homologação.`,
+      '  - Uma falha da tela e outra da API: as duas coisas (a tela vai para "A fazer" com a parte dela; a API segue a regra acima).',
     ].join('\n'),
   ].join('\n\n');
 }

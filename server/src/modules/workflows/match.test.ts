@@ -206,18 +206,19 @@ describe('frontendTasksReady', () => {
     assert.deepEqual(frontendTasksReady(items, input), []);
   });
 
-  it('tells the tester to conclude the backend only when no other screen still needs it', () => {
-    const items = [api(1, 'hom'), api(2, 'hom'), screen(10, 'hom', 'org/api#1, org/api#2'), screen(11, 'todo', 'org/api#2')];
+  it('leaves the backend to the API test and opens a bug instead of reopening a concluded API', () => {
+    const items = [api(1, 'hom'), screen(10, 'hom', 'org/api#1')];
     const [ready] = frontendTasksReady(items, input);
     const prompt = frontendPrompt(ready!, items, 'done');
-    assert.match(prompt, /Mova você mesmo para "Concluído" também: org\/api#1\./);
-    assert.match(prompt, /org\/api#2 .* fica em homologação mesmo aprovada: ainda falta testar org\/front#11/);
+    assert.match(prompt, /Não mova as tarefas de backend/);
+    assert.match(prompt, /Se ela já está em "Concluído", não a reabra: crie uma tarefa de bug/);
+    assert.match(prompt, /org\/front#10 fica em homologação e ganha \(ou mantém\) na linha "Depende de:"/);
   });
 
-  it('keeps a feature task used by an untested screen in homologation', () => {
+  it('concludes the tested API tasks even when a screen that uses them is still to come', () => {
     const items = [api(1, 'hom'), screen(10, 'todo', 'org/api#1')];
     const [feature] = featuresReady([items[0]!], { homologationColumnId: 'hom', doneColumnId: 'done', repositories: [] });
-    assert.match(featurePrompt(feature!, items, 'done'), /org\/api#1 .* fica em homologação/);
+    assert.match(featurePrompt(feature!, items, 'done'), /Aprovado: mova para "Concluído" todas as tarefas testadas aqui/);
   });
 });
 
@@ -238,8 +239,7 @@ describe('screensUsing', () => {
     const prompt = featurePrompt(feature!, items, 'done', screensUsing(items, [api], columns));
     assert.match(prompt, /# Telas que usam estas tarefas/);
     assert.match(prompt, /inclusive uma tela que estava em "Concluído"/);
-    assert.match(prompt, /e as telas em homologação testadas aqui \(org\/front#10\)/);
-    assert.match(prompt, /org\/api#1 .* ainda falta testar org\/front#12/);
+    assert.match(prompt, /inclusive as telas em homologação \(org\/front#10\)/);
   });
 });
 

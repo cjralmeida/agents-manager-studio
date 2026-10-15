@@ -5,7 +5,6 @@ import { dependenciesDelivered, dependencyRefs, itemRef } from '../boards/depend
 import { boardContext } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { parseSteps, parseTrigger, startBoardRun } from '../workflows/engine.js';
-import { featureIdOf, pendingDependents } from '../workflows/match.js';
 import { runTaskIds, visibleWorkspaceIdsOf } from '../workflows/service.js';
 import { stuckReason, type RunSummary } from './rules.js';
 
@@ -78,19 +77,6 @@ async function findStuck(workspaceId: string): Promise<{ found: Found[]; statusM
     if (busy.has(item.id)) continue;
     // Waiting for its dependencies is a reason (e.g. a screen whose API is not published yet).
     if (dependencyRefs(item.body).length > 0 && !delivered(item)) continue;
-    const role = watched.get(item.columnId!)!;
-    if (role === 'homologation') {
-      // A backend stays in homologation until the screens that use it are tested.
-      if (pendingDependents(snapshot.items, item, statusMap.done ?? null).length > 0) continue;
-      // A feature is tested when all its tasks of the same repository reach homologation.
-      const featureId = featureIdOf(item.title);
-      const rest = featureId
-        ? snapshot.items.filter(
-            (other) => other.id !== item.id && !other.isClosed && other.repository === item.repository && featureIdOf(other.title) === featureId,
-          )
-        : [];
-      if (rest.some((other) => other.columnId !== statusMap.homologation && other.columnId !== statusMap.done)) continue;
-    }
     const lastRun = runs.find((run) => runTaskIds(run).includes(item.id)) ?? null;
     // Work done outside the Studio (someone assigned, no Studio run or agent on it) is theirs to move.
     if (!lastRun && item.assignees.length > 0 && !(await handledByStudio(workspaceId, item.id))) continue;
