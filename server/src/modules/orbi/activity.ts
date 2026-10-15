@@ -76,7 +76,8 @@ export async function discussFlag(ownerId: string, id: string) {
     ...(details.details ? ['', `Detalhes: ${details.details}`] : []),
     ...(flag.link ? ['', `Link: ${flag.link}`] : []),
     '',
-    'Veja a situação (a tarefa, as execuções e o que os agentes já fizeram), me explique em poucas linhas o que precisa ser decidido e me pergunte com opções (AskUserQuestion). Depois de eu decidir, faça o que for preciso e diga quando esta pendência estiver resolvida.',
+    `(id da pendência: ${flag.id})`,
+    'Veja a situação (a tarefa, as execuções e o que os agentes já fizeram), me explique em poucas linhas o que precisa ser decidido e me pergunte com opções (AskUserQuestion). Depois de eu decidir, faça você mesmo o que for preciso — com as suas ferramentas você faz o que eu faria no quadro (mover, editar, responsáveis, fechar), nos agentes e nos workflows — e, quando estiver resolvida, marque com studio_resolve_flag.',
   ].join('\n');
   let target: string;
   if (usable) {
@@ -91,7 +92,7 @@ export async function discussFlag(ownerId: string, id: string) {
     target = current.id;
   } else {
     const workspaceId = flag.workspaceId ?? (await prisma.workspace.findFirstOrThrow({ where: { ownerId, isIgnored: false }, select: { id: true } })).id;
-    const conversation = await startConversation(workspaceId, message, undefined, { title: 'Pendências' });
+    const conversation = await startConversation(workspaceId, message, undefined, { title: 'Resolução de pendências' });
     await setUserSetting(ownerId, PENDING_CONVERSATION_KEY, conversation.id);
     target = conversation.id;
   }

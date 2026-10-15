@@ -158,6 +158,46 @@ export function createGitHubClient(host: string, token: string) {
       );
     },
 
+    async setAssignees(_board, itemId, usernames) {
+      const data = await gql(
+        `query($i: ID!) { node(id: $i) { ... on ProjectV2Item { content { ... on Issue { id assignees(first: 20) { nodes { id } } } ... on PullRequest { id assignees(first: 20) { nodes { id } } } } } } }`,
+        { i: itemId },
+      );
+      const content = data.node?.content as { id?: string; assignees?: { nodes: { id: string }[] } } | undefined;
+      if (!content?.id) throw new HttpError(422, 'Rascunhos do quadro não têm responsáveis.');
+      const current = (content.assignees?.nodes ?? []).map((user) => user.id);
+      if (current.length > 0) {
+        await gql(`mutation($a: ID!, $u: [ID!]!) { removeAssigneesFromAssignable(input: { assignableId: $a, assigneeIds: $u }) { clientMutationId } }`, {
+          a: content.id,
+          u: current,
+        });
+      }
+      const ids: string[] = [];
+      for (const login of usernames) {
+        const user = await gql(`query($l: String!) { user(login: $l) { id } }`, { l: login });
+        if (!user.user?.id) throw new HttpError(422, `Usuário "${login}" não existe no GitHub.`);
+        ids.push(user.user.id);
+      }
+      if (ids.length > 0) {
+        await gql(`mutation($a: ID!, $u: [ID!]!) { addAssigneesToAssignable(input: { assignableId: $a, assigneeIds: $u }) { clientMutationId } }`, {
+          a: content.id,
+          u: ids,
+        });
+      }
+    },
+
+    async setClosed(_board, itemId, closed) {
+      const data = await gql(`query($i: ID!) { node(id: $i) { ... on ProjectV2Item { content { ... on Issue { id } } } } }`, { i: itemId });
+      const issueId = data.node?.content?.id as string | undefined;
+      if (!issueId) throw new HttpError(422, 'Só issues podem ser fechadas ou reabertas pelo Studio.');
+      await gql(
+        closed
+          ? `mutation($i: ID!) { closeIssue(input: { issueId: $i }) { clientMutationId } }`
+          : `mutation($i: ID!) { reopenIssue(input: { issueId: $i }) { clientMutationId } }`,
+        { i: issueId },
+      );
+    },
+
     async applyStructure(board, current, desired) {
       await applyProjectStructure(gql, board.externalId, current, desired);
     },

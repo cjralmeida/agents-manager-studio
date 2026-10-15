@@ -211,6 +211,8 @@ const STUDIO_TOOL_LABELS = {
   studio_conflict_back: () => 'Devolvendo um conflito ao agente',
   studio_flag: (input) => `Aviso para o usuário: ${input.summary ?? ''}`,
   studio_resources: () => 'Lendo os recursos do computador',
+  studio_resolve_flag: () => 'Marcando a pendência como resolvida',
+  studio_task_pull_request: (input) => `PR/MR da tarefa ${input.id ?? ''}`,
 };
 
 function summarizeTool(name, input = {}) {

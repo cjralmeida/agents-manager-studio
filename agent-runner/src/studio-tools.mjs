@@ -75,6 +75,8 @@ export function createStudioTools(call, groups) {
           body: z.string().optional().describe('Nova descrição completa, em Markdown (substitui a atual).'),
           column: z.string().optional(),
           fields: z.record(z.string(), z.string()).optional(),
+          assignees: z.array(z.string()).optional().describe('Só o Órbi: responsáveis da tarefa no GitHub/GitLab (usernames); lista vazia tira todos.'),
+          closed: z.boolean().optional().describe('Só o Órbi: true fecha a issue, false reabre.'),
         },
         run('board_update_task'),
       ),
@@ -383,6 +385,18 @@ export function createStudioTools(call, groups) {
         'Deixa um aviso para o usuário na página do Órbi (algo que precisa dele: mudança grande de escopo, credencial, decisão que você não deve tomar).',
         { summary: z.string(), details: z.string().optional(), link: z.string().optional(), workspace: z.string().optional() },
         run('studio_flag'),
+      ),
+      tool(
+        'studio_resolve_flag',
+        'Marca um aviso (pendência) como resolvido, depois de resolvê-lo com o usuário. O id vem na mensagem da pendência ou em studio_pending (flags).',
+        { id: z.string() },
+        run('studio_resolve_flag'),
+      ),
+      tool(
+        'studio_task_pull_request',
+        'O PR/MR de uma tarefa do quadro (do workspace em foco): o aberto que cita a tarefa ou, sem ele, o último mesclado — URL, branch e branch de destino.',
+        { id: z.string().describe('Id da tarefa ou a ref repo#N.') },
+        run('studio_task_pull_request'),
       ),
       tool(
         'studio_resources',

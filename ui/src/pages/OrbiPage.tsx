@@ -13,6 +13,7 @@ import {
   useOrbiActivity,
   useOrbiPending,
   usePilots,
+  usePinnedConversations,
   useResolveFlag,
   useUpdatePilot,
 } from '../api/orbi';
@@ -54,10 +55,14 @@ export function OrbiPage() {
       : settings.allWorkspaces
         ? 'Todos os workspaces'
         : (workspaces.data ?? []).filter((workspace) => settings.workspaceIds.includes(workspace.id)).map((workspace) => workspace.name).join(', ');
-  const pilotConversations = (['tasks', 'agents'] as const).flatMap((kind) => {
-    const settings = pilots.data?.[kind];
-    return settings?.conversationId ? [{ id: settings.conversationId, kind, scope: scopeOf(settings) }] : [];
-  });
+  const pinned = usePinnedConversations();
+  const pilotConversations: { id: string; kind: PinnedKind; scope: string }[] = [
+    ...(['tasks', 'agents'] as const).flatMap((kind) => {
+      const settings = pilots.data?.[kind];
+      return settings?.conversationId ? [{ id: settings.conversationId, kind, scope: scopeOf(settings) }] : [];
+    }),
+    ...(pinned.data?.pending ? [{ id: pinned.data.pending, kind: 'pending' as const, scope: 'Todos os workspaces' }] : []),
+  ];
 
   return (
     <div className="mx-auto grid max-w-[1600px] gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_23rem]">
@@ -119,14 +124,18 @@ function ConversationList({
   onOpen,
 }: {
   conversations: Conversation[];
-  pilots: { id: string; kind: PilotKind; scope: string }[];
+  pilots: { id: string; kind: PinnedKind; scope: string }[];
   current: string | null;
   onOpen: (id: string) => void;
 }) {
   if (conversations.length === 0) return <p className="px-1 text-xs text-muted">Nenhuma conversa ainda.</p>;
-  // The pilots' conversations first: they are where Órbi tells what it handled by itself.
+  // Pinned first, in order: the pilots (where Órbi tells what it handled by itself), then the pending items one.
   const pilotOf = (id: string) => pilots.find((pilot) => pilot.id === id);
-  const sorted = [...conversations].sort((a, b) => Number(Boolean(pilotOf(b.id))) - Number(Boolean(pilotOf(a.id))));
+  const rank = (id: string) => {
+    const index = pilots.findIndex((pilot) => pilot.id === id);
+    return index === -1 ? pilots.length : index;
+  };
+  const sorted = [...conversations].sort((a, b) => rank(a.id) - rank(b.id));
   return (
     <ul className="space-y-1">
       {sorted.map((conversation) => {
@@ -142,7 +151,7 @@ function ConversationList({
               } ${busy ? 'glow-working-row' : ''}`}
             >
               <div className="flex items-center gap-1.5">
-                {pilot && <Badge tone="info">{pilot.kind === 'tasks' ? 'Fila' : 'Autoscaler'}</Badge>}
+                {pilot && <Badge tone={pilot.kind === 'pending' ? 'warning' : 'info'}>{PINNED_BADGES[pilot.kind]}</Badge>}
                 {conversation.status === 'WAITING_INPUT' && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Esperando você" />}
                 <span className="truncate text-sm">{conversation.title}</span>
               </div>
@@ -289,6 +298,9 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (val
     </button>
   );
 }
+
+type PinnedKind = PilotKind | 'pending';
+const PINNED_BADGES: Record<PinnedKind, string> = { tasks: 'Fila', agents: 'Autoscaler', pending: 'Pendências' };
 
 const PILOT_TEXT: Record<PilotKind, { title: string; off: string; placeholder: string }> = {
   tasks: {

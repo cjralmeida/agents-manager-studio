@@ -88,6 +88,15 @@ export function useDiscussFlag() {
   });
 }
 
+/** Conversations pinned on the Órbi page: both pilots' and the one where pending items are sorted out. */
+export function usePinnedConversations() {
+  return useQuery({
+    queryKey: ['orbi', 'pinned'],
+    queryFn: () => api.get<{ tasks: string | null; agents: string | null; pending: string | null }>('/orbi/pilots/conversations'),
+    refetchInterval: 30_000,
+  });
+}
+
 export function usePilots() {
   return useQuery({ queryKey: keys.pilots, queryFn: () => api.get<Record<PilotKind, PilotSettings>>('/orbi/pilots'), refetchInterval: 30_000 });
 }

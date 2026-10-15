@@ -95,6 +95,10 @@ export interface BoardAdapter {
   editItem(board: BoardRef, snapshot: BoardSnapshot, itemId: string, changes: { title?: string; body?: string }): Promise<void>;
   /** Assigns the token's user to the item's issue (no-op for drafts). */
   assignSelf(board: BoardRef, itemId: string): Promise<void>;
+  /** Replaces the people assigned to the item's issue (logins/usernames on the provider; empty removes everyone). */
+  setAssignees(board: BoardRef, itemId: string, usernames: string[]): Promise<void>;
+  /** Closes or reopens the item's issue. */
+  setClosed(board: BoardRef, itemId: string, closed: boolean): Promise<void>;
   /** Makes the board columns and fields match `desired` (ids from `current` are kept; cards were already moved). */
   applyStructure(board: BoardRef, current: BoardStructure, desired: BoardStructure): Promise<void>;
 }

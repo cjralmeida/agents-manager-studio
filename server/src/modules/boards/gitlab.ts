@@ -221,6 +221,21 @@ export function createGitLabClient(host: string, token: string) {
       await updateIssue(id, { assignee_ids: [user.id] });
     },
 
+    async setAssignees(_board, id, usernames) {
+      const ids: number[] = [];
+      for (const username of usernames) {
+        const found = await request<{ id: number }[]>('GET', `/users?username=${encodeURIComponent(username)}`);
+        if (!found[0]) throw new HttpError(422, `Usuário "${username}" não existe no GitLab.`);
+        ids.push(found[0].id);
+      }
+      // An empty list removes everyone (GitLab takes [0] for "nobody").
+      await updateIssue(id, { assignee_ids: ids.length > 0 ? ids : [0] });
+    },
+
+    async setClosed(_board, id, closed) {
+      await updateIssue(id, { state_event: closed ? 'close' : 'reopen' });
+    },
+
     async applyStructure(board, current, desired) {
       const { groupId, boardId } = parseExternalId(board.externalId);
       await applyGroupStructure(groupId, boardId, current, desired);

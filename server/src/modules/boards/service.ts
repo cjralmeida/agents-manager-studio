@@ -557,6 +557,20 @@ export async function editItem(workspaceId: string, joinedId: string, changes: {
   Object.assign(item, changes);
 }
 
+/** Replaces who is assigned to the task on its provider (usernames; empty removes everyone). */
+export async function setItemAssignees(workspaceId: string, joinedId: string, usernames: string[]) {
+  const { source, item } = await withItem(workspaceId, joinedId);
+  await (await adapterFor(source)).setAssignees(refOf(source), item.id, usernames);
+  item.assignees = usernames;
+}
+
+/** Closes or reopens the task's issue on its provider. */
+export async function setItemClosed(workspaceId: string, joinedId: string, closed: boolean) {
+  const { source, item } = await withItem(workspaceId, joinedId);
+  await (await adapterFor(source)).setClosed(refOf(source), item.id, closed);
+  item.isClosed = closed;
+}
+
 /** Sets (or clears) a model field of a task. */
 export async function setItemField(workspaceId: string, joinedId: string, modelFieldId: string, modelOptionId: string | null) {
   const { source, snapshot, item, model } = await withItem(workspaceId, joinedId);

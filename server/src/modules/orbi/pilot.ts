@@ -67,10 +67,11 @@ export async function updatePilot(userId: string, kind: PilotKind, patch: Partia
   return next;
 }
 
-/** Ids of the conversations of both pilots (shown first on the Órbi page). */
+/** Conversations pinned on the Órbi page: both pilots' and the one where pending items are sorted out. */
 export async function pilotConversationIds(userId: string) {
   const [tasks, agents] = await Promise.all(PILOT_KINDS.map((kind) => getPilot(userId, kind)));
-  return { tasks: tasks!.conversationId, agents: agents!.conversationId };
+  const pending = await getUserSetting<string>(userId, 'orbiPendingConversation');
+  return { tasks: tasks!.conversationId, agents: agents!.conversationId, pending };
 }
 
 async function scopeOf(userId: string, settings: PilotSettings) {

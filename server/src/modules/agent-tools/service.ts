@@ -2,7 +2,7 @@ import { prisma } from '../../db.js';
 import { parseRemote } from '../agents/remote.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
-import { boardContext, createTask, editItem, moveItem, setItemField } from '../boards/service.js';
+import { boardContext, createTask, editItem, moveItem, setItemAssignees, setItemClosed, setItemField } from '../boards/service.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
 import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
@@ -302,11 +302,20 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
       if (errors.length > 0) throw new HttpError(422, errors.join(' '));
       for (const [fieldId, optionId] of Object.entries(resolved)) await setItemField(agent.workspaceId, item.id, fieldId, optionId);
+      // Assignees and closing are Órbi's (it acts for the user); task agents only move and edit.
+      const assignees = Array.isArray(args.assignees) ? args.assignees.map((entry) => String(entry).trim()).filter(Boolean) : undefined;
+      if ((assignees !== undefined || typeof args.closed === 'boolean') && agent.kind !== 'ASSISTANT') {
+        throw new HttpError(403, 'Só o Órbi muda responsáveis ou fecha tarefas.');
+      }
+      if (assignees !== undefined) await setItemAssignees(agent.workspaceId, item.id, assignees);
+      if (typeof args.closed === 'boolean') await setItemClosed(agent.workspaceId, item.id, args.closed);
       if (agent.kind === 'ASSISTANT') {
         const changes = [
           ...(text(args.column) ? [`para "${text(args.column)}"`] : []),
           ...(Object.keys(resolved).length > 0 ? ['campos'] : []),
           ...(title !== undefined || body !== undefined ? ['texto'] : []),
+          ...(assignees !== undefined ? [assignees.length > 0 ? `responsáveis: ${assignees.join(', ')}` : 'sem responsável'] : []),
+          ...(typeof args.closed === 'boolean' ? [args.closed ? 'fechada' : 'reaberta'] : []),
         ];
         await logOrbiTask(agent, `Alterou a tarefa "${item.title}" (${changes.join(', ')})`, item.url);
       }

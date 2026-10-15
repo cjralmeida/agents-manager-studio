@@ -10,7 +10,12 @@ import { getUserSetting, setUserSetting } from '../users/settings.js';
 import type { WorkflowStep } from '../workflows/definition.js';
 import { parseSteps } from '../workflows/engine.js';
 import { updateWorkflow } from '../workflows/service.js';
-import { listOpenFlags, logActivity } from './activity.js';
+import { listOpenFlags, logActivity, resolveFlag } from './activity.js';
+import { parseRemote, remoteHostname } from '../agents/remote.js';
+import { findTaskPullRequest } from '../agents/task-pull-request.js';
+import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
+import { secrets } from '../../lib/secrets.js';
+import { boardContext } from '../boards/service.js';
 
 /**
  * Órbi's direct operations: the day-to-day work the user would otherwise do by hand (answer an agent, message it,
@@ -409,6 +414,33 @@ async function flag(caller: Caller, workspaceId: string, args: Args) {
   return { ok: true, id: created.id, message: 'Deixei o aviso para o usuário na página do Órbi.' };
 }
 
+/** Marks a flag as dealt with (after sorting it out with the user). */
+async function resolveFlagOp(caller: Caller, args: Args) {
+  const flag = await resolveFlag(caller.ownerId, text(args.id, 60));
+  return { ok: true, id: flag.id, message: 'Pendência marcada como resolvida.' };
+}
+
+/** The PR/MR of a board task in the focused workspace: the open one, or the latest merged. */
+async function taskPullRequest(workspaceId: string, args: Args) {
+  const { snapshot, repos } = await boardContext(workspaceId);
+  const wanted = text(args.id, 300);
+  const item = snapshot.items.find((entry) => entry.id === wanted || (entry.repository && entry.number && `${entry.repository}#${entry.number}` === wanted));
+  if (!item?.repository || !item.number) throw new HttpError(404, 'Tarefa não encontrada (use o id ou a ref repo#N de board_list_tasks).');
+  const repo = repos.find((entry) => entry.path === item.repository);
+  const project = repo?.projectId ? await prisma.project.findUnique({ where: { id: repo.projectId } }) : null;
+  const remote = project?.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+  if (!remote) throw new HttpError(422, 'O projeto da tarefa não tem remote.');
+  const account = await findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
+  const pullRequest = await findTaskPullRequest({
+    provider: account.provider as 'GITHUB' | 'GITLAB',
+    remote,
+    token: secrets.decrypt(account.tokenEncrypted),
+    issueNumber: item.number,
+    knownNumbers: item.pullRequests.map((pr) => pr.number),
+  });
+  return pullRequest ?? { message: 'Nenhum PR/MR cita esta tarefa.' };
+}
+
 /** Moves the conversation's focus: the board and workspace tools then act on that workspace. */
 async function focus(caller: Caller, args: Args) {
   const workspace = await resolveWorkspace(caller.ownerId, args.workspace);
@@ -431,6 +463,8 @@ export const ORBI_OPS_TOOLS = [
   'studio_conflict_back',
   'studio_flag',
   'studio_resources',
+  'studio_resolve_flag',
+  'studio_task_pull_request',
 ] as const;
 
 export async function runOrbiOp(caller: Caller, workspaceId: string, name: string, args: Args) {
@@ -465,6 +499,10 @@ export async function runOrbiOp(caller: Caller, workspaceId: string, name: strin
       return conflictBack(caller, args);
     case 'studio_flag':
       return flag(caller, workspaceId, args);
+    case 'studio_resolve_flag':
+      return resolveFlagOp(caller, args);
+    case 'studio_task_pull_request':
+      return taskPullRequest(workspaceId, args);
     case 'studio_resources': {
       const [usage, environments, capacity] = await Promise.all([getResourceUsage(), listTestEnvs({ active: true }), testEnvCapacity().catch(() => null)]);
       return {

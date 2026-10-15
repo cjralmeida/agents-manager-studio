@@ -120,6 +120,14 @@ export function createLocalAdapter(workspaceId: string, model: BoardModel): Boar
       // Agents are tracked by the Studio itself; there is no provider user to assign.
     },
 
+    async setAssignees() {
+      throw new HttpError(422, 'Tarefas do Studio não têm responsáveis.');
+    },
+
+    async setClosed() {
+      throw new HttpError(422, 'Tarefas do Studio são concluídas movendo para "Concluído".');
+    },
+
     async applyStructure() {
       // The structure is the model; tasks are remapped by applyModelToLocalTasks.
     },
