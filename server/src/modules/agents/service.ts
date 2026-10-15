@@ -456,7 +456,13 @@ export async function ensureContainer(agentId: string) {
   if (starting.has(agentId)) return;
   starting.add(agentId);
   try {
-    const agent = await findOrThrow(agentId);
+    let agent = await findOrThrow(agentId);
+    // An agent without a repository (an Órbi conversation, a survey) only needs an empty folder: a preparation cut by
+    // a restart is simply done again here instead of leaving the agent stuck without a copy.
+    if (!agent.baseCommit && !agent.projectId && !['CANCELLED', 'FINALIZING', 'FAILED'].includes(agent.status)) {
+      await prepareEmptyWorkdir(agent.workdir);
+      agent = await prisma.agent.update({ where: { id: agentId }, data: { baseCommit: NO_REPOSITORY } });
+    }
     if (!agent.baseCommit || agent.status === 'CANCELLED' || agent.status === 'FINALIZING') return;
 
     if (agent.containerId) {
@@ -636,7 +642,8 @@ export const PREPARATION_INTERRUPTED = 'A preparação da cópia foi interrompid
  * in PREPARING for good. At startup, those agents (no container, no prepared copy) are failed so they can be relaunched.
  */
 export async function failInterruptedPreparations() {
-  const agents = await prisma.agent.findMany({ where: { status: 'PREPARING', containerId: null, baseCommit: null }, select: { id: true } });
+  // Agents without a repository are not failed: their empty folder is made again when they start (ensureContainer).
+  const agents = await prisma.agent.findMany({ where: { status: 'PREPARING', containerId: null, baseCommit: null, projectId: { not: null } }, select: { id: true } });
   for (const { id } of agents) await markFailed(id, new Error(PREPARATION_INTERRUPTED));
   return agents.length;
 }
