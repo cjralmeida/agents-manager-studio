@@ -83,6 +83,17 @@ describe('pickTasks', () => {
   });
 });
 
+describe('pickTasks order', () => {
+  it('does first what an urgent task waits for, then the lowest number', () => {
+    const items = [
+      item({ id: 'api9', number: 9, repository: 'org/api', fields: { prio: 'P2' }, body: 'API' }),
+      item({ id: 'api5', number: 5, repository: 'org/api', fields: { prio: 'P2' }, body: 'API' }),
+      item({ id: 'api3', number: 3, repository: 'org/api', fields: { prio: 'P1' }, body: 'Depende de: org/api#9' }),
+    ];
+    assert.deepEqual(pickTasks(items, [priority], { ...rule, fieldFilters: {} }).map((entry) => entry.id), ['api3', 'api9', 'api5']);
+  });
+});
+
 describe('taskPrompt', () => {
   it('includes the task and the extra instructions', () => {
     const prompt = taskPrompt(item(), 'Rode os testes antes de terminar.');

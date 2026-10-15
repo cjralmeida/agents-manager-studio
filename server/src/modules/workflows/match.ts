@@ -34,11 +34,45 @@ export function priorityRank(item: BoardItem, fields: BoardField[]) {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-/** Matching tasks, highest priority first, then the oldest. */
+/**
+ * Priority a task really has: its own, or the highest of the open tasks that wait for it ("Depende de:", directly or
+ * through others). A P2 task that a P1 task needs is done as a P1, so what blocks urgent work goes first.
+ */
+export function effectivePriorityRanks(items: BoardItem[], fields: BoardField[]) {
+  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const rank = new Map(items.map((item) => [item.id, priorityRank(item, fields)]));
+  // Pushes each open task's rank down its dependency chain (a few rounds cover any real chain).
+  for (let round = 0; round < 10; round++) {
+    let changed = false;
+    for (const item of items) {
+      if (item.isClosed) continue;
+      for (const ref of dependencyRefs(item.body)) {
+        const dependency = byRef.get(ref.toLowerCase());
+        if (dependency && rank.get(item.id)! < rank.get(dependency.id)!) {
+          rank.set(dependency.id, rank.get(item.id)!);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return rank;
+}
+
+/**
+ * Matching tasks in the order they should be done: highest priority first (counting the tasks that wait for each
+ * one), then the lowest number (the order they were planned in), then the oldest.
+ */
 export function pickTasks(items: BoardItem[], fields: BoardField[], rule: TaskRule) {
+  const rank = effectivePriorityRanks(items, fields);
   return items
     .filter((item) => matchesRule(item, rule))
-    .sort((a, b) => priorityRank(a, fields) - priorityRank(b, fields) || a.updatedAt.localeCompare(b.updatedAt));
+    .sort(
+      (a, b) =>
+        rank.get(a.id)! - rank.get(b.id)! ||
+        (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) ||
+        a.updatedAt.localeCompare(b.updatedAt),
+    );
 }
 
 /** Message describing a task for an agent; the server appends the board README after it. */
@@ -79,7 +113,7 @@ export function decisionPrompt(item: BoardItem, fields: BoardField[] = []) {
     'Pergunte SEMPRE pela ferramenta AskUserQuestion (o quadro de respostas do Studio, com opções e a recomendada marcada), nunca em texto: o seu trabalho termina quando o turno termina, e uma pergunta escrita no texto encerra a decisão sem resposta.',
     ...(mark
       ? [
-          `Depois da decisão, limpe o campo "${mark.field}" (board_update_task com fields {"${mark.field}": ""}) e mova o card para onde a decisão levar ("A fazer" se pode ser feita; fica no Backlog se ainda espera outras tarefas, com a linha "Depende de:").`,
+          `Depois da decisão, limpe o campo "${mark.field}" (board_update_task com fields {"${mark.field}": ""}) e mova o card para onde a decisão levar ("A fazer" se vai ser feita — mesmo que espere outras tarefas, com a linha "Depende de:": os agentes só a pegam quando elas forem entregues; o Backlog é só para o que ainda não foi decidido).`,
         ]
       : []),
     '',

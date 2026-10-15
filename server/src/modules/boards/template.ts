@@ -34,7 +34,7 @@ export const BOARD_TEMPLATE = {
       name: 'Backlog',
       color: 'BLUE',
       description:
-        'Tarefas que ainda não podem ser feitas: esperam as tarefas de "Depende de:" (o Studio move para "A fazer" quando forem entregues) ou uma decisão entre um agente e uma pessoa (campo Decisão = Aguardando decisão). Os agentes não executam este item.',
+        'Tarefas que ainda não foram decididas (se serão feitas, como, ou que esperam uma validação): o campo Decisão = Aguardando decisão chama o agente de decisões. Os agentes não executam este item. Dependências não ficam aqui: ficam em "A fazer" com a linha "Depende de:".',
     },
     { role: 'todo', name: 'A fazer', color: 'GRAY', description: 'A tarefa foi registrada, mas ainda não começou.' },
     { role: 'inProgress', name: 'Em andamento', color: 'YELLOW', description: 'Existe alguém trabalhando na tarefa.' },
@@ -116,10 +116,13 @@ Links de protótipo, documento, PR e tarefas relacionadas.
 
 ## Backlog
 
-Tarefas que ainda não podem ser feitas ficam no Backlog, e os agentes não as executam:
-- com a linha "Depende de:", esperam essas tarefas; o Studio as move para "A fazer" quando todas forem entregues;
-- com o campo Decisão = "Aguardando decisão", esperam uma decisão entre um agente e uma pessoa; decidida, o campo é limpo
-  e o card vai para onde a decisão levar.
+O Backlog guarda só o que ainda não foi decidido (se será feito, como, ou que espera uma validação), e os agentes não
+executam nada nele. Com o campo Decisão = "Aguardando decisão", a tarefa espera uma decisão entre um agente e uma
+pessoa; decidida, o campo é limpo e o card vai para onde a decisão levar.
+
+Uma tarefa que espera outras fica em "A fazer" com a linha "Depende de:". Os agentes só a pegam quando todas foram
+entregues (em homologação ou concluídas), escolhendo pela prioridade — contando a das tarefas que esperam por ela — e
+depois pelo número.
 `,
 };
 
