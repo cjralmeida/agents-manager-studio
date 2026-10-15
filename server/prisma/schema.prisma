@@ -987,3 +987,19 @@ model OrbiPilotEvent {
   @@id([ownerId, key])
   @@map("orbi_pilot_events")
 }
+
+/// A shared test user (a group of agent variables <PREFIX>_LOGIN/_PASSWORD) taken by a tester agent: the service
+/// under test may allow one session per user, so two testers never use the same one at once.
+model TestUserLease {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  /// Variable prefix, e.g. "HOM_USER2" for HOM_USER2_LOGIN / HOM_USER2_PASSWORD.
+  prefix      String
+  agentId     String   @map("agent_id") @db.Uuid
+  purpose     String   @default("")
+  acquiredAt  DateTime @default(now()) @map("acquired_at") @db.Timestamptz(3)
+
+  @@unique([workspaceId, prefix])
+  @@index([agentId])
+  @@map("test_user_leases")
+}

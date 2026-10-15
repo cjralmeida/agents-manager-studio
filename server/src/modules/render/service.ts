@@ -288,6 +288,17 @@ async function pollDeployments(log: FastifyBaseLogger) {
 
 /** Follows deploys until they finish; started with the server, so it resumes after a restart. */
 export function startDeploymentMonitor(log: FastifyBaseLogger) {
+  // A deploy cut by a restart before reaching Render (merging the PR/MR or starting) is run again: the merge of a PR/MR
+  // already merged is skipped, so it is safe to repeat.
+  void prisma.deployment
+    .findMany({ where: { status: { in: ['merging', 'starting'] }, renderDeployId: null, finishedAt: null }, select: { id: true } })
+    .then((stuck) => {
+      for (const { id } of stuck) {
+        log.info({ deploymentId: id }, 'Resuming a deploy interrupted by a restart');
+        void runDeploy(id);
+      }
+    })
+    .catch((err: unknown) => log.error({ err }, 'Could not resume interrupted deploys'));
   const timer = setInterval(() => void pollDeployments(log).catch((err: unknown) => log.error({ err }, 'Deployment monitor failed')), MONITOR_MS);
   return () => clearInterval(timer);
 }

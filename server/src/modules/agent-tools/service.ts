@@ -12,6 +12,7 @@ import { runStudioTool } from './studio.js';
 import { ORBI_OPS_TOOLS, runOrbiOp } from '../orbi/ops.js';
 import { logActivity } from '../orbi/activity.js';
 import { getTestEnv, listTestEnvs, startTestEnv, stopTestEnv } from '../test-envs/service.js';
+import { acquireTestUser, releaseTestUser, testUserStatus } from '../test-users/service.js';
 import { QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
@@ -27,6 +28,9 @@ export const AGENT_TOOL_NAMES = [
   'test_env_start',
   'test_env_status',
   'test_env_stop',
+  'test_user_acquire',
+  'test_user_release',
+  'test_user_list',
   'studio_context',
   'studio_list_runs',
   'studio_list_executions',
@@ -208,6 +212,13 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     if (name === 'test_env_status') return id ? getTestEnv(id) : { environments: await listTestEnvs({ agentId: agent.id }) };
     const own = id ? [id] : (await listTestEnvs({ agentId: agent.id, active: true })).map((env) => env.id);
     return { stopped: await Promise.all(own.map((envId) => stopTestEnv(envId))) };
+  }
+
+  if (name.startsWith('test_user_')) {
+    if (!agent.tools.includes('test_env')) throw new HttpError(403, 'Este agente não usa os usuários de teste.');
+    if (name === 'test_user_acquire') return acquireTestUser(agent.workspaceId, agent.id, { kind: text(args.kind, 40), purpose: text(args.purpose, 300) });
+    if (name === 'test_user_release') return releaseTestUser(agent.workspaceId, agent.id, text(args.prefix, 100));
+    return { users: await testUserStatus(agent.workspaceId) };
   }
 
   if (name.startsWith('quality_')) {

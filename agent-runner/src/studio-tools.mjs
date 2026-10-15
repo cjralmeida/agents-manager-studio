@@ -128,6 +128,22 @@ export function createStudioTools(call, groups) {
         run('test_env_status'),
       ),
       tool('test_env_stop', 'Derruba um ambiente de teste (sem id, todos os seus). Chame ao terminar os testes.', { id: z.string().optional() }, run('test_env_stop')),
+      tool(
+        'test_user_acquire',
+        'Reserva para você um USUÁRIO DE TESTE livre do workspace (o serviço pode aceitar uma sessão por usuário: dois testers no mesmo usuário derrubam um ao outro). Devolve o prefixo das variáveis (ex.: HOM_USER2 → HOM_USER2_LOGIN / HOM_USER2_PASSWORD em /run/studio/variables.env), o tipo e a nota. Sem nenhum livre, devolve quem está usando: espere e peça de novo. Só use usuários que você reservou.',
+        {
+          kind: z.string().optional().describe('Tipo do usuário: "admin" ou "comum" (sem administrador). Omita para qualquer um.'),
+          purpose: z.string().optional().describe('Para que você vai usar, em poucas palavras (aparece para os outros testers).'),
+        },
+        run('test_user_acquire'),
+      ),
+      tool(
+        'test_user_release',
+        'Devolve um usuário de teste que você reservou (sem prefixo, todos os seus). Chame assim que não precisar mais dele; ao terminar, devolva todos.',
+        { prefix: z.string().optional().describe('O prefixo devolvido por test_user_acquire, ex.: HOM_USER2.') },
+        run('test_user_release'),
+      ),
+      tool('test_user_list', 'Lista os usuários de teste do workspace (prefixo, tipo, nota) e quem está usando cada um.', {}, run('test_user_list')),
     );
   }
 
