@@ -27,7 +27,7 @@ export function matchesRule(item: BoardItem, rule: TaskRule) {
 }
 
 /** Position of the item priority in the "Prioridade/Priority" field (P0 first); unset goes last. */
-function priorityRank(item: BoardItem, fields: BoardField[]) {
+export function priorityRank(item: BoardItem, fields: BoardField[]) {
   const field = fields.find((entry) => /priori/i.test(entry.name));
   const optionId = field ? item.fields[field.id] : undefined;
   const index = field && optionId ? field.options.findIndex((option) => option.id === optionId) : -1;
@@ -209,29 +209,35 @@ export interface ReadyFrontendTask {
 }
 
 /**
- * Frontend tasks in homologation whose "Depende de:" tasks are all in homologation or done (closed counts as done):
- * the screen can be tested against the published API. Tasks of other repositories are ignored.
+ * Frontend tasks in homologation whose "Depende de:" tasks are all delivered, highest priority first (then the lowest
+ * number, the order they were planned in). A backend dependency counts as delivered in homologation or done (closed
+ * counts as done): the screen is tested against the published API, together with it. A dependency that is itself a
+ * frontend task (of the watched repositories) must be approved first: the screen that builds on another waits for it.
+ * Tasks of other repositories are ignored.
  */
 export function frontendTasksReady(
   items: BoardItem[],
   input: { homologationColumnId: string; doneColumnId: string | null; repositories: string[] },
+  fields: BoardField[] = [],
 ): ReadyFrontendTask[] {
   const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
   const accepts = (item: BoardItem) =>
     input.repositories.length === 0 || input.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase());
+  const done = (item: BoardItem) => item.isClosed || item.columnId === input.doneColumnId;
   const ready: ReadyFrontendTask[] = [];
   for (const task of items) {
     if (task.isClosed || task.columnId !== input.homologationColumnId || !accepts(task)) continue;
     const dependencies = dependencyRefs(task.body).map((ref) => byRef.get(ref.toLowerCase()));
     const delivered = dependencies.every(
-      (dependency) =>
-        dependency && (dependency.isClosed || dependency.columnId === input.doneColumnId || dependency.columnId === input.homologationColumnId),
+      (dependency) => dependency && (done(dependency) || (!accepts(dependency) && dependency.columnId === input.homologationColumnId)),
     );
     if (!delivered) continue;
-    const backend = dependencies.filter((dependency): dependency is BoardItem => !dependency!.isClosed && dependency!.columnId === input.homologationColumnId);
+    const backend = dependencies.filter((dependency): dependency is BoardItem => !done(dependency!) && dependency!.columnId === input.homologationColumnId);
     ready.push({ task, backend });
   }
-  return ready;
+  return ready.sort(
+    (a, b) => priorityRank(a.task, fields) - priorityRank(b.task, fields) || (a.task.number ?? Number.MAX_SAFE_INTEGER) - (b.task.number ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 /** Message for the tester of one frontend task: the task, the tasks it uses still in homologation, what to move. */

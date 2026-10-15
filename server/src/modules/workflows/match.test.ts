@@ -177,6 +177,18 @@ describe('frontendTasksReady', () => {
     assert.deepEqual(ready[0]!.backend.map((entry) => entry.id), ['api1']);
   });
 
+  it('tests a screen only after the screen it builds on is approved', () => {
+    const items = [api(1, 'hom'), screen(10, 'hom', 'org/front#9'), screen(9, 'hom', 'org/api#1')];
+    assert.deepEqual(frontendTasksReady(items, input).map((entry) => entry.task.id), ['front9']);
+    const approved = [api(1, 'hom'), screen(10, 'hom', 'org/front#9'), screen(9, 'done', 'org/api#1')];
+    assert.deepEqual(frontendTasksReady(approved, input).map((entry) => entry.task.id), ['front10']);
+  });
+
+  it('takes the highest priority first, then the lowest number', () => {
+    const items = [api(1, 'hom'), { ...screen(12, 'hom', 'org/api#1'), fields: { prio: 'P2' } }, { ...screen(11, 'hom', 'org/api#1'), fields: { prio: 'P0' } }, { ...screen(10, 'hom', 'org/api#1'), fields: { prio: 'P2' } }];
+    assert.deepEqual(frontendTasksReady(items, input, [priority]).map((entry) => entry.task.id), ['front11', 'front10', 'front12']);
+  });
+
   it('ignores other repositories and screens depending on tasks missing from the board', () => {
     const items = [api(1, 'hom'), screen(10, 'hom', 'org/api#9'), item({ id: 'x', repository: 'org/other', columnId: 'hom', body: 'Depende de: org/api#1' })];
     assert.deepEqual(frontendTasksReady(items, input), []);

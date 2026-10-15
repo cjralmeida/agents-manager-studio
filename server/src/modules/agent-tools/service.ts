@@ -9,6 +9,8 @@ import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderToo
 import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
 import { createProject, listRepositoryOwners } from '../workspaces/create-project.js';
 import { runStudioTool } from './studio.js';
+import { ORBI_OPS_TOOLS, runOrbiOp } from '../orbi/ops.js';
+import { logActivity } from '../orbi/activity.js';
 import { getTestEnv, listTestEnvs, startTestEnv, stopTestEnv } from '../test-envs/service.js';
 import { QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
 
@@ -36,6 +38,7 @@ export const AGENT_TOOL_NAMES = [
   'project_use',
   'studio_board_options',
   'studio_render_services',
+  ...ORBI_OPS_TOOLS,
   ...RENDER_TOOL_NAMES,
   ...CLICKUP_TOOL_NAMES,
 ] as const;
@@ -153,6 +156,12 @@ async function runProjectTool(agent: { id: string; workspaceId: string }, name: 
   return { ...created, message: 'Projeto criado (repositório privado). Os próximos passos do workflow trabalham nele.' };
 }
 
+/** Board changes Órbi makes go to its activity, like its other direct operations. */
+async function logOrbiTask(agent: { id: string; workspaceId: string }, summary: string, link: string | null) {
+  const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: agent.workspaceId }, select: { ownerId: true } });
+  await logActivity({ ownerId, workspaceId: agent.workspaceId, conversationId: agent.id, kind: 'task', summary, link });
+}
+
 /** Runs a tool for an agent. Problems the agent can fix are thrown as messages it will read. */
 export async function runAgentTool(agentId: string, name: AgentToolName, args: Args) {
   const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -182,6 +191,10 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
 
   if (name.startsWith('studio_')) {
     if (!agent.tools.includes('studio')) throw new HttpError(403, 'Ferramenta exclusiva do Órbi.');
+    if ((ORBI_OPS_TOOLS as readonly string[]).includes(name)) {
+      const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: agent.workspaceId }, select: { ownerId: true } });
+      return runOrbiOp({ conversationId: agent.id, ownerId }, agent.workspaceId, name, args);
+    }
     return runStudioTool(agent.id, agent.workspaceId, name, args);
   }
 
@@ -247,7 +260,7 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       return describeItem(snapshot, findItem(args.id), true);
 
     case 'board_create_task': {
-      if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      if (!agent.tools.includes('board') && agent.kind !== 'ASSISTANT') throw new HttpError(403, 'Este agente só pode consultar o quadro.');
       // A retry after an error in the middle of a creation (e.g. the issue was created but setting a field failed)
       // must not open the same task twice: an open task with the same title in the same repository is returned.
       const wanted = text(args.title, 250)?.trim().toLowerCase();
@@ -272,11 +285,12 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       const created = (await boardContext(agent.workspaceId)).snapshot.items.find((item) => item.id === id);
       const summary = created ? describeItem(snapshot, created) : { id, title, ref: null, url: null };
       await mergeResult(agentId, { createdTasks: [{ id, title, ref: summary.ref, url: summary.url }] });
+      if (agent.kind === 'ASSISTANT') await logOrbiTask(agent, `Criou a tarefa "${title}"`, summary.url);
       return summary;
     }
 
     case 'board_update_task': {
-      if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      if (!agent.tools.includes('board') && agent.kind !== 'ASSISTANT') throw new HttpError(403, 'Este agente só pode consultar o quadro.');
       const item = findItem(args.id);
       const title = text(args.title, 250)?.trim();
       const body = text(args.body);
@@ -288,6 +302,14 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       const { resolved, errors } = resolveFields(snapshot.fields, (args.fields ?? {}) as Record<string, string>);
       if (errors.length > 0) throw new HttpError(422, errors.join(' '));
       for (const [fieldId, optionId] of Object.entries(resolved)) await setItemField(agent.workspaceId, item.id, fieldId, optionId);
+      if (agent.kind === 'ASSISTANT') {
+        const changes = [
+          ...(text(args.column) ? [`para "${text(args.column)}"`] : []),
+          ...(Object.keys(resolved).length > 0 ? ['campos'] : []),
+          ...(title !== undefined || body !== undefined ? ['texto'] : []),
+        ];
+        await logOrbiTask(agent, `Alterou a tarefa "${item.title}" (${changes.join(', ')})`, item.url);
+      }
       return describeItem(snapshot, findItem(args.id));
     }
   }

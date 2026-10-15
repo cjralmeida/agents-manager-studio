@@ -243,14 +243,17 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
 
   const state = await boardTaskState(workspaceId);
   const { snapshot, projectOf, statusMap, taken, lastRun } = state;
-  // Tasks a homologation test is already going through (a screen run or a feature run): another test of the same
-  // tasks waits for it, so the screen and its backend are not tested twice at the same time.
-  const testing = new Set(
-    (await prisma.workflowRun.findMany({ where: { workspaceId, status: 'RUNNING' }, select: { trigger: true } })).flatMap(
-      (run) => (run.trigger as { taskItemIds?: string[] }).taskItemIds ?? [],
-    ),
+  // Tasks a homologation test is already going through. Screen tests and feature (API) tests run side by side, never
+  // waiting for each other: a screen is not tested twice at the same time, nor a feature, but a backend task can be in
+  // a feature test while a screen that uses it is tested.
+  const runningTests = await prisma.workflowRun.findMany({ where: { workspaceId, status: 'RUNNING' }, select: { trigger: true, taskItemId: true } });
+  const featureTesting = new Set(
+    runningTests.flatMap((run) => {
+      const trigger = run.trigger as { featureId?: string; taskItemIds?: string[] };
+      return trigger.featureId ? (trigger.taskItemIds ?? []) : [];
+    }),
   );
-  const isTesting = (tasks: BoardItem[]) => tasks.some((task) => testing.has(task.id));
+  const screenTesting = new Set(runningTests.flatMap((run) => (run.taskItemId ? [run.taskItemId] : [])));
 
   for (const workflow of workflows) {
     const trigger = parseTrigger(workflow);
@@ -284,7 +287,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         .map((feature) => ({ feature, screens: screensUsing(snapshot.items, feature.tasks, homologation) }))
         .filter(({ feature, screens }) => {
           const last = lastOf(feature.featureId);
-          if (isTesting([...feature.tasks, ...screens])) return false;
+          if (feature.tasks.some((task) => featureTesting.has(task.id))) return false;
           return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== feature.signature);
         })
         .map(({ feature, screens }) => ({ ...feature, screens }));
@@ -293,7 +296,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         continue;
       }
       for (const feature of candidates.slice(0, slots)) {
-        for (const task of [...feature.tasks, ...feature.screens]) testing.add(task.id);
+        for (const task of feature.tasks) featureTesting.add(task.id);
         await startFeatureRun(workflow, feature, snapshot.items, statusMap.done ?? null, log);
       }
       await report(workflow, `Iniciou para: ${candidates.slice(0, slots).map((feature) => feature.featureId).join(', ')}.`);
@@ -308,10 +311,10 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         homologationColumnId: statusMap.homologation,
         doneColumnId: statusMap.done ?? null,
         repositories: trigger.repositories,
-      });
+      }, snapshot.fields);
       // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed).
       const candidates = ready.filter((entry) => {
-        if (isTesting([entry.task, ...entry.backend])) return false;
+        if (screenTesting.has(entry.task.id)) return false;
         const last = lastRun.get(entry.task.id);
         return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== frontendSignature(entry));
       });
@@ -322,7 +325,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       const started: string[] = [];
       for (const entry of candidates.slice(0, slots)) {
         taken.add(entry.task.id);
-        for (const task of [entry.task, ...entry.backend]) testing.add(task.id);
+        screenTesting.add(entry.task.id);
         await startFrontendRun(workflow, entry, snapshot.items, statusMap.done ?? null, log);
         started.push(`"${entry.task.title}"`);
       }

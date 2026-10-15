@@ -6,6 +6,7 @@ import { AgentProfilePage } from './pages/AgentProfilePage';
 import { BoardPage } from './pages/BoardPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { OrbiPage } from './pages/OrbiPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { UsersPage } from './pages/UsersPage';
 import { WorkspacePage } from './pages/WorkspacePage';
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { path: 'workspaces/:workspaceId/agents/:profileKey', element: <AgentProfilePage /> },
       { path: 'agents/:agentId', element: <AgentPage /> },
       { path: 'board', element: <BoardPage /> },
+      { path: 'orbi', element: <OrbiPage /> },
       { path: 'connectors', element: <ConnectorsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },

@@ -272,7 +272,7 @@ export async function launchAgent(input: LaunchAgentInput) {
       instructions: profile?.instructions ?? '',
       output,
       // Órbi reads everything and proposes changes; it only reads the board.
-      tools: isAssistant ? ['studio', 'board_read'] : (profile?.tools ?? []),
+      tools: isAssistant ? ['studio', 'board'] : (profile?.tools ?? []),
       contextProjectIds: isAssistant ? [] : (profile?.contextProjectIds ?? []),
       autoConclude: input.autoConclude ?? profile?.autoConclude ?? false,
       autoMerge: input.autoMerge ?? profile?.autoMerge ?? false,

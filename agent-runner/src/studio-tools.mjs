@@ -14,6 +14,9 @@ export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
     const response = await call(name, args);
     if (!response.ok) return { ...asText({ erro: response.error }), isError: true };
+    // An image the model looks at (e.g. an agent's art preview for Órbi to judge).
+    const image = response.data && response.data.image;
+    if (image && typeof image.data === 'string') return { content: [{ type: 'image', data: image.data, mimeType: image.mimeType }] };
     return asText(response.data);
   };
 
@@ -273,6 +276,94 @@ export function createStudioTools(call, groups) {
         'Lista os serviços que a conta do Render do workspace enxerga (id, nome, repositório, branch), para escolher o de cada projeto.',
         {},
         run('studio_render_services'),
+      ),
+      tool(
+        'studio_overview',
+        'Visão geral de TODOS os workspaces do usuário: workflows ligados/desligados, pausas do Órbi, execuções rodando, agentes (e se o container está no ar), perguntas esperando, falhas, sugestões de capacidade, memória do computador, ambientes de teste e uso do plano.',
+        {},
+        run('studio_overview'),
+      ),
+      tool(
+        'studio_focus',
+        'Muda o workspace em que esta conversa atua (as ferramentas do quadro, do contexto e das execuções passam a valer nele).',
+        { workspace: z.string().describe('Nome ou id do workspace.') },
+        run('studio_focus'),
+      ),
+      tool(
+        'studio_pending',
+        'O que está esperando alguém no workspace (ou em todos, com all): perguntas de agentes com as opções, execuções que falharam nas últimas 24 h, sugestões do Gestor de Capacidade, tarefas travadas no quadro e avisos deixados para o usuário.',
+        { all: z.boolean().optional() },
+        run('studio_pending'),
+      ),
+      tool(
+        'studio_agent',
+        'Uma execução de agente de qualquer workspace: estado, pergunta pendente, resultado, prévias (media) e o final da linha do tempo.',
+        { id: z.string() },
+        run('studio_agent'),
+      ),
+      tool(
+        'studio_view_file',
+        'Abre uma imagem que um agente mostrou (prévia de arte, captura de tela) para você ver. Aceita a URL /api/agents/<id>/files/<caminho> ou agentId + path. Áudio não dá para ouvir: volta só o tamanho.',
+        { url: z.string().optional(), agentId: z.string().optional(), path: z.string().optional() },
+        run('studio_view_file'),
+      ),
+      tool(
+        'studio_answer',
+        'Responde as perguntas pendentes de um agente em nome do usuário (uma resposta por pergunta, na ordem; use o rótulo da opção escolhida, com um complemento curto se ajudar). Fica registrado na atividade do Órbi.',
+        {
+          agentId: z.string(),
+          answers: z.array(z.string()).describe('Uma resposta por pergunta, na mesma ordem.'),
+          reason: z.string().optional().describe('Por que escolheu (vai para o relato).'),
+        },
+        run('studio_answer'),
+      ),
+      tool(
+        'studio_message',
+        'Manda uma mensagem a uma execução de agente (ela volta a trabalhar com a mensagem). Ex.: retomar um agente parado, passar uma regra nova, pedir uma correção.',
+        { agentId: z.string(), text: z.string() },
+        run('studio_message'),
+      ),
+      tool(
+        'studio_set_workflow',
+        'Liga ou desliga um workflow e/ou muda quantas execuções ele roda ao mesmo tempo (1 a 5). Não altera gatilho nem passos (isso é proposta).',
+        { workflowId: z.string(), enabled: z.boolean().optional(), maxConcurrentRuns: z.number().int().optional(), reason: z.string().optional() },
+        run('studio_set_workflow'),
+      ),
+      tool(
+        'studio_pause',
+        'Pausa um workspace: desliga os workflows ligados (guardando quais eram) e, por padrão, para os agentes que estão trabalhando, para retomarem depois de onde pararam. Use stopAgents false para só não pegar tarefas novas e deixar os atuais terminarem.',
+        { workspace: z.string(), stopAgents: z.boolean().optional(), reason: z.string().optional() },
+        run('studio_pause'),
+      ),
+      tool(
+        'studio_resume',
+        'Retoma um workspace pausado pelo Órbi: religa os workflows que a pausa desligou e manda os agentes parados continuarem. Com workflows false, só retoma os agentes (os workflows ficam desligados).',
+        { workspace: z.string(), workflows: z.boolean().optional(), reason: z.string().optional() },
+        run('studio_resume'),
+      ),
+      tool(
+        'studio_capacity',
+        'Aplica ou descarta uma sugestão do Gestor de Capacidade (proposalId de studio_pending).',
+        { proposalId: z.string(), decision: z.enum(['apply', 'discard']), reason: z.string().optional() },
+        run('studio_capacity'),
+      ),
+      tool(
+        'studio_conflict_back',
+        'Devolve um conflito de merge ao agente que fez o trabalho: traz a branch de destino para a cópia dele e pede para resolver; ao terminar, o Studio tenta o merge de novo e a execução do workflow é retomada.',
+        { agentId: z.string() },
+        run('studio_conflict_back'),
+      ),
+      tool(
+        'studio_flag',
+        'Deixa um aviso para o usuário na página do Órbi (algo que precisa dele: mudança grande de escopo, credencial, decisão que você não deve tomar).',
+        { summary: z.string(), details: z.string().optional(), link: z.string().optional(), workspace: z.string().optional() },
+        run('studio_flag'),
+      ),
+      tool(
+        'studio_resources',
+        'Recursos do computador: CPU, memória, discos, limites de lançamento, ambientes de teste no ar e quantos mais cabem.',
+        {},
+        run('studio_resources'),
       ),
       tool(
         'studio_propose',

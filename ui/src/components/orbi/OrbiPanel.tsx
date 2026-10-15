@@ -1,5 +1,5 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useState } from 'react';
-import { useLocation, useMatch } from 'react-router';
+import { Link, useLocation, useMatch } from 'react-router';
 import { type AgentEvent, useAgent } from '../../api/agents';
 import { useConversations, useProposals, useSendToConversation, useStartConversation } from '../../api/assistant';
 import { useWorkspaces } from '../../api/workspaces';
@@ -13,10 +13,11 @@ import { ProposalCard } from './ProposalCard';
 const WORKSPACE_KEY = 'ams.orbi.workspace';
 
 const SUGGESTIONS = [
-  'Monte um workflow que documenta, planeja, implementa, testa e publica em homologação.',
+  'Como estão os workspaces agora?',
+  'Tem algum agente esperando resposta? Responda por mim.',
   'Por que a última execução falhou?',
-  'Quanto os agentes gastaram nesta semana?',
-  'Crie um agente que corrige bugs do app.',
+  'Pause este workspace: deixe as tarefas em andamento terminarem e não pegue novas.',
+  'Monte um workflow que documenta, planeja, implementa, testa e publica em homologação.',
 ];
 
 function storedWorkspace() {
@@ -40,7 +41,7 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
   const available = workspaces.data?.filter((workspace) => !workspace.isMissing && !workspace.isIgnored) ?? [];
   const [workspaceId, setWorkspaceId] = useState<string | null>(routeWorkspace ?? storedWorkspace());
   const effectiveWorkspace = available.find((workspace) => workspace.id === workspaceId)?.id ?? available[0]?.id ?? null;
-  const conversations = useConversations(effectiveWorkspace);
+  const conversations = useConversations();
   /** null = most recent conversation; "new" = a fresh one. */
   const [conversationId, setConversationId] = useState<string | 'new' | null>(null);
   const current = conversationId === 'new' ? null : (conversationId ?? conversations.data?.[0]?.id ?? null);
@@ -71,8 +72,11 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
         <Logo size={26} />
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Órbi</h2>
-          <p className="text-[11px] text-muted">Assistente do Studio · propõe, você aplica</p>
+          <p className="text-[11px] text-muted">Assistente do Studio · opera por você e propõe o que é estrutura</p>
         </div>
+        <Link to="/orbi" onClick={onClose} className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent/60 hover:text-white">
+          Abrir página
+        </Link>
         <Button size="sm" onClick={onClose}>
           Fechar
         </Button>
@@ -86,7 +90,8 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
             setWorkspaceId(event.target.value);
             setConversationId(null);
           }}
-          aria-label="Workspace"
+          aria-label="Workspace em foco"
+          title="Workspace em que uma conversa nova começa"
         >
           {available.map((workspace) => (
             <option key={workspace.id} value={workspace.id}>
@@ -103,7 +108,7 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
           <option value="new">Nova conversa</option>
           {conversations.data?.map((conversation) => (
             <option key={conversation.id} value={conversation.id}>
-              {conversation.title} · {timeAgo(conversation.lastActivityAt)}
+              {conversation.title} · {conversation.workspaceName} · {timeAgo(conversation.lastActivityAt)}
             </option>
           ))}
         </Select>
@@ -122,7 +127,7 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
   );
 }
 
-function MessageBox({ placeholder, pending, error, onSend }: { placeholder: string; pending: boolean; error: Error | null; onSend: (text: string, done: () => void) => void }) {
+export function MessageBox({ placeholder, pending, error, onSend }: { placeholder: string; pending: boolean; error: Error | null; onSend: (text: string, done: () => void) => void }) {
   const [text, setText] = useState('');
   const submit = () => text.trim() && onSend(text, () => setText(''));
   const handleSubmit = (event: FormEvent) => {
@@ -156,7 +161,7 @@ function MessageBox({ placeholder, pending, error, onSend }: { placeholder: stri
   );
 }
 
-function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onStarted: (id: string) => void }) {
+export function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onStarted: (id: string) => void }) {
   const start = useStartConversation(workspaceId);
   const context = usePageContext();
   const send = (message: string, done: () => void) =>
@@ -173,8 +178,8 @@ function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onSt
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="space-y-2">
-        <p className="text-sm">Oi! Eu ajudo a montar agentes e workflows, explico o que aconteceu nas execuções e acompanho o consumo.</p>
-        <p className="text-xs text-muted">Toda mudança aparece como uma proposta, e só acontece quando você clica em Aplicar.</p>
+        <p className="text-sm">Oi! Eu opero o Studio com você: respondo os agentes, acompanho as execuções, mexo no quadro, pauso e retomo workspaces e decido a capacidade.</p>
+        <p className="text-xs text-muted">O dia a dia eu faço direto e registro na atividade. Criar ou mudar agentes e workflows vira proposta, que só acontece quando você clica em Aplicar.</p>
       </div>
       <div className="flex flex-col gap-1.5">
         {SUGGESTIONS.map((suggestion) => (
@@ -196,7 +201,7 @@ function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onSt
   );
 }
 
-function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentId: string; workspaceId: string; onAnswering: (answering: boolean) => void }) {
+export function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentId: string; workspaceId: string; onAnswering: (answering: boolean) => void }) {
   const agent = useAgent(agentId);
   const answering = agent.data?.status === 'RUNNING' || agent.data?.status === 'PREPARING';
   useEffect(() => {

@@ -56,6 +56,8 @@ model User {
   renderAccounts   RenderAccount[]
   clickupAccounts  ClickupAccount[]
   pixellabAccounts PixellabAccount[]
+  orbiActivities   OrbiActivity[]
+  orbiPilotEvents  OrbiPilotEvent[]
 
   @@map("users")
 }
@@ -944,4 +946,39 @@ model TestEnvironment {
 
   @@index([status])
   @@map("test_environments")
+}
+
+/// What Órbi did by itself (answered an agent, moved a task, paused a workspace...) or flagged for the user.
+model OrbiActivity {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  ownerId        String    @map("owner_id") @db.Uuid
+  workspaceId    String?   @map("workspace_id") @db.Uuid
+  /// The Órbi conversation that acted.
+  conversationId String?   @map("conversation_id") @db.Uuid
+  /// answer, message, task, workflow, pause, resume, capacity, conflict, flag (needs the user).
+  kind           String
+  summary        String
+  details        Json?
+  /// Studio page to open (e.g. /agents/<id>).
+  link           String?
+  /// Set when a flag was dealt with.
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@map("orbi_activities")
+}
+
+/// Events the pilot already handed to Órbi (a question, a failed run, a suggestion), so each goes once.
+model OrbiPilotEvent {
+  ownerId   String   @map("owner_id") @db.Uuid
+  key       String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@id([ownerId, key])
+  @@map("orbi_pilot_events")
 }

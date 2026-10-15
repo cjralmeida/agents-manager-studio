@@ -5,6 +5,7 @@ import { HttpError } from './lib/errors.js';
 import { agentAccountRoutes } from './modules/agent-accounts/routes.js';
 import { agentProfileRoutes } from './modules/agent-profiles/routes.js';
 import { assistantRoutes } from './modules/assistant/routes.js';
+import { orbiRoutes } from './modules/orbi/routes.js';
 import { installAuthGuard } from './modules/auth/guard.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { agentRoutes, agentRunnerRoutes } from './modules/agents/routes.js';
@@ -89,6 +90,7 @@ export async function buildApp() {
       await api.register(capacityRoutes);
       await api.register(roadmapRoutes);
       await api.register(assistantRoutes);
+      await api.register(orbiRoutes);
       await api.register(agentProfileRoutes);
       await api.register(agentRoutes);
       await api.register(agentRunnerRoutes);

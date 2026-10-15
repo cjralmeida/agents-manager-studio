@@ -3,6 +3,7 @@ import { isWorking, useAgent, useAgents } from '../api/agents';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { useMe } from '../api/auth';
 import { useCapacitySuggestions } from '../api/capacity';
+import { useOrbiPending } from '../api/orbi';
 import { useWorkspaces } from '../api/workspaces';
 import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
 import { UserMenu } from './auth/UserMenu';
@@ -12,6 +13,7 @@ import { CapacityNotice } from './workflows/CapacityNotice';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
+  { to: '/orbi', label: 'Órbi', end: false },
   { to: '/workspaces', label: 'Workspaces', end: true },
   { to: '/board', label: 'Quadro de tarefas', end: false },
   { to: '/connectors', label: 'Conectores', end: false },
@@ -37,6 +39,8 @@ export function Layout() {
   /** Workspaces where the Gestor de Capacidade waits for a decision. */
   const capacityIds = new Set(useCapacitySuggestions().data?.map((suggestion) => suggestion.workspaceId));
   const [orbiConversation, setOrbiConversation] = useState<string | null>(null);
+  /** Flags Órbi left for the user, counted on its menu entry. */
+  const orbiFlags = useOrbiPending().data?.flags.length ?? 0;
   // Each page opens at its top (the content area keeps its scroll otherwise, e.g. coming back from a long
   // conversation); links to a part of a page (#pergunta) scroll there themselves.
   const { pathname, hash } = useLocation();
@@ -57,6 +61,11 @@ export function Layout() {
           {items.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
               {item.label}
+              {item.to === '/orbi' && orbiFlags > 0 && (
+                <span className="rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-surface" title={`${orbiFlags} aviso(s) do Órbi para você`}>
+                  {orbiFlags}
+                </span>
+              )}
               {item.to === '/' && waiting > 0 && (
                 <span
                   className="rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-surface"
@@ -105,7 +114,7 @@ export function Layout() {
 
       <CapacityNotice />
 
-      {orbiOpen ? (
+      {pathname === '/orbi' ? null : orbiOpen ? (
         <OrbiPanel onClose={() => setOrbiOpen(false)} onConversation={setOrbiConversation} />
       ) : orbiConversation ? (
         <OrbiFollowedButton conversationId={orbiConversation} onOpen={() => setOrbiOpen(true)} />

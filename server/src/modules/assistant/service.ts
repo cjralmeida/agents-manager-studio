@@ -7,24 +7,29 @@ function withContext(message: string, context?: string) {
   return context?.trim() ? `${message.trim()}\n\n[Contexto: ${context.trim()}]` : message.trim();
 }
 
-export async function listConversations(workspaceId: string) {
+/**
+ * Órbi conversations of the user, over all their workspaces (a conversation starts focused on one workspace and can
+ * move to another with studio_focus).
+ */
+export async function listConversations(ownerId: string) {
   const conversations = await prisma.agent.findMany({
-    where: { workspaceId, kind: 'ASSISTANT' },
+    // The Gestor de Capacidade's analyses are Órbi conversations too, but they live in the Workflows tab.
+    where: { kind: 'ASSISTANT', workspace: { ownerId }, capacityReviews: { none: {} } },
     orderBy: { lastActivityAt: 'desc' },
-    take: 20,
-    select: { id: true, title: true, status: true, lastActivityAt: true, createdAt: true },
+    take: 40,
+    select: { id: true, title: true, status: true, lastActivityAt: true, createdAt: true, workspaceId: true, workspace: { select: { name: true } } },
   });
-  return conversations.map((conversation) => ({ ...conversation, title: conversation.title.replace(/^Órbi: /, '') }));
+  return conversations.map(({ workspace, ...conversation }) => ({ ...conversation, title: conversation.title.replace(/^Órbi: /, ''), workspaceName: workspace.name }));
 }
 
-export async function startConversation(workspaceId: string, message: string, context?: string) {
+export async function startConversation(workspaceId: string, message: string, context?: string, options: { model?: 'sonnet' | 'opus'; title?: string } = {}) {
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) throw notFound('Workspace não encontrado.');
   return launchAgent({
     assistantWorkspaceId: workspaceId,
     prompt: withContext(message, context),
-    title: `Órbi: ${(message.trim().split('\n')[0] ?? '').slice(0, 100)}`,
-    model: 'sonnet',
+    title: `Órbi: ${options.title ?? (message.trim().split('\n')[0] ?? '').slice(0, 100)}`,
+    model: options.model ?? 'sonnet',
     // The panel is for conversation; Órbi never needs the high-usage confirmation dialog.
     confirmHighUsage: true,
   });

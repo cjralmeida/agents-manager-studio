@@ -8,6 +8,9 @@ export interface Conversation {
   status: Agent['status'];
   lastActivityAt: string;
   createdAt: string;
+  /** The workspace the conversation is focused on (Órbi can move it with studio_focus). */
+  workspaceId: string;
+  workspaceName: string;
 }
 
 export type ProposalStatus = 'PENDING' | 'APPLIED' | 'DISCARDED' | 'FAILED';
@@ -42,15 +45,16 @@ export const proposalKindLabels: Record<string, string> = {
 };
 
 const keys = {
-  conversations: (workspaceId: string) => ['orbi', workspaceId, 'conversations'] as const,
+  conversations: ['orbi', 'conversations'] as const,
   proposals: (agentId: string) => ['orbi', 'proposals', agentId] as const,
 };
 
-export function useConversations(workspaceId: string | null) {
+/** The user's Órbi conversations, over all workspaces. */
+export function useConversations() {
   return useQuery({
-    queryKey: keys.conversations(workspaceId ?? ''),
-    queryFn: () => api.get<Conversation[]>(`/workspaces/${workspaceId}/assistant/conversations`),
-    enabled: Boolean(workspaceId),
+    queryKey: keys.conversations,
+    queryFn: () => api.get<Conversation[]>('/assistant/conversations'),
+    refetchInterval: 15_000,
   });
 }
 
@@ -59,7 +63,7 @@ export function useStartConversation(workspaceId: string | null) {
   return useMutation({
     mutationFn: (input: { message: string; context?: string }) =>
       api.post<Agent>(`/workspaces/${workspaceId}/assistant/conversations`, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations(workspaceId ?? '') }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations }),
   });
 }
 

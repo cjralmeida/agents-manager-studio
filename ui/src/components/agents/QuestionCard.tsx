@@ -124,7 +124,7 @@ const IMAGE_URL = /\.(png|gif|webp|jpe?g)(\?.*)?$/i;
 const AUDIO_URL = /\.(ogg|mp3|wav)(\?.*)?$/i;
 
 /** Question text with its links clickable (e.g. the previews an art agent asks the user to approve). */
-function LinkedText({ text }: { text: string }) {
+export function LinkedText({ text }: { text: string }) {
   return (
     <>
       {text.split(URL_PATTERN).map((part, index) =>
@@ -150,7 +150,7 @@ const fileName = (url: string) =>
   decodeURIComponent(url.split("?")[0]!.split("/").pop() ?? "");
 
 /** The images and sounds linked in a question, right there: images open full size, sounds play. */
-function ImagePreviews({ text }: { text: string }) {
+export function ImagePreviews({ text }: { text: string }) {
   const urls = [...new Set(text.match(URL_PATTERN) ?? [])];
   const images = urls.filter((url) => IMAGE_URL.test(url));
   const sounds = urls.filter((url) => AUDIO_URL.test(url));

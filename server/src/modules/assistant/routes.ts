@@ -16,7 +16,7 @@ const messageBody = z
   .strict();
 
 export async function assistantRoutes(app: FastifyInstance) {
-  app.get('/workspaces/:id/assistant/conversations', async (request) => listConversations(parseInput(workspaceParams, request.params).id));
+  app.get('/assistant/conversations', async (request) => listConversations(request.user.id));
 
   app.post('/workspaces/:id/assistant/conversations', async (request, reply) => {
     const { id } = parseInput(workspaceParams, request.params);

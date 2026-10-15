@@ -195,6 +195,20 @@ const STUDIO_TOOL_LABELS = {
   studio_board_options: () => 'Procurando quadros',
   studio_render_services: () => 'Lendo os serviços do Render',
   studio_propose: (input) => `Proposta: ${input.summary ?? input.kind ?? ''}`,
+  studio_overview: () => 'Visão geral dos workspaces',
+  studio_focus: (input) => `Foco em ${input.workspace ?? ''}`,
+  studio_pending: () => 'Vendo o que está pendente',
+  studio_agent: () => 'Lendo uma execução',
+  studio_view_file: (input) => `Vendo ${String(input.path ?? input.url ?? '').split('/').pop()}`,
+  studio_answer: (input) => `Respondendo um agente: ${(input.answers ?? []).join(' · ')}`,
+  studio_message: () => 'Mensagem para um agente',
+  studio_set_workflow: (input) => `Workflow: ${input.enabled === undefined ? '' : input.enabled ? 'ligar' : 'desligar'}${input.maxConcurrentRuns ? ` ${input.maxConcurrentRuns} ao mesmo tempo` : ''}`,
+  studio_pause: (input) => `Pausando ${input.workspace ?? ''}`,
+  studio_resume: (input) => `Retomando ${input.workspace ?? ''}`,
+  studio_capacity: (input) => `Capacidade: ${input.decision === 'discard' ? 'descartar' : 'aplicar'}`,
+  studio_conflict_back: () => 'Devolvendo um conflito ao agente',
+  studio_flag: (input) => `Aviso para o usuário: ${input.summary ?? ''}`,
+  studio_resources: () => 'Lendo os recursos do computador',
 };
 
 function summarizeTool(name, input = {}) {

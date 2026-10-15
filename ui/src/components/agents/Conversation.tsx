@@ -3,7 +3,7 @@ import { type Agent, type AgentEvent, useAgentEvents, useSendAgentMessage, LIVE_
 import { formatTime } from '../../lib/time';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
-import { QuestionCard } from './QuestionCard';
+import { ImagePreviews, LinkedText, QuestionCard } from './QuestionCard';
 
 interface ConversationProps {
   agent: Agent;
@@ -84,7 +84,10 @@ function EventItem({ event, speaker }: { event: AgentEvent; speaker: string }) {
             <span>{speaker}</span>
             {time}
           </div>
-          <p className="text-sm whitespace-pre-wrap">{event.data.text}</p>
+          <p className="text-sm break-words whitespace-pre-wrap">
+            <LinkedText text={event.data.text} />
+          </p>
+          <ImagePreviews text={event.data.text} />
         </div>
       );
     case 'tool_use':

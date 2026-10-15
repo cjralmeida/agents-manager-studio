@@ -9,6 +9,7 @@ import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startCopyCleanup } from './modules/agents/cleanup.js';
 import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
+import { startOrbiPilot } from './modules/orbi/pilot.js';
 import { startTestEnvMonitor } from './modules/test-envs/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
 import { startDeploymentMonitor } from './modules/render/service.js';
@@ -61,6 +62,9 @@ const stopSeedCapture = startSeedCapture(app.log);
 // Tasks left stuck on the board (no agent, no run, no reason to wait) are found and sorted out.
 const stopBoardWatch = startBoardWatch(app.log);
 app.addHook('onClose', async () => stopBoardWatch());
+// Órbi's pilot mode: when it is on, Órbi deals with agent questions, failed runs and capacity suggestions by itself.
+const stopOrbiPilot = startOrbiPilot(app.log);
+app.addHook('onClose', async () => stopOrbiPilot());
 // Test environments: queued ones start when the computer has room; finished agents' ones are taken down.
 const stopTestEnvMonitor = startTestEnvMonitor(app.log);
 app.addHook('onClose', async () => stopTestEnvMonitor());
