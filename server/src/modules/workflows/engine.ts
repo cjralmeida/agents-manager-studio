@@ -6,6 +6,7 @@ import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../gener
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, PREPARATION_INTERRUPTED, cancelAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
+import { REVALIDATE_AFTER_MERGE, revalidationNote } from '../agents/revalidation.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
@@ -538,6 +539,23 @@ function previousOutputText(name: string, output: StepOutput) {
   return lines.join('\n');
 }
 
+/**
+ * When this step already approved the work and the only thing that sent it back since was a merge conflict at publish
+ * time, the time of that approval: the validator then re-checks only what the merge changed. Null otherwise.
+ */
+function approvalUndoneByMerge(run: RunWithSteps, stepId: string, index: number, lane: string) {
+  const approved = run.steps
+    .filter((entry) => entry.stepId === stepId && entry.lane === lane && entry.status === 'RETRIED' && entry.finishedAt && outputOf(entry).status === 'success')
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
+  if (!approved) return null;
+  const sentBack = run.steps
+    .filter((entry) => entry.stepIndex > index && entry.status === 'RETRIED' && entry.startedAt >= approved.startedAt)
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
+  if (!sentBack) return null;
+  const byMerge = outputOf(sentBack).mergeConflict || /merge|conflit/i.test(sentBack.error ?? '');
+  return byMerge ? approved.finishedAt! : null;
+}
+
 /** Starts a step in a lane; problems become a failed step instead of an exception. */
 async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number, lane: string, attempt: number) {
   const step = steps[index]!;
@@ -668,6 +686,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     projectId = chainProject ?? undefined;
   }
 
+  const approvedBefore = index > 0 ? approvalUndoneByMerge(run, step.id, index, lane) : null;
   const prompt = [
     `Workflow "${run.workflow.name}" — passo ${index + 1} de ${steps.length}: ${step.name}.`,
     '',
@@ -679,6 +698,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
         ? (trigger.message ?? run.title)
         : `Pedido original: ${trigger.message ?? run.title}`,
     ...(previous?.run ? ['', previousOutputText(previous.step.name, outputOf(previous.run))] : []),
+    ...(approvedBefore ? ['', revalidationNote(approvedBefore)] : []),
     ...(step.instructions.trim() ? ['', 'Instruções deste passo:', step.instructions.trim()] : []),
     ...(pullRequest?.merged
       ? [
@@ -860,10 +880,14 @@ async function conflictReport(agentId: string, stepName: string, synced: string 
             'O Studio já trouxe a versão mais recente da branch de destino para a sua cópia (merge em andamento). Ficaram com conflito:',
             ...conflicts.map((file) => `- ${file}`),
             '',
-            'Resolva cada conflito mantendo as duas mudanças: o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo. Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, rode o build e os testes e corrija o que quebrar com a junção.',
+            'Resolva cada conflito mantendo as duas mudanças: o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo. Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit.',
+            '',
+            REVALIDATE_AFTER_MERGE,
           ]
         : [
-            'O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto. Rode o build e os testes e corrija o que quebrar com a junção (ex.: uma função renomeada do outro lado).',
+            'O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto (confira mesmo assim se o build passa: ex.: uma função renomeada do outro lado).',
+            '',
+            REVALIDATE_AFTER_MERGE,
           ];
     return [intro, '', ...body, ...(synced ? ['', synced] : []), '', done].join('\n');
   } catch {

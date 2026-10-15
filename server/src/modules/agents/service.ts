@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '../../db.js';
+import { REVALIDATE_AFTER_MERGE } from './revalidation.js';
 import { type Agent, type AgentProfile, type AgentStatus, Prisma } from '../../generated/prisma/client.js';
 import { imageExists, inspectContainer, removeContainer, removeVolume } from '../../lib/docker.js';
 import { config } from '../../config.js';
@@ -885,9 +886,11 @@ async function resolveOwnConflict(agent: Agent, prUrl: string) {
           'O Studio já trouxe a versão mais recente da branch de destino para a sua cópia (merge em andamento). Ficaram com conflito:',
           ...conflicts.map((file) => `- ${file}`),
           '',
-          'Junte as versões mantendo as duas mudanças (o que veio da branch de destino já foi entregue por outras tarefas): tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, e rode de novo o que gera os seus arquivos (build, testes ou scripts) para conferir que tudo continua certo.',
+          'Junte as versões mantendo as duas mudanças (o que veio da branch de destino já foi entregue por outras tarefas): tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit.',
         ]
-      : ['O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto. Rode de novo o build, os testes ou os scripts e corrija o que quebrar com a junção.']),
+      : ['O Studio trouxe a versão mais recente da branch de destino para a sua cópia e o git juntou tudo sem conflito de texto.']),
+    '',
+    REVALIDATE_AFTER_MERGE,
     '',
     'Depois, termine de novo; o Studio envia para o mesmo PR/MR e tenta o merge outra vez. Não precisa pedir aprovação de novo só por causa disso, a menos que o resultado visível mude.',
   ].join('\n');
@@ -933,7 +936,11 @@ async function conflictsWithBaseFirst(agent: Agent) {
     `Antes de o seu trabalho seguir para a revisão, o Studio trouxe a versão mais recente da branch de destino (${agent.baseBranch}) para a sua cópia: outras tarefas foram entregues nela enquanto você trabalhava. O merge está em andamento e ficaram com conflito:`,
     ...conflicts.map((file) => `- ${file}`),
     '',
-    'Resolva cada conflito mantendo as duas mudanças (o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo). Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit, rode o build e os testes da sua tarefa e das áreas que a junção mexeu, corrija o que quebrar e termine de novo; o Studio envia para o mesmo PR/MR e a revisão começa sobre o código já juntado.',
+    'Resolva cada conflito mantendo as duas mudanças (o que veio da branch de destino já foi entregue e testado por outras tarefas; não descarte nada dela sem motivo). Tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit.',
+    '',
+    REVALIDATE_AFTER_MERGE,
+    '',
+    'Depois, termine de novo; o Studio envia para o mesmo PR/MR e a revisão começa sobre o código já juntado.',
   ].join('\n');
   await prisma.agent.update({
     where: { id: agent.id },
