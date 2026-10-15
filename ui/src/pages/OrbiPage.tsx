@@ -8,6 +8,7 @@ import {
   type PilotKind,
   type PilotSettings,
   useDecideSuggestion,
+  useDiscussFlag,
   useMarkSeen,
   useOrbiActivity,
   useOrbiPending,
@@ -399,6 +400,7 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
   const capacity = useDecideCapacity();
   const resolve = useResolveFlag();
   const seen = useMarkSeen();
+  const discuss = useDiscussFlag();
   const data = pending.data;
   const name = (id: string | null) => data?.workspaces.find((workspace) => workspace.id === id)?.name ?? '';
   const total = data ? data.questions.length + data.failedRuns.length + data.capacitySuggestions.length + data.proposals.length + data.flags.length : 0;
@@ -434,6 +436,15 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
           <PendingGroup title="Avisos para você" items={data.flags}>
             {(flag: OrbiActivity) => (
               <Row key={flag.id} tone="warning" title={flag.summary} meta={`${flag.workspaceName ?? ''} · ${timeAgo(flag.createdAt)}`}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={discuss.isPending}
+                  onClick={() => discuss.mutate(flag.id, { onSuccess: ({ conversationId }) => onOpenConversation(conversationId) })}
+                  title="Abre uma conversa com o Órbi já com este aviso, para resolverem juntos"
+                >
+                  {typeof flag.details?.discussionId === 'string' ? 'Continuar conversa' : 'Resolver com o Órbi'}
+                </Button>
                 {flag.link && <RowLink to={flag.link}>Abrir</RowLink>}
                 <Button size="sm" onClick={() => resolve.mutate(flag.id)}>
                   Resolvido
@@ -482,7 +493,7 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
               </Row>
             )}
           </PendingGroup>
-          <ErrorText error={decide.error ?? capacity.error ?? resolve.error ?? seen.error} />
+          <ErrorText error={decide.error ?? capacity.error ?? resolve.error ?? seen.error ?? discuss.error} />
         </div>
       )}
     </Card>

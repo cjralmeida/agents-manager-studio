@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { getUserSetting, setUserSetting } from '../users/settings.js';
 import { parseInput } from '../../lib/validation.js';
-import { listActivity, resolveFlag } from './activity.js';
+import { discussFlag, listActivity, resolveFlag } from './activity.js';
 import { overview, ownerWorkspaces, pendingItems } from './ops.js';
 import { PILOT_KINDS, type PilotKind, getPilot, pilotConversationIds, updatePilot } from './pilot.js';
 
@@ -71,6 +71,8 @@ export async function orbiRoutes(app: FastifyInstance) {
   });
 
   app.get('/orbi/activity', async (request) => listActivity(request.user.id, parseInput(activityQuery, request.query).limit));
+
+  app.post('/orbi/flags/:id/discuss', async (request) => discussFlag(request.user.id, parseInput(idParams, request.params).id));
 
   app.post('/orbi/flags/:id/resolve', async (request) => resolveFlag(request.user.id, parseInput(idParams, request.params).id));
 

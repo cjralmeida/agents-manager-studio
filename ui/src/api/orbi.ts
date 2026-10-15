@@ -76,6 +76,18 @@ export function useMarkSeen() {
 }
 
 /** Both pilots: tasks (the work on the board) and agents (who works and how much). */
+/** Starts (or reopens) a conversation with Órbi to sort out a flag together. */
+export function useDiscussFlag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<{ conversationId: string }>(`/orbi/flags/${id}/discuss`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.pending });
+      void queryClient.invalidateQueries({ queryKey: ['orbi', 'conversations'] });
+    },
+  });
+}
+
 export function usePilots() {
   return useQuery({ queryKey: keys.pilots, queryFn: () => api.get<Record<PilotKind, PilotSettings>>('/orbi/pilots'), refetchInterval: 30_000 });
 }
