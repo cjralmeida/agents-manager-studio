@@ -96,13 +96,18 @@ export function featureIdOf(title: string) {
 
 export interface ReadyFeature {
   featureId: string;
-  /** Open tasks of the feature, all in the homologation column. */
+  /** Open tasks of the feature in the homologation column: tested now. */
   tasks: BoardItem[];
+  /** Open tasks of the feature not delivered yet (still being made): tested when they reach homologation. */
+  pending: BoardItem[];
   /** Changes when tasks or their descriptions change (e.g. a report appended), so a feature is not tested twice as is. */
   signature: string;
 }
 
-/** Features whose open tasks (not done nor closed) are all in homologation; tasks of other repositories are ignored. */
+/**
+ * Features with open tasks (not done nor closed) in homologation: those are tested as soon as they get there, without
+ * waiting for the rest of the feature, which is tested when it arrives. Tasks of other repositories are ignored.
+ */
 export function featuresReady(
   items: BoardItem[],
   input: { homologationColumnId: string; doneColumnId: string | null; repositories: string[] },
@@ -116,14 +121,16 @@ export function featuresReady(
     groups.set(featureId, [...(groups.get(featureId) ?? []), item]);
   }
   return [...groups.entries()]
-    .filter(([, tasks]) => tasks.every((task) => task.columnId === input.homologationColumnId))
-    .map(([featureId, tasks]) => {
+    .filter(([, tasks]) => tasks.some((task) => task.columnId === input.homologationColumnId))
+    .map(([featureId, all]) => {
+      const tasks = all.filter((task) => task.columnId === input.homologationColumnId);
+      const pending = all.filter((task) => task.columnId !== input.homologationColumnId);
       const sorted = [...tasks].sort((a, b) => a.id.localeCompare(b.id));
       const signature = createHash('sha256')
         .update(sorted.map((task) => `${task.id}\n${task.body}`).join('\n---\n'))
         .digest('hex')
         .slice(0, 32);
-      return { featureId, tasks: sorted, signature };
+      return { featureId, tasks: sorted, pending, signature };
     })
     .sort((a, b) => a.featureId.localeCompare(b.featureId));
 }
@@ -180,8 +187,19 @@ export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], do
     .filter((entry) => entry.dependents.length > 0);
   const inHomologation = screens.filter((screen) => screen.columnId !== doneColumnId).map((screen) => itemRef(screen) ?? screen.id);
   return [
-    `Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`,
+    feature.pending.length === 0
+      ? `Teste em homologação a funcionalidade ${feature.featureId} inteira. Todas as tarefas dela estão em homologação:`
+      : `Teste em homologação as tarefas da funcionalidade ${feature.featureId} que já estão em homologação:`,
     ...feature.tasks.map(taskSection),
+    ...(feature.pending.length > 0
+      ? [
+          [
+            '# Tarefas da funcionalidade que ainda não chegaram em homologação',
+            'Não teste estas (serão testadas quando chegarem) e não reprove por algo que só elas entregam:',
+            ...feature.pending.map((task) => `- ${itemRef(task) ?? task.id}: ${task.title}`),
+          ].join('\n'),
+        ]
+      : []),
     ...(screens.length > 0
       ? [
           [

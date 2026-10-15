@@ -102,7 +102,7 @@ describe('featuresReady', () => {
     assert.equal(featureIdOf('Corrigir login'), null);
   });
 
-  it('is ready when every open task of the feature is in homologation', () => {
+  it('takes the open tasks of each feature that are in homologation', () => {
     const items = [
       task('a', '[FUNC-001] Backend — API', 'hom'),
       task('b', '[FUNC-001] Frontend — tela', 'hom'),
@@ -112,8 +112,20 @@ describe('featuresReady', () => {
       task('f', 'Sem funcionalidade', 'hom'),
     ];
     const ready = featuresReady(items, input);
-    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-001']);
+    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-001', 'FUNC-002']);
     assert.deepEqual(ready[0]!.tasks.map((entry) => entry.id), ['a', 'b']);
+    assert.deepEqual(ready[1]!.tasks.map((entry) => entry.id), ['d']);
+    assert.deepEqual(ready[1]!.pending.map((entry) => entry.id), ['e']);
+  });
+
+  it('tests the tasks already in homologation without waiting for the rest of the feature', () => {
+    const items = [task('a', '[FUNC-030] API — busca', 'hom'), task('b', '[FUNC-030] API — tarefas', 'todo'), task('c', '[FUNC-031] API', 'doing')];
+    const ready = featuresReady(items, input);
+    assert.deepEqual(ready.map((feature) => feature.featureId), ['FUNC-030']);
+    assert.deepEqual(ready[0]!.tasks.map((entry) => entry.id), ['a']);
+    assert.deepEqual(ready[0]!.pending.map((entry) => entry.id), ['b']);
+    assert.match(featurePrompt(ready[0]!), /que já estão em homologação/);
+    assert.match(featurePrompt(ready[0]!), /Não teste estas/);
   });
 
   it('ignores closed tasks and other repositories', () => {
@@ -122,8 +134,8 @@ describe('featuresReady', () => {
       task('b', '[FUNC-003] Frontend', 'doing', { isClosed: true }),
       task('c', '[FUNC-003] Mobile', 'doing', { repository: 'org/app' }),
     ];
-    assert.equal(featuresReady(items, { ...input, repositories: ['org/repo'] }).length, 1);
-    assert.equal(featuresReady(items, input).length, 0);
+    assert.deepEqual(featuresReady(items, { ...input, repositories: ['org/repo'] })[0]!.pending, []);
+    assert.deepEqual(featuresReady(items, input)[0]!.pending.map((entry) => entry.id), ['c']);
   });
 
   it('changes the signature when a description changes', () => {
