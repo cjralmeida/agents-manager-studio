@@ -15,10 +15,18 @@ interface TaskCardProps {
   inWorkflow?: boolean;
 }
 
+/** A task that came back with a test report (homologation or play test) and is not done: a fix, picked before new work. */
+function reworkOrigin(item: BoardItem, board: BoardLayout) {
+  if (item.isClosed || (board.statusMap.done && item.columnId === board.statusMap.done)) return null;
+  const match = /^#{2,3}\s*Relatório de (HOM|teste)\b/im.exec(item.body);
+  return match ? (match[1] === 'HOM' ? 'HOM' : 'teste') : null;
+}
+
 export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false }: TaskCardProps) {
   const navigate = useNavigate();
   const waiting = agent?.status === 'WAITING_INPUT';
   const working = !agent?.paused && (inWorkflow || (agent !== undefined && ['PREPARING', 'RUNNING', 'FINALIZING'].includes(agent.status)));
+  const rework = reworkOrigin(item, board);
   const values = board.fields.flatMap((field) => {
     const option = field.options.find((entry) => entry.id === item.fields[field.id]);
     return option ? [{ field, option }] : [];
@@ -44,6 +52,14 @@ export function TaskCard({ board, item, agent, onOpen, label, inWorkflow = false
         </span>
         {item.pullRequests.length > 0 && <span title="Pull requests vinculados">PR ×{item.pullRequests.length}</span>}
       </div>
+      {rework && (
+        <span
+          className="mt-1.5 inline-block rounded border border-orange-400/50 bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-200"
+          title="Voltou com um relatório de teste: os agentes pegam correções antes de tarefas novas"
+        >
+          ↩ Correção · {rework}
+        </span>
+      )}
       <p className="mt-1 text-sm leading-snug font-medium">{item.title}</p>
 
       {values.length > 0 && (

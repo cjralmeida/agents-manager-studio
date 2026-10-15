@@ -32,6 +32,7 @@ import {
   pickTasks,
   screensUsing,
   taskPrompt,
+  isRework,
 } from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
@@ -312,7 +313,9 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     const trigger = parseTrigger(workflow);
     // New tasks enter while the first step has a free agent and the line is not backed up further on.
     const line = await lineState(workflow);
-    const slots = line.backedUp ? 0 : line.free;
+    // A backed-up line still takes fixes of delivered work (they skip the queue, like work sent back by a step).
+    const reworkOnly = line.backedUp && line.free > 0 && trigger.type === 'board_task';
+    const slots = line.backedUp && !reworkOnly ? 0 : line.free;
     if (slots <= 0) {
       await report(
         workflow,
@@ -423,7 +426,13 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     }
     if (trigger.type !== 'board_task') continue;
 
-    const { ready: candidates, waiting, columnId } = boardTaskQueue(trigger, state);
+    const queue = boardTaskQueue(trigger, state);
+    const { waiting, columnId } = queue;
+    const candidates = reworkOnly ? queue.ready.filter(isRework) : queue.ready;
+    if (reworkOnly && candidates.length === 0) {
+      await report(workflow, `Ocupado: ${line.waiting} tarefa(s) esperando a próxima etapa; "${line.first.name}" pega novas quando a fila andar.`);
+      continue;
+    }
     if (candidates.length === 0) {
       await report(
         workflow,
@@ -441,7 +450,8 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       await startBoardRun(workflow, item, log);
       started.push(`"${item.title}"`);
     }
-    await report(workflow, `Iniciou para: ${started.join(', ')}.`);
+    const fixes = candidates.slice(0, slots).filter(isRework).length;
+    await report(workflow, `Iniciou para: ${started.join(', ')}${fixes > 0 ? ` (${fixes === 1 ? 'correção' : `${fixes} correções`} na frente da fila)` : ''}.`);
   }
 }
 

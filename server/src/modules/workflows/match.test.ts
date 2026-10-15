@@ -92,6 +92,19 @@ describe('pickTasks order', () => {
     ];
     assert.deepEqual(pickTasks(items, [priority], { ...rule, fieldFilters: {} }).map((entry) => entry.id), ['api3', 'api9', 'api5']);
   });
+
+  it('takes fixes (back with a test report) before new work, except a new P0 before a fix that is not P0', () => {
+    const report = 'API\n\n## Relatório de HOM — 2026-10-15\nHOM-01 falhou.';
+    const items = [
+      item({ id: 'new-p1', number: 1, fields: { prio: 'P1' }, body: 'API' }),
+      item({ id: 'fix-p2', number: 2, fields: { prio: 'P2' }, body: report }),
+      item({ id: 'new-p0', number: 3, fields: { prio: 'P0' }, body: 'API' }),
+      item({ id: 'fix-p0', number: 4, fields: { prio: 'P0' }, body: report }),
+    ];
+    assert.deepEqual(pickTasks(items, [priority], { ...rule, fieldFilters: {} }).map((entry) => entry.id), ['fix-p0', 'new-p0', 'fix-p2', 'new-p1']);
+    assert.match(taskPrompt(items[1]!, ''), /CORREÇÃO/);
+    assert.doesNotMatch(taskPrompt(items[0]!, ''), /CORREÇÃO/);
+  });
 });
 
 describe('taskPrompt', () => {

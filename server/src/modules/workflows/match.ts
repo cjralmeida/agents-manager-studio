@@ -59,9 +59,27 @@ export function effectivePriorityRanks(items: BoardItem[], fields: BoardField[])
   return rank;
 }
 
+/** A test report written in the task when it was sent back (homologation, play test): the task is a fix, not new work. */
+const REWORK_REPORT = /^#{2,3}\s*Relatório de (HOM|teste)\b/im;
+
+/** Whether an open task is a fix of work already delivered (it came back with a test report). */
+export function isRework(item: BoardItem) {
+  return !item.isClosed && REWORK_REPORT.test(item.body);
+}
+
 /**
- * Matching tasks in the order they should be done: highest priority first (counting the tasks that wait for each
- * one), then the lowest number (the order they were planned in), then the oldest.
+ * Order tier: fixes go before new work (they are almost done and other tasks often wait for them), except that a new
+ * P0 task still goes before a fix that is not P0.
+ */
+function tier(item: BoardItem, rank: number) {
+  const urgent = rank === 0;
+  return isRework(item) ? (urgent ? 0 : 2) : urgent ? 1 : 3;
+}
+
+/**
+ * Matching tasks in the order they should be done: fixes of delivered work first (see tier), then the highest
+ * priority (counting the tasks that wait for each one), then the lowest number (the order they were planned in), then
+ * the oldest.
  */
 export function pickTasks(items: BoardItem[], fields: BoardField[], rule: TaskRule) {
   const rank = effectivePriorityRanks(items, fields);
@@ -69,17 +87,26 @@ export function pickTasks(items: BoardItem[], fields: BoardField[], rule: TaskRu
     .filter((item) => matchesRule(item, rule))
     .sort(
       (a, b) =>
+        tier(a, rank.get(a.id)!) - tier(b, rank.get(b.id)!) ||
         rank.get(a.id)! - rank.get(b.id)! ||
         (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) ||
         a.updatedAt.localeCompare(b.updatedAt),
     );
 }
 
+const REWORK_NOTE = [
+  '**Esta tarefa é uma CORREÇÃO.** Ela já foi entregue e testada; o relatório de teste no fim da descrição (Relatório de HOM/de teste) diz o que falhou.',
+  'O trabalho anterior já está na branch de destino: corrija só o que o relatório aponta (e o que for preciso para isso), com um teste para cada falha (HOM-NN). Não refaça a tarefa.',
+  'Ao revisar ou testar uma correção, confira as falhas do relatório e as áreas que a correção mexeu (regra de revalidar só o que pode mudar comportamento).',
+].join('\n');
+
 /** Message describing a task for an agent; the server appends the board README after it. */
 export function taskPrompt(item: BoardItem, instructions: string) {
   const ref = item.repository && item.number ? `${item.repository}#${item.number}` : 'do quadro';
   const link = [item.url, `id no quadro: ${item.id}`].filter(Boolean).join(' — ');
-  const parts = [`Resolva a tarefa ${ref}: ${item.title}`, link, '', item.body.trim()];
+  const parts = [`Resolva a tarefa ${ref}: ${item.title}`, link];
+  if (isRework(item)) parts.push('', REWORK_NOTE);
+  parts.push('', item.body.trim());
   if (instructions.trim()) parts.push('', '---', 'Instruções extras:', instructions.trim());
   return parts.join('\n').trim();
 }
