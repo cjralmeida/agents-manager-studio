@@ -29,6 +29,8 @@ export interface PilotSettings {
   allWorkspaces: boolean;
   workspaceIds: string[];
   model: 'sonnet' | 'opus';
+  /** technical: the user is around (only technical problems); full: the user is away (everything). */
+  mode: 'technical' | 'full';
   instructions: string;
   conversationId: string | null;
   lastEventAt: string | null;

@@ -24,13 +24,18 @@ export interface PilotSettings {
   allWorkspaces: boolean;
   workspaceIds: string[];
   model: 'sonnet' | 'opus';
+  /**
+   * "technical" while the user is around: only technical problems (merge conflicts, stopped agents, failed runs,
+   * capacity); agent questions and rule decisions stay with the user. "full" while away: everything.
+   */
+  mode: 'technical' | 'full';
   /** The user's own rules for the pilot (e.g. "mudança de escopo grande espera por mim"). */
   instructions: string;
   conversationId: string | null;
   lastEventAt: string | null;
 }
 
-const DEFAULTS: PilotSettings = { enabled: false, allWorkspaces: true, workspaceIds: [], model: 'sonnet', instructions: '', conversationId: null, lastEventAt: null };
+const DEFAULTS: PilotSettings = { enabled: false, allWorkspaces: true, workspaceIds: [], model: 'sonnet', mode: 'technical', instructions: '', conversationId: null, lastEventAt: null };
 
 export async function getPilot(userId: string): Promise<PilotSettings> {
   return { ...DEFAULTS, ...((await getUserSetting<Partial<PilotSettings>>(userId, KEY)) ?? {}) };
@@ -59,11 +64,13 @@ interface PilotEvent {
   line: string;
 }
 
-async function collectEvents(userId: string, workspaces: { id: string; name: string }[]): Promise<PilotEvent[]> {
+async function collectEvents(userId: string, workspaces: { id: string; name: string }[], mode: PilotSettings['mode']): Promise<PilotEvent[]> {
   const names = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
   const pending = await pendingItems(userId, workspaces.map((workspace) => workspace.id));
+  // With the user around, agent questions (decisions) are theirs: the pilot only gets the technical problems.
+  const questions = mode === 'full' ? pending.questions : [];
   return [
-    ...pending.questions.map((entry) => ({
+    ...questions.map((entry) => ({
       key: `q:${entry.agentId}:${hash(entry.questions)}`,
       line: `- Pergunta de agente em ${names.get(entry.workspaceId)}: "${entry.title}" (execução ${entry.agentId}; ${entry.questions.length} pergunta(s)). Veja com studio_agent e responda com studio_answer.`,
     })),
@@ -91,7 +98,9 @@ async function pilotConversation(userId: string, settings: PilotSettings, worksp
 
 function pilotMessage(settings: PilotSettings, events: PilotEvent[]) {
   return [
-    '[Piloto] Novos eventos para você resolver em nome do usuário, seguindo o MODO PILOTO:',
+    settings.mode === 'technical'
+      ? '[Piloto técnico] O usuário está por aqui. Resolva só os problemas técnicos destes eventos, seguindo o MODO PILOTO (técnico); decisões de regra, escopo ou negócio vão para ele com studio_flag:'
+      : '[Piloto] Novos eventos para você resolver em nome do usuário, seguindo o MODO PILOTO:',
     ...events.map((event) => event.line),
     ...(settings.instructions.trim() ? ['', `Regras do usuário para o piloto: ${settings.instructions.trim()}`] : []),
   ].join('\n');
@@ -100,7 +109,7 @@ function pilotMessage(settings: PilotSettings, events: PilotEvent[]) {
 async function tickUser(userId: string, settings: PilotSettings, log: FastifyBaseLogger) {
   const workspaces = await scopeOf(userId, settings);
   if (workspaces.length === 0) return;
-  const events = await collectEvents(userId, workspaces);
+  const events = await collectEvents(userId, workspaces, settings.mode);
   if (events.length === 0) return;
   const seen = await prisma.orbiPilotEvent.findMany({ where: { ownerId: userId, key: { in: events.map((event) => event.key) } }, select: { key: true } });
   const fresh = events.filter((event) => !seen.some((entry) => entry.key === event.key));

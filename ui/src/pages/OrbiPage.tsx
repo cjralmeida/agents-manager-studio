@@ -227,10 +227,30 @@ function PilotCard() {
 
   return (
     <Card title="Modo piloto" aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label="Ligar o modo piloto" />}>
-      <p className="text-xs text-muted">
-        {settings.enabled
-          ? 'Ligado: quando um agente pergunta, uma execução falha ou o Gestor de Capacidade sugere algo, eu resolvo e registro abaixo. O que precisar de você vira aviso.'
-          : 'Desligado: eu só ajo quando você me chama. Ligue para eu responder os agentes e cuidar das falhas enquanto você está fora.'}
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
+        {(
+          [
+            ['technical', 'Estou por aqui', 'Só problemas técnicos'],
+            ['full', 'Estou fora', 'Resolvo tudo por você'],
+          ] as const
+        ).map(([mode, label, hint]) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => update.mutate({ mode })}
+            className={`rounded-md px-2 py-1.5 text-left transition-colors ${settings.mode === mode ? 'bg-accent/15 text-accent' : 'text-muted hover:text-white'}`}
+          >
+            <span className="block text-xs font-medium">{label}</span>
+            <span className="block text-[10px]">{hint}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        {!settings.enabled
+          ? 'Desligado: eu só ajo quando você me chama.'
+          : settings.mode === 'technical'
+            ? 'Ligado, com você por aqui: resolvo conflitos de merge, agentes parados, falhas técnicas e a capacidade. Perguntas dos agentes e decisões de regra ficam com você (viram aviso).'
+            : 'Ligado, com você fora: respondo os agentes, cuido das falhas e da capacidade e registro tudo abaixo. O que for grande demais vira aviso.'}
       </p>
       {settings.lastEventAt && <p className="mt-1 text-[11px] text-muted">Último evento tratado {timeAgo(settings.lastEventAt)}.</p>}
 

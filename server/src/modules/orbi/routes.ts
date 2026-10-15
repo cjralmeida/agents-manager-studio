@@ -14,6 +14,7 @@ const pilotBody = z
     allWorkspaces: z.boolean().optional(),
     workspaceIds: z.array(z.uuid()).max(100).optional(),
     model: z.enum(['sonnet', 'opus']).optional(),
+    mode: z.enum(['technical', 'full']).optional(),
     instructions: z.string().max(4000).optional(),
   })
   .strict();
