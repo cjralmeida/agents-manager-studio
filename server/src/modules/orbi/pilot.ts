@@ -23,7 +23,8 @@ export type PilotKind = 'tasks' | 'agents';
 export const PILOT_KINDS: readonly PilotKind[] = ['tasks', 'agents'];
 
 const KEYS: Record<PilotKind, string> = { tasks: 'orbiPilot', agents: 'orbiPilotAgents' };
-const TITLES: Record<PilotKind, string> = { tasks: 'Piloto de tarefas', agents: 'Piloto de agentes' };
+/** Conversation names: the Navigator keeps the tasks on course; the Flight Engineer looks after engines and fuel. */
+const TITLES: Record<PilotKind, string> = { tasks: 'Navegador', agents: 'Engenheiro de Bordo' };
 const TICK_MS = 60_000;
 const CONVERSATION_MAX_AGE_MS = 24 * 60 * 60_000;
 const EVENT_RETENTION_MS = 7 * 24 * 60 * 60_000;

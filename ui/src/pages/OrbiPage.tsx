@@ -141,7 +141,7 @@ function ConversationList({
               } ${busy ? 'glow-working-row' : ''}`}
             >
               <div className="flex items-center gap-1.5">
-                {pilot && <Badge tone="info">{pilot.kind === 'tasks' ? 'Tarefas' : 'Agentes'}</Badge>}
+                {pilot && <Badge tone="info">{pilot.kind === 'tasks' ? 'Navegador' : 'Engenheiro'}</Badge>}
                 {conversation.status === 'WAITING_INPUT' && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="Esperando você" />}
                 <span className="truncate text-sm">{conversation.title}</span>
               </div>
@@ -263,12 +263,12 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (val
 
 const PILOT_TEXT: Record<PilotKind, { title: string; off: string; placeholder: string }> = {
   tasks: {
-    title: 'Piloto de tarefas',
+    title: 'Navegador · piloto de tarefas',
     off: 'Desligado. Quando ligado, cuida do trabalho no quadro: falhas e reprovações, conflitos de merge, tarefas travadas e publicação.',
     placeholder: 'Ex.: "mudança grande de escopo espera por mim"; "no Celcode aprove arte só depois de ver as imagens".',
   },
   agents: {
-    title: 'Piloto de agentes',
+    title: 'Engenheiro de Bordo · piloto de agentes',
     off: 'Desligado. Quando ligado, cuida de quem trabalha e quanto: agentes por etapa, agentes parados, memória, plano Claude e ambientes de teste.',
     placeholder: 'Ex.: "no backend, no máximo 3 programando"; "nunca pause um workspace sem me avisar".',
   },
@@ -287,7 +287,7 @@ function PilotCard({ kind }: { kind: PilotKind }) {
   const draft = instructions ?? settings.instructions;
 
   return (
-    <Card title={text.title} aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label={`Ligar o ${text.title.toLowerCase()}`} />}>
+    <Card title={text.title} aside={<Switch checked={settings.enabled} onChange={(enabled) => update.mutate({ enabled })} label={`Ligar o ${text.title}`} />}>
       {kind === 'tasks' && (
       <div className="grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
         {(
