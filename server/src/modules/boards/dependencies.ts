@@ -35,25 +35,6 @@ export function releasableItems(items: BoardItem[], statusMap: StatusMap, fields
 }
 
 /**
- * Tasks in "todo" that are not ready anymore: a dependency on the board is not delivered (e.g. it was sent back from
- * homologation, or the task was put in "todo" too early). They go back to the blocked column, so no agent — of the
- * Studio or outside it — picks them before their dependencies; the release brings them back when it is delivered. A
- * dependency that is not on the board (another board, a docs repository) is not tracked here. Tasks someone is
- * working on are left alone.
- */
-export function reblockableItems(items: BoardItem[], statusMap: StatusMap, working: Set<string> = new Set()): BoardItem[] {
-  if (!statusMap.blocked || !statusMap.todo) return [];
-  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
-  const delivered = (dependency: BoardItem) =>
-    dependency.isClosed || dependency.columnId === statusMap.done || (Boolean(statusMap.homologation) && dependency.columnId === statusMap.homologation);
-  return items.filter((item) => {
-    if (item.isClosed || item.columnId !== statusMap.todo || working.has(item.id)) return false;
-    const onBoard = dependencyRefs(item.body).flatMap((ref) => byRef.get(ref.toLowerCase()) ?? []);
-    return onBoard.some((dependency) => !delivered(dependency));
-  });
-}
-
-/**
  * The field option that marks a task waiting for a decision between an agent and a person ("Decisão" = "Aguardando
  * decisão"), when the board has it.
  */

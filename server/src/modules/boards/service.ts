@@ -12,7 +12,7 @@ import { createLocalAdapter } from './local.js';
 import { type BoardModel, asStructure } from './model.js';
 import { getWorkspaceModel } from './model-store.js';
 import { type ModelMap, followsModel, mapByName, modelAsProviderStructure, statusMapFrom } from './model-sync.js';
-import { itemRef, reblockableItems, releasableItems } from './dependencies.js';
+import { itemRef, releasableItems } from './dependencies.js';
 import { detectStatusMap } from './roles.js';
 import { type FieldOrder, GITLAB_FIXED_COLUMNS, fieldOrderOf, structureOf } from './structure.js';
 import { BOARD_TEMPLATE, GITHUB_COLORS, TASK_BODY_TEMPLATE } from './template.js';
@@ -609,15 +609,6 @@ export async function releaseDependents(workspaceId: string) {
   for (const item of releasableItems(snapshot.items, statusMap, snapshot.fields)) {
     await moveItem(workspaceId, item.id, statusMap.todo!);
     released.push(itemRef(item) ?? item.title);
-  }
-  // The other way: a task in "todo" whose dependency stopped being delivered (sent back from homologation) waits again.
-  const working = new Set(
-    (await prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'FINALIZING'] } }, select: { taskItemId: true } })).map(
-      (agent) => agent.taskItemId!,
-    ),
-  );
-  for (const item of reblockableItems(snapshot.items, statusMap, working)) {
-    await moveItem(workspaceId, item.id, statusMap.blocked!).catch(() => undefined);
   }
   // A closed issue keeps its project status on GitHub (closing does not move the card): it would stay in "A fazer"
   // or the Backlog as if it were still to do. It goes to done.
