@@ -149,6 +149,25 @@ export function createStudioTools(call, groups) {
         },
         run('render_logs'),
       ),
+      tool(
+        'render_metrics',
+        'Memória (MB, com o limite e o pico) e CPU de um serviço de homologação numa janela recente — para medir consumo e estabilidade (ex.: "fica abaixo de 512 MB por 30 min").',
+        {
+          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          minutes: z.number().int().optional().describe('Janela até agora, em minutos (padrão 60, de 5 a 1440).'),
+        },
+        run('render_metrics'),
+      ),
+      tool(
+        'render_events',
+        'Eventos de um serviço de homologação, do mais novo ao mais antigo: deploys, instância que caiu (com o motivo, ex.: falta de memória) e reinícios.',
+        {
+          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          minutes: z.number().int().optional().describe('Só os eventos dos últimos N minutos (vazio: os mais recentes).'),
+          limit: z.number().int().optional().describe('Quantidade (padrão 30, até 100).'),
+        },
+        run('render_events'),
+      ),
     );
   }
   if (groups.includes('render')) {

@@ -19,9 +19,11 @@ export const RENDER_TOOL_NAMES = [
   'render_deploy_status',
   'render_logs',
   'render_environments',
+  'render_metrics',
+  'render_events',
 ] as const;
 /** Tools of the read-only group. */
-export const RENDER_READ_TOOLS: readonly string[] = ['render_logs', 'render_environments'];
+export const RENDER_READ_TOOLS: readonly string[] = ['render_logs', 'render_environments', 'render_metrics', 'render_events'];
 export type RenderToolName = (typeof RENDER_TOOL_NAMES)[number];
 
 type Args = Record<string, unknown>;
@@ -103,7 +105,8 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
     };
   }
 
-  const { service, client } = await homologation(agent, name === 'render_logs' ? args.project : undefined);
+  const readsAnyProject = name === 'render_logs' || name === 'render_metrics' || name === 'render_events';
+  const { service, client } = await homologation(agent, readsAnyProject ? args.project : undefined);
 
   switch (name) {
     case 'render_service': {
@@ -181,6 +184,46 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
         text: typeof args.text === 'string' && args.text.trim() ? args.text.trim() : undefined,
       });
       return { type, lines };
+    }
+
+    case 'render_metrics': {
+      // Up to 24 h back; about 60 points whatever the window, so the answer stays small.
+      const minutes = Math.min(Math.max(Number(args.minutes) || 60, 5), 24 * 60);
+      const end = new Date();
+      const start = new Date(end.getTime() - minutes * 60_000);
+      const resolutionSeconds = Math.max(60, Math.round((minutes * 60) / 60));
+      const window = { serviceId: service.serviceId, startTime: start.toISOString(), endTime: end.toISOString(), resolutionSeconds };
+      const [memory, limit, cpu] = await Promise.all([
+        client.metric({ ...window, metric: 'memory' }),
+        client.metric({ ...window, metric: 'memory-limit' }).catch(() => []),
+        client.metric({ ...window, metric: 'cpu' }).catch(() => []),
+      ]);
+      const mb = (bytes: number) => Math.round((bytes / 1024 / 1024) * 10) / 10;
+      const memoryPoints = memory.flatMap((series) => series.values);
+      const limitMb = limit.flatMap((series) => series.values).map((point) => mb(point.value)).find((value) => value > 0) ?? null;
+      const peak = memoryPoints.reduce((max, point) => Math.max(max, point.value), 0);
+      return {
+        service: service.serviceName,
+        window: { from: window.startTime, to: window.endTime, minutes },
+        memoryLimitMb: limitMb,
+        memoryPeakMb: memoryPoints.length > 0 ? mb(peak) : null,
+        memoryLastMb: memoryPoints.length > 0 ? mb(memoryPoints[memoryPoints.length - 1]!.value) : null,
+        memoryMb: memoryPoints.map((point) => ({ at: point.timestamp, mb: mb(point.value) })),
+        cpu: cpu.flatMap((series) => series.values).map((point) => ({ at: point.timestamp, cores: Math.round(point.value * 1000) / 1000 })),
+        hint: 'A memória é a do contêiner (RSS), não só o heap da JVM. Compare o pico com o limite: perto do limite, o Render mata a instância por falta de memória (veja render_events).',
+      };
+    }
+
+    case 'render_events': {
+      const limit = Math.min(Math.max(Number(args.limit) || 30, 1), 100);
+      const minutes = Number(args.minutes) || 0;
+      const startTime = minutes > 0 ? new Date(Date.now() - Math.min(minutes, 7 * 24 * 60) * 60_000).toISOString() : undefined;
+      const events = await client.events(service.serviceId, { limit, startTime });
+      return {
+        service: service.serviceName,
+        events,
+        hint: 'Instância que caiu aparece como "server_failed" (o motivo diz se foi falta de memória); reinícios e deploys também aparecem. Para "ficou X minutos sem reiniciar", confira que não há falha nem reinício na janela.',
+      };
     }
   }
 }

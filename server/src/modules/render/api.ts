@@ -164,5 +164,29 @@ export function createRenderClient(apiKey: string) {
       }));
       return lines.reverse();
     },
+    /** A metric of a service over a time window: memory (bytes), memory-limit (bytes) or cpu (cores). */
+    async metric(input: { serviceId: string; metric: 'memory' | 'memory-limit' | 'cpu'; startTime: string; endTime: string; resolutionSeconds: number }) {
+      const query = new URLSearchParams({
+        resource: input.serviceId,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        resolutionSeconds: String(input.resolutionSeconds),
+      });
+      const data = await call<Json>('GET', `/metrics/${input.metric}?${query}`);
+      return ((Array.isArray(data) ? data : []) as Json[]).map((series) => ({
+        labels: (series.labels ?? []) as { field: string; value: string }[],
+        unit: series.unit as string | undefined,
+        values: ((series.values ?? []) as Json[]).map((point) => ({ timestamp: point.timestamp as string, value: Number(point.value) })),
+      }));
+    },
+    /** Service events, newest first: deploys, instance failures (with the reason, e.g. out of memory), restarts. */
+    async events(serviceId: string, input: { limit: number; startTime?: string }) {
+      const query = new URLSearchParams({ limit: String(input.limit), ...(input.startTime && { startTime: input.startTime }) });
+      const data = await call<Json>('GET', `/services/${serviceId}/events?${query}`);
+      return ((Array.isArray(data) ? data : []) as Json[]).map((entry) => {
+        const event = entry.event ?? entry;
+        return { timestamp: event.timestamp as string, type: event.type as string, details: event.details as unknown };
+      });
+    },
   };
 }
