@@ -7,6 +7,7 @@ import {
   type OrbiPending,
   type PilotSettings,
   useDecideSuggestion,
+  useMarkSeen,
   useOrbiActivity,
   useOrbiPending,
   usePilot,
@@ -332,12 +333,33 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
   const pending = useOrbiPending();
   const decide = useDecideSuggestion();
   const resolve = useResolveFlag();
+  const seen = useMarkSeen();
   const data = pending.data;
   const name = (id: string | null) => data?.workspaces.find((workspace) => workspace.id === id)?.name ?? '';
   const total = data ? data.questions.length + data.failedRuns.length + data.capacitySuggestions.length + data.proposals.length + data.flags.length : 0;
 
   return (
-    <Card title="Pendências" aside={total > 0 ? <Badge tone="warning">{total}</Badge> : undefined}>
+    <Card
+      title="Pendências"
+      aside={
+        total > 0 ? (
+          <div className="flex items-center gap-2">
+            {data && (data.failedRuns.length > 0 || data.flags.length > 0) && (
+              <button
+                type="button"
+                disabled={seen.isPending}
+                onClick={() => seen.mutate(undefined)}
+                className="text-[11px] text-muted hover:text-accent disabled:opacity-50"
+                title="Tira da lista as falhas e os avisos de agora (perguntas, sugestões e propostas continuam até você decidir)"
+              >
+                Marcar tudo como visto
+              </button>
+            )}
+            <Badge tone="warning">{total}</Badge>
+          </div>
+        ) : undefined
+      }
+    >
       {!data ? (
         pending.error ? <ErrorText error={pending.error} /> : <p className="text-xs text-muted">Carregando...</p>
       ) : total === 0 ? (
@@ -379,6 +401,9 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
                 <Button size="sm" onClick={() => onOpenConversation(entry.agentId)}>
                   Ver
                 </Button>
+                <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: entry.id, decision: 'discard' })}>
+                  Descartar
+                </Button>
               </Row>
             )}
           </PendingGroup>
@@ -386,10 +411,13 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
             {(entry: OrbiPending['failedRuns'][number]) => (
               <Row key={entry.runId} tone="danger" title={entry.title} meta={`${entry.workflow} · ${name(entry.workspaceId)}`} detail={entry.error}>
                 {entry.executionId && <RowLink to={`/agents/${entry.executionId}`}>Abrir</RowLink>}
+                <Button size="sm" disabled={seen.isPending} onClick={() => seen.mutate([entry.runId])}>
+                  Visto
+                </Button>
               </Row>
             )}
           </PendingGroup>
-          <ErrorText error={decide.error ?? resolve.error} />
+          <ErrorText error={decide.error ?? resolve.error ?? seen.error} />
         </div>
       )}
     </Card>

@@ -61,6 +61,18 @@ export function useResolveFlag() {
   });
 }
 
+/** Failures marked as seen leave the list: some runs, or (no runIds) everything up to now, flags included. */
+export function useMarkSeen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runIds?: string[]) => api.post('/orbi/pending/seen', runIds ? { runIds } : {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.pending });
+      void queryClient.invalidateQueries({ queryKey: keys.activity });
+    },
+  });
+}
+
 export function usePilot() {
   return useQuery({ queryKey: keys.pilot, queryFn: () => api.get<PilotSettings>('/orbi/pilot'), refetchInterval: 30_000 });
 }
