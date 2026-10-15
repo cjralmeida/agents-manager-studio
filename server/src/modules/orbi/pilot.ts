@@ -141,6 +141,14 @@ async function agentEvents(userId: string, workspaces: { id: string; name: strin
       line: `- Memória do computador em ${Math.round(memory)}% (limite de lançamento ${config.launchMemoryPercent}%): veja studio_resources e studio_overview; desça agentes de alguma etapa (studio_set_workflow stepAgents) ou derrube ambientes de teste que sobraram.`,
     });
   }
+  // CPU jumps between samples: it only counts when it is high and the memory is not already the reason above.
+  const cpu = usage ? (usage.host?.cpuPercent ?? usage.totals.cpuPercent) : null;
+  if (cpu !== null && cpu >= config.launchCpuPercent && !(memory !== null && memory >= config.launchMemoryPercent)) {
+    events.push({
+      key: `cpu:${hour}`,
+      line: `- CPU do computador em ${Math.round(cpu)}% (limite de lançamento ${config.launchCpuPercent}%): com a CPU disputada, testes que rodam o jogo num navegador (teste jogando, testes de tela no HOM) ficam lentos e falham por tempo. Veja studio_overview; se continuar alta, desça um agente de uma etapa que não seja de teste (studio_set_workflow stepAgents) para dar folga aos testes.`,
+    });
+  }
   const accounts = await prisma.agentAccount.findMany({ where: { ownerId: userId }, select: { label: true, planUsage: true } });
   for (const account of accounts) {
     const session = (account.planUsage as PlanUsage | null)?.windows.find((window) => window.key === 'five_hour')?.percent ?? null;
