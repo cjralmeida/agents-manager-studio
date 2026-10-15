@@ -78,10 +78,6 @@ async function collectEvents(userId: string, workspaces: { id: string; name: str
       key: `run:${entry.runId}`,
       line: `- Execução de workflow falhou em ${names.get(entry.workspaceId)}: "${entry.title}" (${entry.workflow}; run ${entry.runId}${entry.executionId ? `; execução ${entry.executionId}` : ''}). Erro: ${(entry.error ?? 'sem mensagem').slice(0, 300)}`,
     })),
-    ...pending.capacitySuggestions.map((entry) => ({
-      key: `cap:${entry.proposalId}`,
-      line: `- Sugestão do Gestor de Capacidade em ${names.get(entry.workspaceId)}: "${entry.summary}" (proposalId ${entry.proposalId}). Decida com studio_capacity.`,
-    })),
   ];
 }
 
@@ -104,6 +100,30 @@ function pilotMessage(settings: PilotSettings, events: PilotEvent[]) {
     ...events.map((event) => event.line),
     ...(settings.instructions.trim() ? ['', `Regras do usuário para o piloto: ${settings.instructions.trim()}`] : []),
   ].join('\n');
+}
+
+/**
+ * Hands an event from another part of the Studio (e.g. the Gestor de Capacidade) to the pilot, when it is on and
+ * covers the workspace. Returns whether the pilot got it.
+ */
+export async function notifyPilot(userId: string, workspaceId: string, lines: string[]) {
+  const settings = await getPilot(userId);
+  if (!settings.enabled) return false;
+  const workspaces = await scopeOf(userId, settings);
+  if (!workspaces.some((workspace) => workspace.id === workspaceId)) return false;
+  const existing = settings.conversationId ? await prisma.agent.findUnique({ where: { id: settings.conversationId }, select: { status: true } }) : null;
+  if (existing?.status === 'WAITING_INPUT') return false;
+  const message = [
+    settings.mode === 'technical'
+      ? '[Piloto técnico] O usuário está por aqui. Resolva só a parte técnica, seguindo o MODO PILOTO (técnico):'
+      : '[Piloto] Novos eventos para você resolver em nome do usuário, seguindo o MODO PILOTO:',
+    ...lines,
+    ...(settings.instructions.trim() ? ['', `Regras do usuário para o piloto: ${settings.instructions.trim()}`] : []),
+  ].join('\n');
+  const { conversation, started } = await pilotConversation(userId, settings, workspaceId, message);
+  if (!started) await sendMessage(conversation.id, message);
+  await setUserSetting(userId, KEY, { ...(await getPilot(userId)), lastEventAt: new Date().toISOString() });
+  return true;
 }
 
 async function tickUser(userId: string, settings: PilotSettings, log: FastifyBaseLogger) {

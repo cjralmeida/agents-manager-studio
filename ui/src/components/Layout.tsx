@@ -9,7 +9,6 @@ import { useAgentNotifications, useNotificationSettings } from '../lib/notificat
 import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
 import { OrbiPanel } from './orbi/OrbiPanel';
-import { CapacityNotice } from './workflows/CapacityNotice';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -112,7 +111,6 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <CapacityNotice />
 
       {pathname === '/orbi' ? null : orbiOpen ? (
         <OrbiPanel onClose={() => setOrbiOpen(false)} onConversation={setOrbiConversation} />

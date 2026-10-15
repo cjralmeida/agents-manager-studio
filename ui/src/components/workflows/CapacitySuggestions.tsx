@@ -1,51 +1,51 @@
-import { useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router';
-import { useCapacity } from '../../api/capacity';
+import { useCapacity, useDecideCapacity } from '../../api/capacity';
 import { timeAgo } from '../../lib/time';
-import { ProposalCard } from '../orbi/ProposalCard';
+import { Button } from '../Button';
+import { ErrorText } from '../form';
+
+const LAST_LABELS = { pilot: 'O piloto do Órbi recebeu', applied: 'Aplicado', discarded: 'Descartado' } as const;
 
 /**
- * Gestor de Capacidade: suggestions to run more or fewer tasks at once in the board workflows. It only suggests;
- * nothing changes until the user applies a card.
+ * Gestor de Capacidade: the agents of each step follow the queues, the computer and the Claude plan. Órbi's pilot
+ * adjusts them; with the pilot off, the change waits here (and on the Órbi page) for the user.
  */
 export function CapacitySuggestions({ workspaceId }: { workspaceId: string }) {
   const capacity = useCapacity(workspaceId);
+  const decide = useDecideCapacity();
   const data = capacity.data;
-  const location = useLocation();
-  const section = useRef<HTMLElement>(null);
-  const shown = Boolean(data && (data.suggestions.length > 0 || data.lastAnalysisAt));
-  // Opened from the notice: bring the cards into view (instant; a smooth scroll froze the canvas once).
-  useEffect(() => {
-    if (shown && location.hash === '#gestor-capacidade') section.current?.scrollIntoView({ block: 'start' });
-  }, [shown, location.hash]);
-  if (!data || !shown) return null;
+  if (!data || (data.suggestions.length === 0 && !data.last)) return null;
 
   return (
-    <section id="gestor-capacidade" ref={section} className="scroll-mt-4 space-y-2">
+    <section id="gestor-capacidade" className="scroll-mt-4 space-y-2">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="text-sm font-medium">Gestor de Capacidade</h3>
         <p className="text-xs text-muted">
-          Acompanha o quadro e o plano Claude e sugere quantos agentes trabalham na primeira etapa de cada workflow (os que pegam tarefas novas).
-          {data.lastAnalysisAt && <> Última análise {timeAgo(data.lastAnalysisAt)}.</>}
-          {data.lastConversationId && (
-            <>
-              {' '}
-              <Link to={`/agents/${data.lastConversationId}`} className="text-accent hover:underline">
-                Ver o raciocínio
-              </Link>
-            </>
-          )}
+          Ajusta os agentes de cada etapa pelas filas, pelo computador e pelo plano Claude. Com o piloto do Órbi ligado, ele mesmo aplica; desligado, a
+          mudança espera você aqui.
         </p>
       </div>
-      {data.suggestions.length > 0 ? (
-        <div className="grid gap-2 md:grid-cols-2">
-          {data.suggestions.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} workspaceId={workspaceId} />
-          ))}
+      {data.suggestions.map((suggestion) => (
+        <div key={suggestion.id} className="rounded-lg border border-accent/50 bg-panel p-3">
+          <p className="text-xs whitespace-pre-line">{suggestion.summary}</p>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted">{timeAgo(suggestion.createdAt)}</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="primary" disabled={decide.isPending} onClick={() => decide.mutate({ id: suggestion.id, decision: 'apply' })}>
+                Aplicar
+              </Button>
+              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: suggestion.id, decision: 'discard' })}>
+                Descartar
+              </Button>
+            </div>
+          </div>
         </div>
-      ) : (
-        <p className="text-xs text-muted">Nenhuma sugestão pendente.</p>
+      ))}
+      {data.last && data.suggestions.length === 0 && (
+        <p className="text-xs text-muted">
+          Último ajuste ({timeAgo(data.last.at)}) — {LAST_LABELS[data.last.status]}: <span className="whitespace-pre-line">{data.last.summary}</span>
+        </p>
       )}
+      <ErrorText error={decide.error} />
     </section>
   );
 }

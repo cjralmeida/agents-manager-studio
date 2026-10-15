@@ -2,7 +2,7 @@ import { prisma } from '../../db.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { stopAgentContainer } from '../agents/runtime.js';
 import { agentMedia, answerQuestion, getAgent, listAgentEvents, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
-import { decideProposal } from '../assistant/proposals.js';
+import { decideCapacitySuggestion } from '../capacity/service.js';
 import { listStuckTasks } from '../board-watch/service.js';
 import { getResourceUsage } from '../system/service.js';
 import { listTestEnvs, testEnvCapacity } from '../test-envs/service.js';
@@ -89,9 +89,9 @@ export async function pendingItems(ownerId: string, workspaceIds: string[]) {
       select: { id: true, title: true, error: true, finishedAt: true, workspaceId: true, taskItemId: true, workflow: { select: { name: true } } },
       orderBy: { finishedAt: 'desc' },
     }),
-    prisma.assistantProposal.findMany({
-      where: { status: 'PENDING', workspaceId: { in: workspaceIds }, agent: { capacityReviews: { some: {} } } },
-      select: { id: true, summary: true, workspaceId: true, createdAt: true, payload: true },
+    prisma.capacityReview.findMany({
+      where: { status: 'pending', workspaceId: { in: workspaceIds } },
+      select: { id: true, summary: true, workspaceId: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
     }),
     listOpenFlags(ownerId),
@@ -130,11 +130,11 @@ export async function pendingItems(ownerId: string, workspaceIds: string[]) {
         finishedAt: run.finishedAt,
       };
     }),
-    capacitySuggestions: capacity.map((proposal) => ({
-      proposalId: proposal.id,
-      summary: proposal.summary,
-      workspaceId: proposal.workspaceId,
-      createdAt: proposal.createdAt,
+    capacitySuggestions: capacity.map((review) => ({
+      proposalId: review.id,
+      summary: review.summary ?? '',
+      workspaceId: review.workspaceId,
+      createdAt: review.createdAt,
     })),
     flags: flags.filter((flag) => !flag.workspaceId || workspaceIds.includes(flag.workspaceId)),
   };
@@ -364,23 +364,10 @@ export async function resumeWorkspace(caller: Caller, args: Args) {
   return { ok: true, workspace: workspace.name, workflowsSwitchedOn: resumeWorkflows ? paused.workflowIds.length : 0, agentsResumed: agents.length };
 }
 
+/** A pending suggestion of the Gestor de Capacidade (when the pilot was off), applied or discarded. */
 async function decideCapacity(caller: Caller, args: Args) {
-  const proposal = await prisma.assistantProposal.findUnique({
-    where: { id: text(args.proposalId, 60) },
-    include: { agent: { select: { capacityReviews: { select: { id: true }, take: 1 }, workspace: { select: { ownerId: true } } } } },
-  });
-  if (!proposal || proposal.agent.workspace.ownerId !== caller.ownerId || proposal.agent.capacityReviews.length === 0) {
-    throw notFound('Sugestão do Gestor de Capacidade não encontrada.');
-  }
   const decision = args.decision === 'discard' ? 'discard' : 'apply';
-  const decided = await decideProposal(proposal.id, decision);
-  await logActivity({
-    ...activityBase(caller, proposal.workspaceId),
-    kind: 'capacity',
-    summary: `${decision === 'apply' ? 'Aplicou' : 'Descartou'}: ${proposal.summary}`,
-    details: { reason: text(args.reason, 2000) || null, status: decided.status, error: decided.error },
-  });
-  return { status: decided.status, error: decided.error };
+  return decideCapacitySuggestion(caller.ownerId, text(args.proposalId, 60), decision, { conversationId: caller.conversationId, reason: text(args.reason, 2000) || undefined });
 }
 
 /** A real merge conflict goes back to the agent that built the work: the base is merged into its copy and it resolves. */

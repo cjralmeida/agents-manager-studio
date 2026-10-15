@@ -14,6 +14,7 @@ import {
   useResolveFlag,
   useUpdatePilot,
 } from '../api/orbi';
+import { useDecideCapacity } from '../api/capacity';
 import { useWorkspaces } from '../api/workspaces';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -371,6 +372,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) => void }) {
   const pending = useOrbiPending();
   const decide = useDecideSuggestion();
+  const capacity = useDecideCapacity();
   const resolve = useResolveFlag();
   const seen = useMarkSeen();
   const data = pending.data;
@@ -424,11 +426,11 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
           </PendingGroup>
           <PendingGroup title="Sugestões de capacidade" items={data.capacitySuggestions}>
             {(entry: OrbiPending['capacitySuggestions'][number]) => (
-              <Row key={entry.proposalId} title={entry.summary} meta={name(entry.workspaceId)}>
-                <Button size="sm" variant="primary" disabled={decide.isPending} onClick={() => decide.mutate({ id: entry.proposalId, decision: 'apply' })}>
+              <Row key={entry.proposalId} title={entry.summary.split('\n').join(' · ')} meta={name(entry.workspaceId)}>
+                <Button size="sm" variant="primary" disabled={capacity.isPending} onClick={() => capacity.mutate({ id: entry.proposalId, decision: 'apply' })}>
                   Aplicar
                 </Button>
-                <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: entry.proposalId, decision: 'discard' })}>
+                <Button size="sm" disabled={capacity.isPending} onClick={() => capacity.mutate({ id: entry.proposalId, decision: 'discard' })}>
                   Descartar
                 </Button>
               </Row>
@@ -456,7 +458,7 @@ function PendingCard({ onOpenConversation }: { onOpenConversation: (id: string) 
               </Row>
             )}
           </PendingGroup>
-          <ErrorText error={decide.error ?? resolve.error ?? seen.error} />
+          <ErrorText error={decide.error ?? capacity.error ?? resolve.error ?? seen.error} />
         </div>
       )}
     </Card>

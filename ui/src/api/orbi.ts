@@ -85,7 +85,7 @@ export function useUpdatePilot() {
   });
 }
 
-/** A capacity suggestion decided from the Órbi page (the same proposal the Workflows tab shows). */
+/** Discards an Órbi proposal from the Órbi page (applying is done in its conversation, where it is explained). */
 export function useDecideSuggestion() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,26 +1,30 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
-import type { Prisma } from '../../generated/prisma/client.js';
-import { git } from '../../lib/git.js';
-import { launchAgent } from '../agents/service.js';
-import { workdirPath } from '../agents/workdir.js';
+import type { Prisma, Workflow } from '../../generated/prisma/client.js';
+import { HttpError, notFound } from '../../lib/errors.js';
 import type { BoardItem } from '../boards/types.js';
+import { logActivity } from '../orbi/activity.js';
+import { notifyPilot } from '../orbi/pilot.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
-import { type BoardTaskState, boardTaskQueue, boardTaskState, parseTrigger, workspaceBlocker } from '../workflows/engine.js';
+import type { WorkflowStep } from '../workflows/definition.js';
+import { type BoardTaskState, boardTaskQueue, boardTaskState, parseSteps, parseTrigger } from '../workflows/engine.js';
+import { updateWorkflow } from '../workflows/service.js';
 import { getResourceUsage } from '../system/service.js';
-import { type CapacitySignal, type MachineState, type PlanState, type WorkflowLoad, capacitySignals, signalsSignature } from './signals.js';
+import { type CapacitySignal, type MachineState, type PlanState, type StepLoad, capacitySignals, signalsSignature } from './signals.js';
 
-/** How often the workspaces are looked at (plain rules, no AI). */
+/**
+ * Gestor de Capacidade: every few minutes, plain rules look at each step of each workflow (agents busy, queue, ready
+ * tasks), the computer and the Claude plan. When the signals change, Órbi's pilot gets them and adjusts the agents of
+ * each step; with the pilot off, they wait as a suggestion the user applies on the Órbi page or the Workflows tab.
+ */
+
 const TICK_MS = 3 * 60_000;
-/** Least time between two analyses by the agent in a workspace. */
+/** Least time between two changes raised for the same workspace, so the effect of one can be seen. */
 const COOLDOWN_MS = 30 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const MAX_BODY = 1_500;
-const MAX_FILES = 40;
 
-const ACTIVE_AGENT = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
 const ref = (item: BoardItem) => (item.repository && item.number ? `${item.repository}#${item.number}` : item.id);
 
 async function planState(workspaceId: string): Promise<PlanState> {
@@ -48,187 +52,119 @@ async function machineState(): Promise<MachineState | null> {
   return { ...limits, memoryPercent: usage.totals.memoryPercent, cpuPercent: usage.totals.cpuPercent, freeDiskGb: null, source: 'docker' };
 }
 
-/** The board workflows of the workspace with their queue: busy slots, tasks ready, tasks waiting. */
-async function workflowLoads(workspaceId: string, state: BoardTaskState) {
-  const workflows = await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, orderBy: { createdAt: 'asc' } });
+/**
+ * A step with one resource stays at one agent: a deploy, the agent that publishes to homologation (one HOM), and the
+ * tests in homologation (a fragile shared environment).
+ */
+async function singleResourceSteps(workflow: Workflow, steps: WorkflowStep[]) {
+  const trigger = parseTrigger(workflow);
+  if (trigger.type === 'feature_in_homologation' || trigger.type === 'frontend_in_homologation') return new Set(steps.map((step) => step.id));
+  const profileIds = steps.flatMap((step) => (step.kind === 'agent' ? [step.profileId] : []));
+  const publishers = await prisma.agentProfile.findMany({ where: { id: { in: profileIds }, tools: { has: 'render' } }, select: { id: true } });
+  return new Set(steps.filter((step) => step.kind === 'deploy' || publishers.some((profile) => profile.id === step.profileId)).map((step) => step.id));
+}
+
+/** Every step of the workspace's enabled workflows that take tasks by themselves, with its load. */
+async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<StepLoad[]> {
+  const workflows = (await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, orderBy: { createdAt: 'asc' } })).filter(
+    (workflow) => parseTrigger(workflow).type !== 'manual',
+  );
   const since = new Date(Date.now() - DAY_MS);
-  const loads: (WorkflowLoad & { readyItems: BoardItem[] })[] = [];
+  const loads: StepLoad[] = [];
   for (const workflow of workflows) {
+    const steps = parseSteps(workflow);
     const trigger = parseTrigger(workflow);
-    if (trigger.type !== 'board_task') continue;
-    const queue = boardTaskQueue(trigger, state);
+    const ready = trigger.type === 'board_task' ? boardTaskQueue(trigger, state).ready : [];
     const conflict = { contains: 'conflit', mode: 'insensitive' } as const;
-    const [running, recentConflicts] = await Promise.all([
-      prisma.workflowRun.count({ where: { workflowId: workflow.id, status: 'RUNNING' } }),
+    const [runs, recentConflicts, single, lastStarts] = await Promise.all([
+      prisma.workflowRun.findMany({ where: { workflowId: workflow.id, status: 'RUNNING' }, select: { steps: { select: { stepId: true, status: true, lane: true, startedAt: true } } } }),
       prisma.workflowRun.count({
         where: { workflowId: workflow.id, status: 'FAILED', finishedAt: { gte: since }, OR: [{ error: conflict }, { steps: { some: { error: conflict } } }] },
       }),
+      singleResourceSteps(workflow, steps),
+      prisma.workflowStepRun.groupBy({ by: ['stepId'], where: { run: { workflowId: workflow.id } }, _max: { startedAt: true } }),
     ]);
-    loads.push({
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      max: workflow.maxConcurrentRuns,
-      running,
-      ready: queue.ready.map((item) => ({ ref: ref(item), title: item.title })),
-      readyItems: queue.ready,
-      waiting: queue.waiting.length,
-      recentConflicts,
+    steps.forEach((step, index) => {
+      let active = 0;
+      let queued = 0;
+      for (const run of runs) {
+        const latest = (stepId: string) =>
+          run.steps.filter((entry) => entry.stepId === stepId && entry.lane === 'main').sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
+        const current = latest(step.id);
+        if (current?.status === 'RUNNING') active++;
+        else if (index > 0 && (!current || current.status === 'RETRIED') && latest(steps[index - 1]!.id)?.status === 'SUCCEEDED') queued++;
+      }
+      const lastStart = lastStarts.find((entry) => entry.stepId === step.id)?._max.startedAt;
+      loads.push({
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        stepId: step.id,
+        stepName: step.name,
+        index,
+        agents: step.agents,
+        active,
+        queued,
+        ready: index === 0 ? ready.map((item) => ({ ref: ref(item), title: item.title })) : [],
+        single: single.has(step.id),
+        idleMinutes: lastStart ? Math.round((Date.now() - lastStart.getTime()) / 60_000) : null,
+        recentConflicts: index === 0 ? recentConflicts : 0,
+      });
     });
   }
   return loads;
 }
 
-/** Files an agent changed so far (read only: nothing is staged in its copy). */
-async function changedFiles(workdir: string, baseCommit: string) {
-  const dir = workdirPath(workdir);
-  const [changed, created] = await Promise.all([
-    git(dir, ['diff', '--name-only', baseCommit]).catch(() => ''),
-    git(dir, ['ls-files', '--others', '--exclude-standard']).catch(() => ''),
-  ]);
-  return [...new Set(`${changed}\n${created}`.split('\n').filter(Boolean))];
+const signalLine = (signal: CapacitySignal) =>
+  `${signal.workflowName} · ${signal.stepName}: ${signal.from} → ${signal.to} agente(s) (${signal.reason})`;
+
+function pilotLines(signals: CapacitySignal[], loads: StepLoad[], plan: PlanState, machine: MachineState | null) {
+  const percent = (value: number | null) => (value === null ? '?' : `${Math.round(value)}%`);
+  const workflows = [...new Set(signals.map((signal) => signal.workflowId))];
+  return [
+    'Gestor de Capacidade — as regras pedem ajuste de agentes por etapa. Decida cada um e aplique com studio_set_workflow (stepAgents {"<etapa>": N}); não ajuste o que não fizer sentido e diga por quê.',
+    ...signals.map((signal) => `- ${signalLine(signal)} [workflowId ${signal.workflowId}]`),
+    `Plano: janela de 5 h ${percent(plan.sessionPercent)}, semanal ${percent(plan.weekPercent)} (pausa em ${plan.limitPercent}%). Computador: ${
+      machine ? `memória ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%), CPU ${Math.round(machine.cpuPercent)}%` : 'desconhecido'
+    }.`,
+    ...workflows.map(
+      (id) =>
+        `Etapas de ${loads.find((load) => load.workflowId === id)?.workflowName}: ${loads
+          .filter((load) => load.workflowId === id)
+          .map((load) => `${load.stepName} ${load.active}/${load.agents}${load.queued ? ` (+${load.queued} na fila)` : ''}${load.single ? ' [recurso único: fica em 1]' : ''}`)
+          .join(' → ')}${loads.find((load) => load.workflowId === id && load.index === 0)?.ready.length ? `; ${loads.find((load) => load.workflowId === id && load.index === 0)!.ready.length} tarefa(s) pronta(s)` : ''}.`,
+    ),
+    'Mais agentes só ajudam se as tarefas não mexem nos mesmos arquivos (conflito de merge). Subir só com o plano e o computador com folga; descer é seguro.',
+  ];
 }
 
-const hasBase = (agent: { baseCommit: string | null }) => Boolean(agent.baseCommit && agent.baseCommit !== 'none');
-
-/**
- * What the workflow is doing now: each running task and the files it touched. A step that continues the previous
- * agent's branch (e.g. the tester) starts from that agent's work, so the task's changes count from the run's first agent.
- */
-async function runningWork(workflowId: string) {
-  const runs = await prisma.workflowRun.findMany({
-    where: { workflowId, status: 'RUNNING' },
-    select: { title: true, agents: { orderBy: { createdAt: 'asc' }, select: { status: true, workdir: true, baseCommit: true } } },
-  });
-  return Promise.all(
-    runs.map(async (run) => {
-      const active = run.agents.filter((agent) => hasBase(agent) && (ACTIVE_AGENT as readonly string[]).includes(agent.status)).at(-1);
-      const first = run.agents.find(hasBase);
-      let files: string[] = [];
-      if (active && first) {
-        const dir = workdirPath(active.workdir);
-        const knowsFirst = await git(dir, ['cat-file', '-e', `${first.baseCommit}^{commit}`]).then(() => true, () => false);
-        files = await changedFiles(active.workdir, knowsFirst ? first.baseCommit! : active.baseCommit!);
-      }
-      return { task: run.title, files: files.slice(0, MAX_FILES), moreFiles: Math.max(0, files.length - MAX_FILES) };
-    }),
-  );
-}
-
-/** Average cost of the last finished runs of the workflow (API-equivalent USD), to weigh more runs at once. */
-async function averageRunCost(workflowId: string) {
-  const runs = await prisma.workflowRun.findMany({
-    where: { workflowId, status: 'COMPLETED' },
-    orderBy: { startedAt: 'desc' },
-    take: 5,
-    select: { id: true },
-  });
-  if (runs.length === 0) return null;
-  const sum = await prisma.agentUsage.aggregate({ where: { agent: { workflowRunId: { in: runs.map((run) => run.id) } } }, _sum: { costUsd: true } });
-  return Math.round(((sum._sum.costUsd ?? 0) / runs.length) * 100) / 100;
-}
-
-function machineText(machine: MachineState | null) {
-  if (!machine) return 'desconhecido';
-  const source = machine.source === 'host' ? 'Windows, medido pelo studio.ps1' : 'só a VM do Docker: o helper do Windows não está rodando';
-  const disk = machine.freeDiskGb === null ? 'desconhecido' : `${machine.freeDiskGb.toFixed(1)} GB livres`;
-  return (
-    `(${source}) memória: ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%) · ` +
-    `CPU: ${Math.round(machine.cpuPercent)}% (limite ${machine.cpuLimit}%) · disco das cópias: ${disk} (mínimo ${machine.minFreeDiskGb} GB)`
-  );
-}
-
-function prompt(signals: CapacitySignal[], plan: PlanState, details: unknown[], machine: MachineState | null) {
-  const percent = (value: number | null) => (value === null ? 'desconhecido' : `${Math.round(value)}%`);
-  return `Você está agindo como o Gestor de Capacidade do Studio. Esta conversa foi aberta pelo Studio (não pelo usuário) porque as regras de capacidade mudaram de sinal.
-
-SUA TAREFA
-Cada workflow é uma linha de produção: cada etapa tem um número de agentes trabalhando ao mesmo tempo, e as tarefas esperam na fila de uma etapa quando os agentes dela estão ocupados. Para cada workflow abaixo, decida se vale mudar os agentes da PRIMEIRA etapa (quem pega tarefas novas do quadro; o campo maxConcurrentRuns, de 1 a 5) e, se valer, proponha com studio_propose:
-  kind "update_workflow", payload {"id": "<workflowId>", "maxConcurrentRuns": N}, summary "<nome do workflow>: X → N agentes em <nome da primeira etapa>".
-As outras etapas (revisão, publicação, testes) o usuário ajusta no editor do workflow; se a fila de uma delas estiver crescendo, diga isso na explicação.
-Depois explique cada decisão em 1 a 3 frases, em português, para o usuário ler. Não pergunte nada (sem AskUserQuestion): se não valer a pena, diga o motivo em uma frase e não proponha. No máximo uma proposta por workflow. Você só sugere; o usuário aplica no cartão.
-
-COMO DECIDIR
-- Subir só ajuda se as tarefas puderem andar em paralelo sem mexer nos mesmos arquivos: cada agente trabalha na própria branch, sem sincronizar com a principal antes do PR, então duas tarefas no mesmo código geram conflito de merge e a execução falha. Compare as tarefas liberadas entre si e com os arquivos que os agentes em execução já tocaram. Se precisar, leia a tarefa inteira com board_get_task.
-- Uma tarefa que depende de outra em andamento não fica liberada; não conte com ela.
-- Cada execução a mais consome o plano Claude no mesmo ritmo. Use o consumo da janela de 5 h, a semanal e o custo médio por execução para ver se o plano aguenta até a janela reiniciar; os workflows pausam sozinhos em ${plan.limitPercent}%.
-- Cada execução a mais também pesa no computador (CPU, memória e o disco das cópias, que é um HD mecânico): com o computador perto dos limites, não suba; com memória ou disco no limite, desça. A CPU oscila muito entre amostras: sozinha, ela só impede subir.
-- Descer é seguro: proponha quando o plano ou o computador estiverem perto do limite ou quando houve conflito de merge.
-- O número sugerido pelas regras é só um ponto de partida (ex.: subir para 2 em vez de 3 se só duas tarefas são independentes).
-- A publicação em homologação é uma só (um HOM): mais agentes na primeira etapa só adiantam se a fila da publicação não estiver cheia.
-
-PLANO CLAUDE
-janela de 5 h: ${percent(plan.sessionPercent)} · semanal: ${percent(plan.weekPercent)} · pausa dos workflows em ${plan.limitPercent}%
-
-COMPUTADOR
-${machineText(machine)}
-
-SINAIS E DADOS
-${JSON.stringify(details, null, 2)}`;
-}
-
-/** Looks at one workspace; starts an analysis by the agent only when the signals changed. */
+/** Looks at one workspace; raises its signals only when they changed (and not twice within the cooldown). */
 async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
-  const hasBoardWorkflow = (await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, select: { trigger: true } })).some(
-    (workflow) => parseTrigger(workflow).type === 'board_task',
-  );
-  if (!hasBoardWorkflow) return;
-
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
   const [state, plan, machine] = await Promise.all([boardTaskState(workspaceId), planState(workspaceId), machineState()]);
-  const loads = await workflowLoads(workspaceId, state);
+  const loads = await stepLoads(workspaceId, state);
+  if (loads.length === 0) return;
   const signals = capacitySignals(loads, plan, machine);
   const signature = signalsSignature(signals, loads);
 
   const last = await prisma.capacityReview.findFirst({ where: { workspaceId }, orderBy: { createdAt: 'desc' } });
   if ((last?.signature ?? '') === signature) return;
 
-  // Suggestions about a situation that changed are dropped.
-  const discardStale = () =>
-    prisma.assistantProposal.updateMany({
-      where: { workspaceId, status: 'PENDING', agent: { capacityReviews: { some: {} } } },
-      data: { status: 'DISCARDED', decidedAt: new Date(), error: 'A situação mudou; o Gestor de Capacidade analisa de novo quando precisar.' },
-    });
+  // A suggestion about a situation that changed is dropped.
+  await prisma.capacityReview.updateMany({ where: { workspaceId, status: 'pending' }, data: { status: 'discarded' } });
 
   if (signals.length === 0) {
-    await discardStale();
-    await prisma.capacityReview.create({ data: { workspaceId, signature, signals: [] } });
+    await prisma.capacityReview.create({ data: { workspaceId, signature, signals: [], status: 'none' } });
     return;
   }
+  const lastRaised = await prisma.capacityReview.findFirst({ where: { workspaceId, status: { in: ['pilot', 'pending', 'applied'] } }, orderBy: { createdAt: 'desc' } });
+  if (lastRaised && Date.now() - lastRaised.createdAt.getTime() < COOLDOWN_MS) return;
 
-  const lastAnalysis = await prisma.capacityReview.findFirst({ where: { workspaceId, agentId: { not: null } }, orderBy: { createdAt: 'desc' } });
-  if (lastAnalysis && Date.now() - lastAnalysis.createdAt.getTime() < COOLDOWN_MS) return;
-  // The analysis is an agent too: not while the plan or Docker are at the limit.
-  if (await workspaceBlocker(workspaceId)) return;
-
-  const details = await Promise.all(
-    signals.map(async (signal) => {
-      const load = loads.find((entry) => entry.workflowId === signal.workflowId)!;
-      return {
-        workflowId: signal.workflowId,
-        workflow: signal.workflowName,
-        regra: `${signal.direction === 'up' ? 'subir' : 'descer'} de ${signal.from} para ${signal.to}: ${signal.reason}`,
-        execucoesAoMesmoTempo: load.max,
-        emExecucao: await runningWork(signal.workflowId),
-        tarefasLiberadas: load.readyItems.map((item) => ({ ref: ref(item), titulo: item.title, descricao: item.body.slice(0, MAX_BODY) })),
-        tarefasEsperandoDependencias: load.waiting,
-        conflitosDeMerge24h: load.recentConflicts,
-        custoMedioPorExecucaoUsd: await averageRunCost(signal.workflowId),
-      };
-    }),
-  );
-
-  await discardStale();
-  const names = [...new Set(signals.map((signal) => `${signal.workflowName} ${signal.direction === 'up' ? '↑' : '↓'}`))].join(', ');
-  const agent = await launchAgent({
-    assistantWorkspaceId: workspaceId,
-    prompt: prompt(signals, plan, details, machine),
-    title: `Gestor de Capacidade: ${names}`.slice(0, 120),
-    model: 'sonnet',
-    confirmHighUsage: true,
-  });
+  const summary = signals.map(signalLine).join('\n');
+  const delivered = await notifyPilot(workspace.ownerId, workspaceId, pilotLines(signals, loads, plan, machine)).catch(() => false);
   await prisma.capacityReview.create({
-    data: { workspaceId, signature, signals: signals as unknown as Prisma.InputJsonValue, agentId: agent.id },
+    data: { workspaceId, signature, signals: signals as unknown as Prisma.InputJsonValue, summary, status: delivered ? 'pilot' : 'pending' },
   });
-  log.info({ workspaceId, signals: names }, 'Capacity review started');
+  log.info({ workspaceId, signals: summary, delivered }, 'Capacity signals raised');
 }
 
 let reviewing = false;
@@ -246,7 +182,6 @@ async function capacityTick(log: FastifyBaseLogger) {
   }
 }
 
-/** The Gestor de Capacidade: every few minutes, for every workspace with board workflows. */
 export function startCapacityMonitor(log: FastifyBaseLogger) {
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
@@ -261,29 +196,58 @@ export function startCapacityMonitor(log: FastifyBaseLogger) {
   };
 }
 
-/** For the Workflows tab: the pending suggestions and when the last analysis happened. */
+/** For the Workflows tab: the pending suggestion and the last change raised (handed to the pilot or applied). */
 export async function capacitySummary(workspaceId: string) {
-  const [suggestions, lastAnalysis] = await Promise.all([
-    prisma.assistantProposal.findMany({
-      where: { workspaceId, status: 'PENDING', agent: { capacityReviews: { some: {} } } },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.capacityReview.findFirst({ where: { workspaceId, agentId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, agentId: true } }),
+  const [pending, lastRaised] = await Promise.all([
+    prisma.capacityReview.findMany({ where: { workspaceId, status: 'pending' }, orderBy: { createdAt: 'desc' }, take: 1 }),
+    prisma.capacityReview.findFirst({ where: { workspaceId, status: { in: ['pilot', 'applied', 'discarded'] } }, orderBy: { createdAt: 'desc' } }),
   ]);
-  return { suggestions, lastAnalysisAt: lastAnalysis?.createdAt ?? null, lastConversationId: lastAnalysis?.agentId ?? null };
+  return {
+    suggestions: pending.map((review) => ({ id: review.id, summary: review.summary ?? '', createdAt: review.createdAt })),
+    last: lastRaised ? { at: lastRaised.createdAt, status: lastRaised.status, summary: lastRaised.summary ?? '' } : null,
+  };
 }
 
-/** Pending suggestions of every workspace the user sees, for the notice shown on every page. */
+/** Pending suggestions of every workspace the user sees (Órbi page, menu dots). */
 export async function pendingCapacitySuggestions(ownerId: string) {
   const workspaces = await prisma.workspace.findMany({
     where: { ownerId, isIgnored: false, ...(await visibleWorkspaceFilter(ownerId)) },
     select: { id: true, name: true },
   });
   const names = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
-  const proposals = await prisma.assistantProposal.findMany({
-    where: { status: 'PENDING', workspaceId: { in: [...names.keys()] }, agent: { capacityReviews: { some: {} } } },
+  const reviews = await prisma.capacityReview.findMany({
+    where: { status: 'pending', workspaceId: { in: [...names.keys()] } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, summary: true, createdAt: true, workspaceId: true },
   });
-  return proposals.map((proposal) => ({ ...proposal, workspaceName: names.get(proposal.workspaceId)! }));
+  return reviews.map((review) => ({ ...review, summary: review.summary ?? '', workspaceName: names.get(review.workspaceId)! }));
+}
+
+/** Applies a suggestion (each step gets its new number of agents) or discards it. */
+export async function decideCapacitySuggestion(ownerId: string, id: string, decision: 'apply' | 'discard', via: { conversationId?: string; reason?: string } = {}) {
+  const review = await prisma.capacityReview.findUnique({ where: { id }, include: { workspace: { select: { ownerId: true } } } });
+  if (!review || review.workspace.ownerId !== ownerId) throw notFound('Sugestão de capacidade não encontrada.');
+  if (review.status !== 'pending') throw new HttpError(409, 'Esta sugestão já foi decidida ou mudou.');
+  if (decision === 'apply') {
+    const signals = review.signals as unknown as CapacitySignal[];
+    for (const workflowId of new Set(signals.map((signal) => signal.workflowId))) {
+      const workflow = await prisma.workflow.findUnique({ where: { id: workflowId } });
+      if (!workflow) continue;
+      const steps = parseSteps(workflow).map((step) => {
+        const signal = signals.find((entry) => entry.workflowId === workflowId && entry.stepId === step.id);
+        return signal ? { ...step, agents: signal.to } : step;
+      });
+      await updateWorkflow(workflowId, { steps });
+    }
+  }
+  await prisma.capacityReview.update({ where: { id }, data: { status: decision === 'apply' ? 'applied' : 'discarded' } });
+  await logActivity({
+    ownerId,
+    workspaceId: review.workspaceId,
+    conversationId: via.conversationId ?? null,
+    kind: 'capacity',
+    summary: `${decision === 'apply' ? 'Aplicou' : 'Descartou'}: ${review.summary ?? ''}`.slice(0, 500),
+    details: { reason: via.reason ?? null },
+  });
+  return { id, status: decision === 'apply' ? 'applied' : 'discarded' };
 }

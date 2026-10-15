@@ -1,19 +1,29 @@
 /**
- * Gestor de Capacidade: plain rules (no AI) that notice when a board workflow could run more or fewer tasks at the
- * same time. Only when the signals change an agent studies them (task overlap, plan) and suggests the change.
+ * Gestor de Capacidade: plain rules (no AI) that notice when a step of a workflow could use one agent more or fewer.
+ * Workflows are production lines: each step has its own agents, and tasks wait in a step's queue while they are busy.
+ * The pilot (Órbi) gets the signals and adjusts; without it, they become suggestions the user applies.
  */
 
-export interface WorkflowLoad {
+export interface StepLoad {
   workflowId: string;
   workflowName: string;
-  /** Runs allowed at the same time (1 to 5). */
-  max: number;
-  running: number;
-  /** Tasks the workflow could start now (dependencies delivered). */
+  stepId: string;
+  stepName: string;
+  /** Position of the step in its workflow (0 takes new tasks from the board). */
+  index: number;
+  /** Agents set for the step (1 to 5). */
+  agents: number;
+  /** Agents working it now. */
+  active: number;
+  /** Tasks waiting for a free agent at this step. */
+  queued: number;
+  /** First step only: tasks the workflow could start now (dependencies delivered). */
   ready: { ref: string; title: string }[];
-  /** Tasks in its column still waiting for their "Depende de:" tasks. */
-  waiting: number;
-  /** Runs of the last day that failed on a merge conflict. */
+  /** A step with a single resource (publishing to homologation, testing in homologation): it stays at one agent. */
+  single: boolean;
+  /** Minutes since an agent last started at this step, or null when it never did. */
+  idleMinutes: number | null;
+  /** First step only: runs of the last day that failed on a merge conflict. */
   recentConflicts: number;
 }
 
@@ -42,21 +52,26 @@ export interface MachineState {
 export interface CapacitySignal {
   workflowId: string;
   workflowName: string;
+  stepId: string;
+  stepName: string;
   direction: 'up' | 'down';
-  /** Value the rule would move to; the agent may suggest otherwise or nothing. */
   from: number;
   to: number;
   reason: string;
 }
 
-/** Below this distance from the pause limit, more runs at once are not suggested. */
+/** Below this distance from the pause limit, more agents are not suggested. */
 const UP_HEADROOM = 20;
-/** At this distance from the pause limit, fewer runs at once are suggested. */
+/** At this distance from the pause limit, fewer agents are suggested. */
 const DOWN_MARGIN = 10;
 const WEEK_HIGH = 90;
-const MAX_RUNS = 5;
+const MAX_AGENTS = 5;
+/** Tasks waiting at a later step that ask for one more agent there. */
+const QUEUE_FOR_MORE = 2;
+/** A step with more than one agent and nothing to do for this long gives one back. */
+const IDLE_MINUTES = 60;
 
-/** Below this distance (points) from the memory or CPU limit, more runs at once are not suggested. */
+/** Below this distance (points) from the memory or CPU limit, more agents are not suggested. */
 const MACHINE_HEADROOM = 10;
 
 /** Why the computer cannot take more agents: at its limits (suggest fewer) or just without room (suggest no more). */
@@ -64,7 +79,7 @@ export function machinePressure(machine: MachineState | null) {
   if (!machine) return { overloaded: null, busy: false };
   const where = machine.source === 'host' ? 'do computador' : 'do Docker';
   const diskShort = machine.freeDiskGb !== null && machine.freeDiskGb < machine.minFreeDiskGb;
-  // CPU spikes a lot between samples: it only holds back new runs; memory and disk also ask for fewer.
+  // CPU spikes a lot between samples: it only holds back more agents; memory and disk also ask for fewer.
   const overloaded =
     machine.memoryPercent >= machine.memoryLimit
       ? `memória ${where} em ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%)`
@@ -78,41 +93,62 @@ export function machinePressure(machine: MachineState | null) {
   return { overloaded, busy };
 }
 
-export function capacitySignals(loads: WorkflowLoad[], plan: PlanState, machine: MachineState | null = null): CapacitySignal[] {
+/**
+ * At most one signal per step. Fewer agents when merges conflict (first step), the computer or the plan are at their
+ * limits, or a step sits idle; one more where work waits: ready tasks at a busy first step (while the line is not
+ * backed up), or a queue at a later step. Single-resource steps never go up.
+ */
+export function capacitySignals(steps: StepLoad[], plan: PlanState, machine: MachineState | null = null): CapacitySignal[] {
   const session = plan.sessionPercent;
   const nearLimit = session !== null && session >= plan.limitPercent - DOWN_MARGIN;
   const weekHigh = plan.weekPercent !== null && plan.weekPercent >= WEEK_HIGH;
   const pressure = machinePressure(machine);
   const roomForMore = !nearLimit && !weekHigh && !pressure.busy && (session === null || session < plan.limitPercent - UP_HEADROOM);
+  const planReason = weekHigh ? `plano semanal em ${Math.round(plan.weekPercent ?? 0)}%` : `janela de 5 h em ${Math.round(session ?? 0)}% (pausa em ${plan.limitPercent}%)`;
 
   const signals: CapacitySignal[] = [];
-  for (const load of loads) {
-    const base = { workflowId: load.workflowId, workflowName: load.workflowName, from: load.max };
-    if (load.max > 1 && load.recentConflicts > 0) {
-      signals.push({ ...base, direction: 'down', to: load.max - 1, reason: `${load.recentConflicts} execução(ões) com conflito de merge nas últimas 24 h` });
-    } else if (load.max > 1 && pressure.overloaded) {
-      signals.push({ ...base, direction: 'down', to: load.max - 1, reason: pressure.overloaded });
-    } else if (load.max > 1 && (nearLimit || weekHigh)) {
-      signals.push({
-        ...base,
-        direction: 'down',
-        to: 1,
-        reason: weekHigh ? `plano semanal em ${Math.round(plan.weekPercent!)}%` : `janela de 5 h em ${Math.round(session!)}% (pausa em ${plan.limitPercent}%)`,
-      });
-    } else if (roomForMore && load.max < MAX_RUNS && load.running >= load.max && load.ready.length > 0) {
-      const to = Math.min(MAX_RUNS, load.max + load.ready.length);
-      signals.push({ ...base, direction: 'up', to, reason: `${load.ready.length} tarefa(s) liberada(s) esperando um espaço` });
+  for (const step of steps) {
+    const base = { workflowId: step.workflowId, workflowName: step.workflowName, stepId: step.stepId, stepName: step.stepName, from: step.agents };
+    const down = (reason: string) => signals.push({ ...base, direction: 'down', to: step.agents - 1, reason });
+    if (step.agents > 1) {
+      if (step.index === 0 && step.recentConflicts > 0) {
+        down(`${step.recentConflicts} tarefa(s) com conflito de merge nas últimas 24 h`);
+        continue;
+      }
+      if (pressure.overloaded) {
+        down(pressure.overloaded);
+        continue;
+      }
+      if (nearLimit || weekHigh) {
+        down(planReason);
+        continue;
+      }
+      const nothingToDo = step.active === 0 && step.queued === 0 && step.ready.length === 0;
+      if (nothingToDo && step.idleMinutes !== null && step.idleMinutes >= IDLE_MINUTES) {
+        down(`sem trabalho há ${step.idleMinutes} min`);
+        continue;
+      }
+    }
+    if (!roomForMore || step.single || step.agents >= MAX_AGENTS) continue;
+    if (step.index === 0) {
+      const lineBackedUp = steps.some((other) => other.workflowId === step.workflowId && other.index > 0 && other.queued >= QUEUE_FOR_MORE);
+      if (step.active >= step.agents && step.ready.length > 0 && !lineBackedUp) {
+        signals.push({ ...base, direction: 'up', to: step.agents + 1, reason: `${step.ready.length} tarefa(s) pronta(s) esperando um agente livre` });
+      }
+    } else if (step.queued >= QUEUE_FOR_MORE && step.active >= step.agents) {
+      signals.push({ ...base, direction: 'up', to: step.agents + 1, reason: `${step.queued} tarefa(s) na fila desta etapa` });
     }
   }
   return signals;
 }
 
-/** Same signals, same tasks: same signature, so the agent is not asked twice about the same situation. */
-export function signalsSignature(signals: CapacitySignal[], loads: WorkflowLoad[]) {
+/** Same signals about the same tasks: same signature, so the same situation is not raised twice. */
+export function signalsSignature(signals: CapacitySignal[], steps: StepLoad[]) {
   return signals
     .map((signal) => {
-      const ready = signal.direction === 'up' ? (loads.find((load) => load.workflowId === signal.workflowId)?.ready ?? []).map((task) => task.ref).sort() : [];
-      return `${signal.workflowId}:${signal.direction}:${signal.from}:${ready.join(',')}`;
+      const step = steps.find((entry) => entry.workflowId === signal.workflowId && entry.stepId === signal.stepId);
+      const ready = signal.direction === 'up' ? (step?.ready ?? []).map((task) => task.ref).sort() : [];
+      return `${signal.workflowId}:${signal.stepId}:${signal.direction}:${signal.from}:${ready.join(',')}`;
     })
     .sort()
     .join('|');

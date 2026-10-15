@@ -858,6 +858,11 @@ model CapacityReview {
   /// Signals summed up; a new analysis starts only when it changes.
   signature   String
   signals     Json
+  /// none (nothing to change), pilot (handed to Órbi's pilot), pending (suggestion for the user), applied, discarded.
+  status      String   @default("none")
+  /// One line per signal, for the user and the pilot.
+  summary     String?
+  /// Older reviews: the Órbi conversation that studied them.
   agentId     String?  @map("agent_id") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
