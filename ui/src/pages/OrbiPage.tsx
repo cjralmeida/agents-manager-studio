@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useAgent } from '../api/agents';
-import { type Conversation, useConversations } from '../api/assistant';
+import { type Conversation, useConversations, useRenameConversation } from '../api/assistant';
 import {
   type OrbiActivity,
   type OrbiPending,
@@ -158,10 +158,49 @@ function CurrentConversation({ id }: { id: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-        <h2 className="truncate text-base font-semibold">{agent.data.title.replace(/^Órbi: /, '')}</h2>
+        <EditableTitle id={id} title={agent.data.title.replace(/^Órbi: /, '')} />
         <span className="shrink-0 text-xs text-muted">Foco: {agent.data.workspaceName}</span>
       </div>
       <OrbiConversation agentId={id} workspaceId={agent.data.workspaceId} onAnswering={setAnswering} />
+    </div>
+  );
+}
+
+/** The conversation's name; click (or the pencil) to rename it, Enter saves, Esc cancels. */
+function EditableTitle({ id, title }: { id: string; title: string }) {
+  const rename = useRenameConversation();
+  const [draft, setDraft] = useState<string | null>(null);
+  const save = () => {
+    const value = draft?.trim();
+    if (!value || value === title) return setDraft(null);
+    rename.mutate({ id, title: value }, { onSuccess: () => setDraft(null) });
+  };
+  if (draft === null) {
+    return (
+      <button type="button" onClick={() => setDraft(title)} className="group flex min-w-0 items-center gap-1.5 text-left" title="Renomear a conversa">
+        <h2 className="truncate text-base font-semibold">{title}</h2>
+        <span className="shrink-0 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-hidden>
+          ✎
+        </span>
+      </button>
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <input
+        autoFocus
+        value={draft}
+        maxLength={120}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') save();
+          if (event.key === 'Escape') setDraft(null);
+        }}
+        onBlur={save}
+        aria-label="Nome da conversa"
+        className="min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 py-1 text-sm font-semibold outline-none"
+      />
+      <ErrorText error={rename.error} />
     </div>
   );
 }

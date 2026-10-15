@@ -41,3 +41,11 @@ export async function continueConversation(agentId: string, message: string, con
   if (agent.status === 'CANCELLED') throw new HttpError(409, 'Esta conversa foi encerrada; comece uma nova.');
   return sendMessage(agentId, withContext(message, context));
 }
+
+/** Renames an Órbi conversation of the user. */
+export async function renameConversation(ownerId: string, agentId: string, title: string) {
+  const agent = await prisma.agent.findUnique({ where: { id: agentId }, include: { workspace: { select: { ownerId: true } } } });
+  if (!agent || agent.kind !== 'ASSISTANT' || agent.workspace.ownerId !== ownerId) throw notFound('Conversa não encontrada.');
+  await prisma.agent.update({ where: { id: agentId }, data: { title: `Órbi: ${title.trim()}` } });
+  return { id: agentId, title: title.trim() };
+}

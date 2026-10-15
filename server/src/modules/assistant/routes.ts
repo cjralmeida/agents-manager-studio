@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
 import { decideProposal, listProposals } from './proposals.js';
-import { continueConversation, listConversations, startConversation } from './service.js';
+import { continueConversation, listConversations, renameConversation, startConversation } from './service.js';
 
 const workspaceParams = z.object({ id: z.uuid() });
 const idParams = z.object({ id: z.uuid() });
@@ -28,6 +28,12 @@ export async function assistantRoutes(app: FastifyInstance) {
     const { id } = parseInput(idParams, request.params);
     const { message, context } = parseInput(messageBody, request.body);
     return continueConversation(id, message, context);
+  });
+
+  app.patch('/assistant/conversations/:id', async (request) => {
+    const { id } = parseInput(idParams, request.params);
+    const { title } = parseInput(z.object({ title: z.string().trim().min(1).max(120) }).strict(), request.body);
+    return renameConversation(request.user.id, id, title);
   });
 
   app.get('/assistant/conversations/:id/proposals', async (request) => listProposals(parseInput(idParams, request.params).id));

@@ -75,6 +75,17 @@ export function useSendToConversation(agentId: string) {
   });
 }
 
+export function useRenameConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.patch<{ id: string; title: string }>(`/assistant/conversations/${id}`, { title }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.conversations });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+}
+
 export function useProposals(agentId: string) {
   return useQuery({
     queryKey: keys.proposals(agentId),
