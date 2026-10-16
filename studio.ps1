@@ -248,52 +248,78 @@ $StatusPage = @'
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Compress&atilde;o do disco</title>
 <style>
-:root{--bg:#0b0d12;--panel:#141821;--line:#232937;--muted:#8b93a7;--text:#e9ecf2;--accent:#7c9cff;--ok:#6ee7b7;--err:#fca5a5}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% -10%,#1a2140 0,var(--bg) 60%);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px 16px}
-main{width:100%;max-width:620px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:0 20px 60px #0008}
-.top{display:flex;align-items:center;gap:12px}.dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px #7c9cff22;animation:pulse 1.6s infinite}
-.dot.ok{background:var(--ok);box-shadow:0 0 0 6px #6ee7b722;animation:none}.dot.err{background:var(--err);box-shadow:0 0 0 6px #fca5a522;animation:none}
-@keyframes pulse{50%{box-shadow:0 0 0 10px #7c9cff11}}
-h1{font-size:18px;margin:0}.sub{color:var(--muted);margin:6px 0 0}
-.big{display:flex;align-items:baseline;gap:10px;margin:26px 0 8px}.pct{font-size:64px;font-weight:700;letter-spacing:-2px;font-variant-numeric:tabular-nums}.pct small{font-size:28px;color:var(--muted);font-weight:600}
-.step{color:var(--muted)}.bar{height:12px;background:#0e1118;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-.bar div{height:100%;width:0;background:linear-gradient(90deg,#5b7cff,#9ab0ff);border-radius:999px;transition:width .8s ease}
-.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0}.card{background:#0e1118;border:1px solid var(--line);border-radius:12px;padding:12px}
-.card b{display:block;font-size:18px;font-variant-numeric:tabular-nums}.card span{color:var(--muted);font-size:12px}
-ol{list-style:none;padding:0;margin:0;display:grid;gap:8px}li{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;color:var(--muted)}
-li i{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;font-style:normal;font-size:12px}
-li.done{color:var(--text)}li.done i{border-color:var(--ok);color:var(--ok)}li.now{color:var(--text);border-color:#7c9cff66;background:#7c9cff0d}
-li.now i{border-color:var(--accent);border-top-color:transparent;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-.err{color:var(--err);margin-top:16px}.foot{color:var(--muted);font-size:12px;margin-top:18px}a{color:var(--accent)}
-@media(max-width:520px){.cards{grid-template-columns:1fr}.pct{font-size:52px}}
-</style></head><body><main>
-<div class="top"><span id="dot" class="dot"></span><div><h1>Compress&atilde;o do disco do Docker</h1>
-<p class="sub">O Studio fica desligado enquanto o disco &eacute; comprimido. Esta p&aacute;gina &eacute; do helper do Windows; quando o Studio voltar, ela leva voc&ecirc; para ele.</p></div></div>
-<div class="big"><span class="pct" id="pct">&ndash;</span><span class="step" id="label">Preparando</span></div>
-<div class="bar"><div id="bar"></div></div><div class="meta"><span id="elapsed"></span><span id="eta"></span></div>
-<div class="cards"><div class="card"><span>Antes</span><b id="before">&ndash;</b></div><div class="card"><span>Depois</span><b id="after">&ndash;</b></div><div class="card"><span>Devolvido ao Windows</span><b id="freed">&ndash;</b></div></div>
-<ol id="steps"></ol><div id="error" class="err"></div><p class="foot" id="foot"></p></main>
+:root{--bg:#07080c;--ink:#eef1f7;--muted:#8a93a8;--faint:#5b6377;--line:rgba(255,255,255,.08);--glass:rgba(20,24,34,.72);--a1:#7aa2ff;--a2:#b38cff;--ok:#5eead4;--err:#fb7185;--ring:rgba(255,255,255,.06)}
+@media (prefers-color-scheme:light){:root{--bg:#eef1f8;--ink:#141824;--muted:#5d6579;--faint:#8b93a8;--line:rgba(20,24,40,.09);--glass:rgba(255,255,255,.78);--ring:rgba(20,24,40,.07)}}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;display:grid;place-items:center;padding:28px 16px;overflow-x:hidden}
+.aura{position:fixed;inset:-20%;z-index:-1;background:radial-gradient(40% 35% at 25% 20%,rgba(122,162,255,.22),transparent 70%),radial-gradient(35% 30% at 80% 75%,rgba(179,140,255,.18),transparent 70%);filter:blur(20px);animation:drift 18s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(3%,-2%,0) scale(1.05)}}
+main{width:100%;max-width:640px;background:var(--glass);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid var(--line);border-radius:28px;padding:36px 36px 28px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 80px rgba(0,0,0,.35)}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+.brand svg{width:18px;height:18px}.chip{font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);display:flex;align-items:center;gap:7px}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--a1);box-shadow:0 0 0 0 rgba(122,162,255,.6);animation:beat 1.8s infinite}
+.chip.ok i{background:var(--ok);animation:none}.chip.err i{background:var(--err);animation:none}
+@keyframes beat{70%{box-shadow:0 0 0 8px rgba(122,162,255,0)}}
+.hero{display:grid;grid-template-columns:auto 1fr;gap:30px;align-items:center;margin:30px 0 26px}
+.ring{position:relative;width:184px;height:184px}.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:10}.ring .track{stroke:var(--ring)}.ring .fill{stroke:url(#g);stroke-linecap:round;transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1)}
+.ring .center{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.pct{font:600 50px/1 "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.pct sup{font-size:20px;color:var(--muted);margin-left:2px;vertical-align:top;position:relative;top:6px}
+.ring .cap{font-size:11px;color:var(--faint);letter-spacing:.12em;text-transform:uppercase;margin-top:6px}
+h1{font:600 24px/1.2 "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;letter-spacing:-.02em;margin:0}
+.now{margin:8px 0 0;color:var(--muted)}.eta{margin-top:16px;display:flex;gap:18px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.eta div{display:grid}.eta span{font-size:11px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}.eta b{font-weight:600;font-size:16px}
+.steps{position:relative;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:6px 0 24px}
+.steps .rail{position:absolute;left:10%;right:10%;top:13px;height:2px;background:var(--ring);border-radius:2px}.steps .rail div{height:100%;width:0;border-radius:2px;background:linear-gradient(90deg,var(--a1),var(--a2));transition:width 1s ease}
+.step{position:relative;display:grid;justify-items:center;gap:8px;text-align:center;font-size:12px;color:var(--faint)}
+.step i{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--bg);border:2px solid var(--ring);font-style:normal;font-size:13px;color:transparent;transition:all .4s}
+.step.done{color:var(--muted)}.step.done i{border-color:transparent;background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff}
+.step.now{color:var(--ink)}.step.now i{border-color:var(--a1);box-shadow:0 0 0 6px rgba(122,162,255,.14)}.step.now i::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--a1);animation:beat 1.8s infinite}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.stats div{padding:14px 16px}.stats div+div{border-left:1px solid var(--line)}.stats span{display:block;font-size:11px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+.stats b{font:600 20px/1.3 "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}.stats .gain b{background:linear-gradient(90deg,var(--ok),var(--a1));-webkit-background-clip:text;background-clip:text;color:transparent}
+.error{display:none;margin-top:18px;padding:12px 14px;border-radius:14px;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.3);color:var(--err);font-size:13px}
+footer{margin-top:20px;display:flex;justify-content:space-between;gap:12px;color:var(--faint);font-size:12px}footer a{color:var(--a1);text-decoration:none}footer a:hover{text-decoration:underline}
+@media(max-width:560px){main{padding:26px 20px}.hero{grid-template-columns:1fr;justify-items:center;text-align:center}.eta{justify-content:center}.ring{width:160px;height:160px}.stats{grid-template-columns:1fr}.stats div+div{border-left:0;border-top:1px solid var(--line)}.step{font-size:10px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><div class="aura"></div><main>
+<header><div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>Agents Manager Studio</div>
+<div class="chip" id="chip"><i></i><span id="chipText">Em andamento</span></div></header>
+<section class="hero"><div class="ring"><svg viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#b38cff"/></linearGradient></defs>
+<circle class="track" cx="100" cy="100" r="88"/><circle class="fill" id="arc" cx="100" cy="100" r="88" stroke-dasharray="552.92" stroke-dashoffset="552.92"/></svg>
+<div class="center"><div><div class="pct" id="pct">&ndash;</div><div class="cap" id="cap">compress&atilde;o</div></div></div></div>
+<div><h1>Compress&atilde;o do disco do Docker</h1><p class="now" id="now">Preparando&hellip;</p>
+<div class="eta"><div><span>Tempo decorrido</span><b id="elapsed">&ndash;</b></div><div><span>Previs&atilde;o</span><b id="eta">&ndash;</b></div></div></div></section>
+<div class="steps" id="steps"><div class="rail"><div id="rail"></div></div></div>
+<div class="stats"><div><span>Antes</span><b id="before">&ndash;</b></div><div><span>Depois</span><b id="after">&ndash;</b></div><div class="gain"><span>Devolvido</span><b id="freed">&ndash;</b></div></div>
+<div class="error" id="error"></div>
+<footer><span id="note">O Studio fica fora do ar durante a compress&atilde;o; esta p&aacute;gina &eacute; do helper do Windows.</span><span id="back"></span></footer></main>
 <script>
-const STEPS=[["stopping_docker","Parando o Docker"],["compacting","Comprimindo o arquivo do disco"],["starting_docker","Ligando o Docker"],["starting_studio","Ligando o Studio"],["finished","Pronto"]];
-const $=id=>document.getElementById(id),gb=b=>b?(b/1073741824).toFixed(1)+" GB":"\u2013";
-const fmt=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h?h+"h "+m+"min":m?m+"min "+r+"s":r+"s"};
+const STEPS=[["stopping_docker","Parar o Docker"],["compacting","Comprimir"],["starting_docker","Ligar o Docker"],["starting_studio","Ligar o Studio"],["finished","Pronto"]];
+const NOW={stopping_docker:"Parando o Docker e o WSL\u2026",compacting:"Comprimindo o arquivo do disco virtual com o diskpart.",starting_docker:"Ligando o Docker de novo\u2026",starting_studio:"Subindo o Studio e conferindo que ele responde\u2026"};
+const $=id=>document.getElementById(id),C=552.92,gb=b=>b?(b/1073741824).toFixed(1)+" GB":"\u2013";
+const fmt=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h?h+"h "+String(m).padStart(2,"0")+"min":m?m+"min "+String(r).padStart(2,"0")+"s":r+"s"};
+$("steps").insertAdjacentHTML("beforeend",STEPS.map(x=>'<div class="step"><i>\u2713</i>'+x[1]+"</div>").join(""));
 let seen=[];
-function overall(s){const at=STEPS.findIndex(x=>x[0]===s.step);if(s.step==="finished")return 100;if(s.step==="compacting")return 5+(s.percent||0)*0.85;return [2,5,90,95,100][Math.max(0,at)]}
 async function tick(){let s;try{s=await (await fetch("/status.json",{cache:"no-store"})).json()}catch(e){return}
-const at=STEPS.findIndex(x=>x[0]===s.step),done=s.status!=="running",p=s.step==="compacting"&&s.percent!=null?s.percent:null;
-$("pct").innerHTML=p!=null?p+"<small>%</small>":done?(s.status==="done"?"100<small>%</small>":"!"):"&ndash;";
-$("label").textContent=done?(s.status==="done"?"Conclu\u00eddo":"Terminou com erro"):(STEPS[at]?STEPS[at][1]:"Preparando");
-$("bar").style.width=(p!=null?p:overall(s))+"%";$("dot").className="dot"+(done?(s.status==="done"?" ok":" err"):"");
-$("steps").innerHTML=STEPS.map((x,i)=>{const c=(i<at||s.step==="finished")?"done":i===at?"now":"";return '<li class="'+c+'"><i>'+(c==="done"?"\u2713":"")+"</i>"+x[1]+(x[0]==="compacting"&&p!=null&&c==="now"?" \u00b7 "+p+"%":"")+"</li>"}).join("");
+const at=Math.max(0,STEPS.findIndex(x=>x[0]===s.step)),done=s.status!=="running",ok=s.status==="done";
+const p=s.step==="compacting"&&s.percent!=null?s.percent:null,shown=done?100:p!=null?p:(at>1?100:0);
+$("arc").style.strokeDashoffset=C*(1-shown/100);
+$("pct").innerHTML=(done&&!ok)?"!":(p!=null||done||at>1?shown+"<sup>%</sup>":"&ndash;");
+$("cap").textContent=done?(ok?"conclu\u00eddo":"com erro"):p!=null?"compress\u00e3o":at>1?"comprimido":"aguardando";
+$("now").textContent=done?(ok?"Tudo pronto. O Studio est\u00e1 de volta e retoma o trabalho sozinho.":"A compress\u00e3o terminou com um aviso; o Docker e o Studio foram religados."):(NOW[s.step]||"Preparando\u2026");
+const chip=$("chip");chip.className="chip"+(done?(ok?" ok":" err"):"");$("chipText").textContent=done?(ok?"Conclu\u00eddo":"Terminou com aviso"):"Em andamento";
+[...document.querySelectorAll(".step")].forEach((el,i)=>{el.className="step"+((i<at||s.step==="finished")?" done":i===at?" now":"")});
+$("rail").style.width=(s.step==="finished"?100:at/(STEPS.length-1)*100)+"%";
 const started=s.startedAt?new Date(s.startedAt):null,end=s.finishedAt?new Date(s.finishedAt):new Date();
-$("elapsed").textContent=started?"Tempo: "+fmt((end-started)/1000):"";
-if(p!=null){seen.push([Date.now(),p]);seen=seen.filter(x=>Date.now()-x[0]<600000);const a=seen[0];const rate=(p-a[1])/((Date.now()-a[0])/1000);
-$("eta").textContent=rate>0?"Faltam ~"+fmt((100-p)/rate)+" na compress\u00e3o":"Calculando o tempo restante\u2026"}else $("eta").textContent=done?"":"";
+$("elapsed").textContent=started?fmt((end-started)/1000):"\u2013";
+if(p!=null){seen.push([Date.now(),p]);seen=seen.filter(x=>Date.now()-x[0]<900000);const a=seen[0],rate=(p-a[1])/((Date.now()-a[0])/1000);$("eta").textContent=rate>0?"~"+fmt((100-p)/rate):"calculando\u2026"}
+else $("eta").textContent=done?"\u2013":at>1?"poucos minutos":"\u2013";
 $("before").textContent=gb(s.sizeBefore);$("after").textContent=gb(s.sizeAfter);$("freed").textContent=s.sizeAfter&&s.sizeBefore?gb(s.sizeBefore-s.sizeAfter):"\u2013";
-$("error").textContent=s.error?"Erro: "+s.error:"";
-$("foot").innerHTML=done?'<a href="__STUDIO__/sistema/compressao">Voltar ao Studio</a> (em instantes leva voc\u00ea sozinho)':"Atualiza sozinho a cada 3 segundos.";
-if(done)setTimeout(()=>location.href="__STUDIO__/sistema/compressao",8000)}
+const err=$("error");err.style.display=s.error?"block":"none";err.textContent=s.error?"Aviso: "+s.error:"";
+$("back").innerHTML=done?'<a href="__STUDIO__/sistema/compressao">Voltar ao Studio \u2192</a>':"Atualiza a cada 3 s";
+if(done&&!window.__redir){window.__redir=1;setTimeout(()=>location.href="__STUDIO__/sistema/compressao",10000)}}
 tick();setInterval(tick,3000);
 </script></body></html>
 '@
