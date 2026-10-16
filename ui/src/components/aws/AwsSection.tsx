@@ -148,7 +148,17 @@ function ServiceForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {kind === 'ec2' ? (
           <>
-            <Field label="Instância (com o agente do SSM)" hint={targetError(targets.data?.instances) ?? undefined}>
+            <Field
+              label="Instância (com o agente do SSM)"
+              hint={
+                targetError(targets.data?.instances) ??
+                (targets.isLoading
+                  ? 'Buscando as instâncias...'
+                  : instances.length === 0
+                    ? 'Nenhuma instância aparece no Systems Manager desta região. A instância precisa estar ligada, com o perfil de instância studio-ec2 (AmazonSSMManagedInstanceCore) e acesso de saída à internet; ela aparece em Systems Manager → Fleet Manager uns minutos depois.'
+                    : undefined)
+              }
+            >
               <Select value={instanceId} onChange={(event) => setInstanceId(event.target.value)}>
                 <option value="">Escolha...</option>
                 {instances.map((instance) => (
