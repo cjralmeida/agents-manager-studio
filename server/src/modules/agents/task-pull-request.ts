@@ -65,7 +65,12 @@ async function findOnGitLab(input: { remote: RemoteInfo; token: string; issueNum
   const projectUrl = `https://${input.remote.host}/api/v4/projects/${encodeURIComponent(input.remote.path)}`;
   const related = await get(`${projectUrl}/issues/${input.issueNumber}/related_merge_requests?per_page=100`, { 'PRIVATE-TOKEN': input.token });
   if (related.status !== 200 || !Array.isArray(related.body)) return null;
-  const own = related.body.filter((mr: Json) => mr.source_project_id === mr.target_project_id).sort((a: Json, b: Json) => b.iid - a.iid);
+  // GitLab also lists MRs of other projects that only mention the issue (e.g. the backend MR of the same feature):
+  // only the ones of the issue's own project, from a branch of that project, count.
+  const ownPath = `/${input.remote.path.toLowerCase()}/-/merge_requests/`;
+  const own = related.body
+    .filter((mr: Json) => mr.source_project_id === mr.target_project_id && String(mr.web_url ?? '').toLowerCase().includes(ownPath))
+    .sort((a: Json, b: Json) => b.iid - a.iid);
   const open = own.find((mr: Json) => mr.state === 'opened');
   if (open) return { url: open.web_url, number: open.iid, branch: open.source_branch, baseBranch: open.target_branch };
   // Without an open one, the most recent merged one: its work is already in the base, only the deploy is left.
