@@ -6,6 +6,8 @@ import { useRenderAccounts } from '../api/render';
 import { Button } from '../components/Button';
 import { type ConnectorId, ConnectorIcon } from '../components/connectors/ConnectorIcon';
 import { RenderAccountsSection } from '../components/render/RenderAccountsSection';
+import { AwsAccountsSection } from '../components/aws/AwsAccountsSection';
+import { useAwsAccounts } from '../api/aws';
 import { AgentAccountsSection } from '../components/settings/AgentAccountsSection';
 import { ClickupAccountsSection } from '../components/settings/ClickupAccountsSection';
 import { PixellabAccountsSection } from '../components/settings/PixellabAccountsSection';
@@ -29,6 +31,7 @@ export function ConnectorsPage() {
   const agentAccounts = useAgentAccounts();
   const gitAccounts = useGitAccounts();
   const renderAccounts = useRenderAccounts();
+  const awsAccounts = useAwsAccounts();
   const clickupAccounts = useClickupAccounts();
   const pixellabAccounts = usePixellabAccounts();
 
@@ -43,6 +46,8 @@ export function ConnectorsPage() {
   const claudeWorkspaces = agentAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
   const renderCount = renderAccounts.data?.length ?? 0;
   const renderWorkspaces = renderAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
+  const awsCount = awsAccounts.data?.length ?? 0;
+  const awsWorkspaces = awsAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
   const clickupCount = clickupAccounts.data?.length ?? 0;
   const clickupWorkspaces = clickupAccounts.data?.reduce((total, account) => total + account.workspaceCount, 0) ?? 0;
   const pixellabCount = pixellabAccounts.data?.length ?? 0;
@@ -81,6 +86,13 @@ export function ConnectorsPage() {
       purpose: 'Deploy em homologação e produção a partir dos workflows.',
       connected: renderCount > 0,
       status: renderCount > 0 ? `${plural(renderCount, 'conta', 'contas')} · em ${plural(renderWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
+    },
+    {
+      id: 'aws',
+      name: 'AWS',
+      purpose: 'Deploy pelos workflows: backend num EC2 (imagem pelo Dockerfile, via ECR e SSM) e frontend no Amplify.',
+      connected: awsCount > 0,
+      status: awsCount > 0 ? `${plural(awsCount, 'conta', 'contas')} · em ${plural(awsWorkspaces, 'workspace', 'workspaces')}` : 'Não conectado',
     },
   ];
   const select = (id: ConnectorId) => setParams(id === selected ? {} : { c: id });
@@ -140,6 +152,7 @@ export function ConnectorsPage() {
           )}
           {current.id === 'gitlab' && <GitAccountsSection provider="GITLAB" />}
           {current.id === 'render' && <RenderAccountsSection />}
+          {current.id === 'aws' && <AwsAccountsSection />}
           {current.id === 'clickup' && <ClickupAccountsSection />}
           {current.id === 'pixellab' && <PixellabAccountsSection />}
         </div>

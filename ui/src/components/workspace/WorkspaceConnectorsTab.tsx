@@ -23,6 +23,8 @@ import { type ConnectorId, ConnectorIcon } from "../connectors/ConnectorIcon";
 import { ErrorText, Select } from "../form";
 import { MultiSelect } from "../MultiSelect";
 import { RenderSection } from "../render/RenderSection";
+import { AwsSection } from "../aws/AwsSection";
+import { useAwsSettings } from "../../api/aws";
 
 function ConnectorCard({
   icon,
@@ -75,6 +77,7 @@ export function WorkspaceConnectorsTab({
   const gitAccounts = useGitAccounts();
   const boardSources = useBoardSources(workspace.id);
   const renderAccounts = useRenderAccounts();
+  const awsSettings = useAwsSettings(workspace.id);
   const clickupAccounts = useClickupAccounts();
   const pixellabAccounts = usePixellabAccounts();
   const update = useUpdateWorkspaceSettings(workspace.id);
@@ -346,6 +349,17 @@ export function WorkspaceConnectorsTab({
                 )}
               </div>
             )}
+          </ConnectorCard>
+        </div>
+
+        <div className="lg:col-span-2">
+          <ConnectorCard
+            icon={<ConnectorIcon id="aws" />}
+            name="AWS"
+            purpose="Deploy na AWS: backend num EC2 e frontend no Amplify. Um projeto configurado aqui publica na AWS em vez do Render."
+            connected={Boolean(awsSettings.data?.connection)}
+          >
+            <AwsSection workspace={workspace} />
           </ConnectorCard>
         </div>
       </div>

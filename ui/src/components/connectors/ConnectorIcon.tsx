@@ -1,5 +1,5 @@
 /** Brand marks (Simple Icons, CC0) on a tile with the brand color. */
-export type ConnectorId = 'claude' | 'github' | 'gitlab' | 'render' | 'clickup' | 'pixellab';
+export type ConnectorId = 'claude' | 'github' | 'gitlab' | 'render' | 'aws' | 'clickup' | 'pixellab';
 
 export const CONNECTOR_BRANDS: Record<ConnectorId, { tile: string; mark: string; path: string }> = {
   claude: {
@@ -27,6 +27,12 @@ export const CONNECTOR_BRANDS: Record<ConnectorId, { tile: string; mark: string;
     tile: '#1E1B3A',
     mark: '#F2A7D8',
     path: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM15 15h4v4h-4z',
+  },
+  aws: {
+    tile: '#232F3E',
+    mark: '#FF9900',
+    // A simple "smile" arrow (not the official logo).
+    path: 'M2 13.5c5.6 4.2 14.4 4.2 20 0l-1.4-1.6c-4.9 3.4-12.3 3.4-17.2 0zM18.2 10.4l4.3 2.1-1.2 4.6-1.4-1.3.6-2.2-2.1-.8z',
   },
   render: {
     tile: '#000000',

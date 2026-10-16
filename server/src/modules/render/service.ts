@@ -4,11 +4,12 @@ import type { DeployEnvironment, Deployment, RenderAccount } from '../../generat
 import { secretHint } from '../../lib/crypto.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
-import { mergeIntoBase } from '../agents/pull-requests.js';
-import { parseRemote, remoteHostname } from '../agents/remote.js';
-import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
+import { AWS_SERVICE_PREFIX, awsServiceOf, resumeAwsDeploys, startAwsDeploy } from '../aws/service.js';
 import { createRenderClient } from './api.js';
-import { isFinished, isSuccess, pullRequestNumber, statusLabel } from './status.js';
+import { MERGE_REFUSED, mergeDeploymentPullRequest } from './merge.js';
+import { isFinished, isSuccess, statusLabel } from './status.js';
+
+export { MERGE_REFUSED };
 
 // ---------------------------------------------------------------- accounts
 
@@ -175,6 +176,9 @@ function toResponse(deployment: Deployment) {
  */
 export async function startDeploy(input: StartDeployInput) {
   const environment = input.environment ?? 'HOMOLOGACAO';
+  // A project set to run on AWS in this environment deploys there instead of Render.
+  const aws = await awsServiceOf(input.projectId, environment);
+  if (aws) return toResponse(await startAwsDeploy(aws, { ...input, environment }));
   const service = await prisma.renderService.findUnique({ where: { projectId_environment: { projectId: input.projectId, environment } } });
   if (!service) {
     const label = environment === 'HOMOLOGACAO' ? 'homologação' : 'produção';
@@ -199,10 +203,6 @@ export async function startDeploy(input: StartDeployInput) {
   return toResponse(deployment);
 }
 
-/** Start of a deploy error when the PR/MR could not be merged (usually a conflict with the base): a workflow sends the
- * work back with the base merged into the copy, as for a conflict found in review. */
-export const MERGE_REFUSED = 'O merge do PR/MR foi recusado';
-
 async function fail(id: string, error: unknown) {
   const message = error instanceof Error ? error.message.slice(0, 500) : String(error);
   await prisma.deployment.update({ where: { id }, data: { status: 'error', error: message, finishedAt: new Date() } });
@@ -211,28 +211,7 @@ async function fail(id: string, error: unknown) {
 async function runDeploy(id: string) {
   try {
     const deployment = await prisma.deployment.findUniqueOrThrow({ where: { id } });
-    let commitId: string | null = null;
-
-    if (deployment.prUrl && deployment.projectId) {
-      const project = await prisma.project.findUniqueOrThrow({ where: { id: deployment.projectId } });
-      const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
-      const number = pullRequestNumber(deployment.prUrl);
-      if (!remote || !number) throw new HttpError(422, 'Não foi possível identificar o PR/MR para o merge.');
-      const account = await findWorkspaceGitAccount(deployment.workspaceId, [remoteHostname(remote), remote.host]);
-      const agent = deployment.agentId ? await prisma.agent.findUnique({ where: { id: deployment.agentId } }) : null;
-      const expectedBase = agent?.baseBranch ?? project.baseBranch;
-      if (!expectedBase) throw new HttpError(422, 'Não foi possível saber para qual branch o PR/MR pode ser mesclado.');
-      commitId = await mergeIntoBase({
-        provider: account.provider as 'GITHUB' | 'GITLAB',
-        remote,
-        token: secrets.decrypt(account.tokenEncrypted),
-        number,
-        project,
-        expectedBase,
-      }).catch((error: unknown) => {
-        throw new Error(`${MERGE_REFUSED}: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }
+    const commitId = await mergeDeploymentPullRequest(deployment);
 
     const render = await clientFor(deployment.workspaceId);
     const deploy = await render.deploy(deployment.serviceId, commitId ?? undefined);
@@ -263,7 +242,8 @@ const MONITOR_MS = 15_000;
 const STALE_MS = 60 * 60_000;
 
 async function pollDeployments(log: FastifyBaseLogger) {
-  const pending = await prisma.deployment.findMany({ where: { finishedAt: null } });
+  // AWS deploys are followed by their own runner (aws/service.ts).
+  const pending = await prisma.deployment.findMany({ where: { finishedAt: null, NOT: { serviceId: { startsWith: AWS_SERVICE_PREFIX } } } });
   for (const deployment of pending) {
     try {
       if (!deployment.renderDeployId) {
@@ -291,7 +271,10 @@ export function startDeploymentMonitor(log: FastifyBaseLogger) {
   // A deploy cut by a restart before reaching Render (merging the PR/MR or starting) is run again: the merge of a PR/MR
   // already merged is skipped, so it is safe to repeat.
   void prisma.deployment
-    .findMany({ where: { status: { in: ['merging', 'starting'] }, renderDeployId: null, finishedAt: null }, select: { id: true } })
+    .findMany({
+      where: { status: { in: ['merging', 'starting'] }, renderDeployId: null, finishedAt: null, NOT: { serviceId: { startsWith: AWS_SERVICE_PREFIX } } },
+      select: { id: true },
+    })
     .then((stuck) => {
       for (const { id } of stuck) {
         log.info({ deploymentId: id }, 'Resuming a deploy interrupted by a restart');
@@ -299,6 +282,7 @@ export function startDeploymentMonitor(log: FastifyBaseLogger) {
       }
     })
     .catch((err: unknown) => log.error({ err }, 'Could not resume interrupted deploys'));
+  void resumeAwsDeploys(log).catch((err: unknown) => log.error({ err }, 'Could not resume interrupted AWS deploys'));
   const timer = setInterval(() => void pollDeployments(log).catch((err: unknown) => log.error({ err }, 'Deployment monitor failed')), MONITOR_MS);
   return () => clearInterval(timer);
 }

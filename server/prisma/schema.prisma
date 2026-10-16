@@ -258,6 +258,8 @@ model WorkspaceSettings {
   agentAccountId    String?  @map("agent_account_id") @db.Uuid
   /// Render account used to deploy this workspace's projects.
   renderAccountId   String?  @map("render_account_id") @db.Uuid
+  /// AWS account used to deploy this workspace's projects (EC2 for backends, Amplify for frontends).
+  awsAccountId      String?  @map("aws_account_id") @db.Uuid
   /// ClickUp account agents read tasks from (read-only tools).
   clickupAccountId  String?  @map("clickup_account_id") @db.Uuid
   /// PixelLab account (pixel art generation) for agents with the "pixellab" tool.
@@ -270,11 +272,13 @@ model WorkspaceSettings {
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agentAccount    AgentAccount?    @relation(fields: [agentAccountId], references: [id], onDelete: SetNull)
   renderAccount   RenderAccount?   @relation(fields: [renderAccountId], references: [id], onDelete: SetNull)
+  awsAccount      AwsAccount?      @relation(fields: [awsAccountId], references: [id], onDelete: SetNull)
   clickupAccount  ClickupAccount?  @relation(fields: [clickupAccountId], references: [id], onDelete: SetNull)
   pixellabAccount PixellabAccount? @relation(fields: [pixellabAccountId], references: [id], onDelete: SetNull)
 
   @@index([agentAccountId])
   @@index([renderAccountId])
+  @@index([awsAccountId])
   @@index([clickupAccountId])
   @@index([pixellabAccountId])
   @@map("workspace_settings")
@@ -643,6 +647,8 @@ model Deployment {
   prUrl          String?           @map("pr_url")
   agentId        String?           @map("agent_id") @db.Uuid
   error          String?
+  /// Build and publish output of deploys the Studio runs itself (AWS); Render keeps its own logs.
+  log            String?
   startedAt      DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)
   finishedAt     DateTime?         @map("finished_at") @db.Timestamptz(3)
 
@@ -1002,4 +1008,50 @@ model TestUserLease {
   @@unique([workspaceId, prefix])
   @@index([agentId])
   @@map("test_user_leases")
+}
+
+/// AWS account (an IAM user's access key, the secret encrypted) used to deploy on EC2 and Amplify.
+model AwsAccount {
+  id                    String   @id @default(uuid(7)) @db.Uuid
+  ownerId               String   @map("owner_id") @db.Uuid
+  label                 String
+  region                String
+  accessKeyId           String   @map("access_key_id")
+  secretAccessKeyEnc    String   @map("secret_access_key_enc")
+  secretHint            String   @map("secret_hint")
+  /// Account id and IAM identity reported by STS when the key was checked.
+  awsAccountNumber      String   @map("aws_account_number")
+  identityArn           String   @map("identity_arn")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspaceSettings WorkspaceSettings[]
+
+  @@index([ownerId])
+  @@map("aws_accounts")
+}
+
+/// Where a project runs on AWS in an environment: an EC2 instance (backend, Docker image from ECR, updated through
+/// SSM) or an Amplify app branch (frontend). Takes the place of a Render service for that project and environment.
+model AwsService {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  workspaceId String            @map("workspace_id") @db.Uuid
+  projectId   String            @map("project_id") @db.Uuid
+  environment DeployEnvironment
+  /// "ec2" or "amplify".
+  kind        String
+  name        String
+  /// Public URL of the service (e.g. https://api.hom.example.com).
+  url         String?
+  /// Branch it deploys from (the PR/MR base).
+  branch      String?
+  /// ec2: { instanceId, ecrRepository, containerName, port, healthPath, logGroup, parameterPath, dockerfile? };
+  /// amplify: { appId, branchName }.
+  config      Json              @default("{}")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([projectId, environment])
+  @@index([workspaceId])
+  @@map("aws_services")
 }

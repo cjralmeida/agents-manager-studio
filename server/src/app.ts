@@ -15,6 +15,7 @@ import { testEnvRoutes } from './modules/test-envs/routes.js';
 import { gitAccountRoutes } from './modules/git-accounts/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { renderRoutes } from './modules/render/routes.js';
+import { awsRoutes } from './modules/aws/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
 import { systemRoutes } from './modules/system/routes.js';
@@ -85,6 +86,7 @@ export async function buildApp() {
       await api.register(qualityRoutes);
       await api.register(testEnvRoutes);
       await api.register(renderRoutes);
+      await api.register(awsRoutes);
       await api.register(workflowRoutes);
       await api.register(previewRoutes);
       await api.register(capacityRoutes);

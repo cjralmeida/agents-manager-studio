@@ -6,6 +6,8 @@ import { addEvent, publishAgentWork } from '../agents/service.js';
 import { createRenderClient } from './api.js';
 import { parseEnvVars } from './env-vars.js';
 import { getDeployment, startDeploy } from './service.js';
+import { awsEvents, awsLogs, awsMetrics, awsServiceView, requireAwsBranch, setAwsVarsTool } from '../aws/agent-tools.js';
+import { awsServiceOf } from '../aws/service.js';
 
 /**
  * Render tools for agents. The "render" group touches only the homologation service of the agent's project; the
@@ -94,18 +96,70 @@ function deploymentView(deployment: Awaited<ReturnType<typeof getDeployment>>) {
 
 export async function runRenderTool(agent: Agent, name: RenderToolName, args: Args) {
   if (name === 'render_environments') {
-    const services = await prisma.renderService.findMany({
-      where: { workspaceId: agent.workspaceId, environment: ENVIRONMENT },
-      include: { project: { select: { name: true } } },
-      orderBy: { serviceName: 'asc' },
-    });
+    const [services, awsServices] = await Promise.all([
+      prisma.renderService.findMany({
+        where: { workspaceId: agent.workspaceId, environment: ENVIRONMENT },
+        include: { project: { select: { name: true } } },
+        orderBy: { serviceName: 'asc' },
+      }),
+      prisma.awsService.findMany({ where: { workspaceId: agent.workspaceId, environment: ENVIRONMENT } }),
+    ]);
+    const projects = await prisma.project.findMany({ where: { id: { in: awsServices.map((service) => service.projectId) } }, select: { id: true, name: true } });
+    const onAws = new Set(awsServices.map((service) => service.projectId));
     return {
       environment: 'homologação',
-      services: services.map((service) => ({ project: service.project.name, service: service.serviceName, url: service.url, branch: service.branch })),
+      services: [
+        ...services.filter((service) => !onAws.has(service.projectId)).map((service) => ({ project: service.project.name, service: service.serviceName, url: service.url, branch: service.branch, provider: 'Render' })),
+        ...awsServices.map((service) => ({
+          project: projects.find((project) => project.id === service.projectId)?.name ?? '?',
+          service: service.name,
+          url: service.url,
+          branch: service.branch,
+          provider: service.kind === 'amplify' ? 'AWS Amplify' : 'AWS EC2',
+        })),
+      ],
     };
   }
 
   const readsAnyProject = name === 'render_logs' || name === 'render_metrics' || name === 'render_events';
+  // Projects that run on AWS answer the same tools from the AWS connector.
+  const aws = await awsServiceOf(await projectIdFor(agent, readsAnyProject ? args.project : undefined), ENVIRONMENT);
+  if (aws) {
+    switch (name) {
+      case 'render_service':
+        return awsServiceView(agent, aws);
+      case 'render_set_env_vars':
+        return setAwsVarsTool(agent, aws, args);
+      case 'render_logs':
+        return awsLogs(agent, aws, args);
+      case 'render_metrics':
+        return awsMetrics(agent, aws, args);
+      case 'render_events':
+        return awsEvents(agent, aws, args);
+      case 'render_deploy': {
+        requireAwsBranch(agent, aws);
+        const published = await publishAgentWork(agent.id);
+        const deployment = await startDeploy({ workspaceId: agent.workspaceId, projectId: agent.projectId!, environment: ENVIRONMENT, ...(published.toMerge && { agentId: agent.id }) });
+        await addEvent(agent.id, 'status', { message: `Deploy em homologação iniciado na AWS (${aws.name}).` });
+        return {
+          ...deploymentView(deployment),
+          merged: published.toMerge ? 'o Studio faz o merge do PR/MR antes do deploy' : 'nada novo para mesclar: a branch base já tem tudo',
+          serviceUrl: aws.url,
+          next: 'Acompanhe com render_deploy_status até finished = true (na AWS o Studio gera a imagem, publica e espera o health check).',
+        };
+      }
+      case 'render_deploy_status': {
+        const wait = Math.min(Math.max(Number(args.waitSeconds ?? 180) || 0, 0), MAX_WAIT_SECONDS);
+        const deadline = Date.now() + wait * 1000;
+        let deployment = await ownDeployment(agent, args.deploymentId);
+        while (!deployment.isFinished && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+          deployment = await ownDeployment(agent, args.deploymentId);
+        }
+        return { ...deploymentView(deployment), serviceUrl: aws.url };
+      }
+    }
+  }
   const { service, client } = await homologation(agent, readsAnyProject ? args.project : undefined);
 
   switch (name) {
