@@ -30,7 +30,8 @@ param(
   [switch]$Uninstall,
   [switch]$Compact,
   [string]$CompactId,
-  [switch]$StatusServer
+  [switch]$StatusServer,
+  [int]$StatusPort = 8790
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,7 +42,6 @@ $LogFile = Join-Path $HelperDir 'helper.log'
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'Agents Manager Studio helper.lnk'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 $CompactFile = Join-Path $HelperDir 'compaction.json'
-$StatusPort = 8790
 $StudioUrl = 'http://studio.localhost'
 
 function Get-ComposeArgs {
@@ -201,12 +201,17 @@ function Invoke-Compaction([string]$Id) {
     while (-not $process.HasExited) {
       Start-Sleep -Seconds 5
       if (Test-Path -LiteralPath $output) {
-        $match = Select-String -LiteralPath $output -Pattern '(\d+) percent' -AllMatches -ErrorAction SilentlyContinue | Select-Object -Last 1
-        if ($match) { $state.percent = [int]$match.Matches[-1].Groups[1].Value; & $save }
+        $match = Select-String -LiteralPath $output -Pattern '(\d+)\s+(percent|por cento)' -AllMatches -ErrorAction SilentlyContinue | Select-Object -Last 1
+        if ($match) {
+          $value = [int]$match.Matches[-1].Groups[1].Value
+          if ($value -ne $state.percent) { $state.percent = $value; & $save }
+        }
       }
     }
     $log = if (Test-Path -LiteralPath $output) { Get-Content -LiteralPath $output -Raw } else { '' }
-    if ($log -notmatch 'successfully compacted') { throw "diskpart: $(($log -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 2) -join ' ')" }
+    # Success by the exit code; the message (English or Portuguese Windows) is a second check.
+    $ok = ($process.ExitCode -eq 0) -or ($log -match 'successfully compacted|compactou com .xito')
+    if (-not $ok) { throw "diskpart: $(($log -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 2) -join ' ')" }
     $state.percent = 100
     $state.sizeAfter = [double](Get-Item -LiteralPath $vhdx).Length
   } catch {
@@ -241,24 +246,54 @@ function Invoke-Compaction([string]$Id) {
 # The progress page while the Studio is down (ASCII only: accents as HTML entities).
 $StatusPage = @'
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Compress&atilde;o do disco do Docker</title>
-<style>body{margin:0;background:#0f1115;color:#e6e9ef;font:14px system-ui,sans-serif;display:flex;justify-content:center}main{max-width:560px;width:100%;padding:32px 16px}
-h1{font-size:20px;margin:0 0 4px}p{color:#8b93a7}ol{list-style:none;padding:0;margin:20px 0}li{padding:10px 12px;border:1px solid #262b36;border-radius:8px;margin:6px 0;color:#8b93a7}
-li.now{border-color:#7c9cff;color:#e6e9ef}li.done{color:#6ee7b7}.bar{height:8px;background:#262b36;border-radius:4px;overflow:hidden;margin-top:8px}.bar div{height:100%;background:#7c9cff;width:0}
-.err{color:#fca5a5}a{color:#7c9cff}</style></head><body><main>
-<h1>Compress&atilde;o do disco do Docker</h1><p>O Studio est&aacute; desligado enquanto o disco &eacute; comprimido. Esta p&aacute;gina &eacute; do helper do Windows e acompanha tudo; quando o Studio voltar, ela leva voc&ecirc; para ele.</p>
-<ol id="steps"></ol><div class="bar"><div id="bar"></div></div><p id="info"></p></main>
+<title>Compress&atilde;o do disco</title>
+<style>
+:root{--bg:#0b0d12;--panel:#141821;--line:#232937;--muted:#8b93a7;--text:#e9ecf2;--accent:#7c9cff;--ok:#6ee7b7;--err:#fca5a5}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 50% -10%,#1a2140 0,var(--bg) 60%);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+main{width:100%;max-width:620px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:0 20px 60px #0008}
+.top{display:flex;align-items:center;gap:12px}.dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px #7c9cff22;animation:pulse 1.6s infinite}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 6px #6ee7b722;animation:none}.dot.err{background:var(--err);box-shadow:0 0 0 6px #fca5a522;animation:none}
+@keyframes pulse{50%{box-shadow:0 0 0 10px #7c9cff11}}
+h1{font-size:18px;margin:0}.sub{color:var(--muted);margin:6px 0 0}
+.big{display:flex;align-items:baseline;gap:10px;margin:26px 0 8px}.pct{font-size:64px;font-weight:700;letter-spacing:-2px;font-variant-numeric:tabular-nums}.pct small{font-size:28px;color:var(--muted);font-weight:600}
+.step{color:var(--muted)}.bar{height:12px;background:#0e1118;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.bar div{height:100%;width:0;background:linear-gradient(90deg,#5b7cff,#9ab0ff);border-radius:999px;transition:width .8s ease}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0}.card{background:#0e1118;border:1px solid var(--line);border-radius:12px;padding:12px}
+.card b{display:block;font-size:18px;font-variant-numeric:tabular-nums}.card span{color:var(--muted);font-size:12px}
+ol{list-style:none;padding:0;margin:0;display:grid;gap:8px}li{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;color:var(--muted)}
+li i{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex:none;display:grid;place-items:center;font-style:normal;font-size:12px}
+li.done{color:var(--text)}li.done i{border-color:var(--ok);color:var(--ok)}li.now{color:var(--text);border-color:#7c9cff66;background:#7c9cff0d}
+li.now i{border-color:var(--accent);border-top-color:transparent;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.err{color:var(--err);margin-top:16px}.foot{color:var(--muted);font-size:12px;margin-top:18px}a{color:var(--accent)}
+@media(max-width:520px){.cards{grid-template-columns:1fr}.pct{font-size:52px}}
+</style></head><body><main>
+<div class="top"><span id="dot" class="dot"></span><div><h1>Compress&atilde;o do disco do Docker</h1>
+<p class="sub">O Studio fica desligado enquanto o disco &eacute; comprimido. Esta p&aacute;gina &eacute; do helper do Windows; quando o Studio voltar, ela leva voc&ecirc; para ele.</p></div></div>
+<div class="big"><span class="pct" id="pct">&ndash;</span><span class="step" id="label">Preparando</span></div>
+<div class="bar"><div id="bar"></div></div><div class="meta"><span id="elapsed"></span><span id="eta"></span></div>
+<div class="cards"><div class="card"><span>Antes</span><b id="before">&ndash;</b></div><div class="card"><span>Depois</span><b id="after">&ndash;</b></div><div class="card"><span>Devolvido ao Windows</span><b id="freed">&ndash;</b></div></div>
+<ol id="steps"></ol><div id="error" class="err"></div><p class="foot" id="foot"></p></main>
 <script>
-const STEPS=[["stopping_docker","Parando o Docker"],["compacting","Comprimindo o arquivo do disco (diskpart)"],["starting_docker","Ligando o Docker"],["starting_studio","Ligando o Studio"],["finished","Pronto"]];
-const gb=b=>b?(b/1073741824).toFixed(1)+" GB":"?";
-async function tick(){try{const s=await (await fetch("/status.json",{cache:"no-store"})).json();const at=STEPS.findIndex(x=>x[0]===s.step);
-document.getElementById("steps").innerHTML=STEPS.map((x,i)=>'<li class="'+(i<at||s.step==="finished"?"done":i===at?"now":"")+'">'+x[1]+(x[0]==="compacting"&&s.percent!=null&&s.step==="compacting"?" &middot; "+s.percent+"%":"")+"</li>").join("");
-document.getElementById("bar").style.width=(s.step==="compacting"?(s.percent||0):at>1?100:0)+"%";
-let info="Antes: "+gb(s.sizeBefore)+(s.sizeAfter?" &middot; depois: "+gb(s.sizeAfter):"");
-if(s.error)info+='<br><span class="err">Erro: '+s.error+"</span>";
-if(s.status!=="running")info+='<br><a href="'+"__STUDIO__"+'/sistema/compressao">Voltar ao Studio</a>';
-document.getElementById("info").innerHTML=info;
-if(s.status!=="running")setTimeout(()=>location.href="__STUDIO__/sistema/compressao",4000);}catch(e){}}
+const STEPS=[["stopping_docker","Parando o Docker"],["compacting","Comprimindo o arquivo do disco"],["starting_docker","Ligando o Docker"],["starting_studio","Ligando o Studio"],["finished","Pronto"]];
+const $=id=>document.getElementById(id),gb=b=>b?(b/1073741824).toFixed(1)+" GB":"\u2013";
+const fmt=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return h?h+"h "+m+"min":m?m+"min "+r+"s":r+"s"};
+let seen=[];
+function overall(s){const at=STEPS.findIndex(x=>x[0]===s.step);if(s.step==="finished")return 100;if(s.step==="compacting")return 5+(s.percent||0)*0.85;return [2,5,90,95,100][Math.max(0,at)]}
+async function tick(){let s;try{s=await (await fetch("/status.json",{cache:"no-store"})).json()}catch(e){return}
+const at=STEPS.findIndex(x=>x[0]===s.step),done=s.status!=="running",p=s.step==="compacting"&&s.percent!=null?s.percent:null;
+$("pct").innerHTML=p!=null?p+"<small>%</small>":done?(s.status==="done"?"100<small>%</small>":"!"):"&ndash;";
+$("label").textContent=done?(s.status==="done"?"Conclu\u00eddo":"Terminou com erro"):(STEPS[at]?STEPS[at][1]:"Preparando");
+$("bar").style.width=(p!=null?p:overall(s))+"%";$("dot").className="dot"+(done?(s.status==="done"?" ok":" err"):"");
+$("steps").innerHTML=STEPS.map((x,i)=>{const c=(i<at||s.step==="finished")?"done":i===at?"now":"";return '<li class="'+c+'"><i>'+(c==="done"?"\u2713":"")+"</i>"+x[1]+(x[0]==="compacting"&&p!=null&&c==="now"?" \u00b7 "+p+"%":"")+"</li>"}).join("");
+const started=s.startedAt?new Date(s.startedAt):null,end=s.finishedAt?new Date(s.finishedAt):new Date();
+$("elapsed").textContent=started?"Tempo: "+fmt((end-started)/1000):"";
+if(p!=null){seen.push([Date.now(),p]);seen=seen.filter(x=>Date.now()-x[0]<600000);const a=seen[0];const rate=(p-a[1])/((Date.now()-a[0])/1000);
+$("eta").textContent=rate>0?"Faltam ~"+fmt((100-p)/rate)+" na compress\u00e3o":"Calculando o tempo restante\u2026"}else $("eta").textContent=done?"":"";
+$("before").textContent=gb(s.sizeBefore);$("after").textContent=gb(s.sizeAfter);$("freed").textContent=s.sizeAfter&&s.sizeBefore?gb(s.sizeBefore-s.sizeAfter):"\u2013";
+$("error").textContent=s.error?"Erro: "+s.error:"";
+$("foot").innerHTML=done?'<a href="__STUDIO__/sistema/compressao">Voltar ao Studio</a> (em instantes leva voc\u00ea sozinho)':"Atualiza sozinho a cada 3 segundos.";
+if(done)setTimeout(()=>location.href="__STUDIO__/sistema/compressao",8000)}
 tick();setInterval(tick,3000);
 </script></body></html>
 '@
