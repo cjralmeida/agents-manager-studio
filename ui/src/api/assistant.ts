@@ -2,6 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Agent } from './agents';
 import { api } from './client';
 
+/** An image or audio to send to Órbi (content in base64). */
+export interface AttachmentUpload {
+  name: string;
+  type: string;
+  data: string;
+  transcript?: string;
+}
+
+type MessageInput = { message: string; context?: string; attachments?: AttachmentUpload[] };
+
 export interface Conversation {
   id: string;
   title: string;
@@ -61,8 +71,7 @@ export function useConversations() {
 export function useStartConversation(workspaceId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { message: string; context?: string }) =>
-      api.post<Agent>(`/workspaces/${workspaceId}/assistant/conversations`, input),
+    mutationFn: (input: MessageInput) => api.post<Agent>(`/workspaces/${workspaceId}/assistant/conversations`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations }),
   });
 }
@@ -70,12 +79,15 @@ export function useStartConversation(workspaceId: string | null) {
 export function useSendToConversation(agentId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { message: string; context?: string }) => api.post<Agent>(`/assistant/conversations/${agentId}/messages`, input),
+    mutationFn: (input: MessageInput) => api.post<Agent>(`/assistant/conversations/${agentId}/messages`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
 }
 
-/** Deletes an Órbi conversation (its history goes with it; a pilot or the Pendências conversation starts a new one). */
+/**
+ * Deletes an Órbi conversation: its history and its folder, with the images and audios sent to it, go with it (a pilot
+ * or the Pendências conversation starts a new one).
+ */
 export function useDeleteConversation() {
   const queryClient = useQueryClient();
   return useMutation({

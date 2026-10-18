@@ -84,8 +84,16 @@ export interface Agent {
   finishedAt: string | null;
 }
 
+/** A file sent with a message (Órbi's images and audios), saved in the agent's folder. */
+export interface MessageAttachment {
+  path: string;
+  kind: 'image' | 'audio';
+  name: string;
+  transcript?: string;
+}
+
 export type AgentEvent =
-  | { id: number; createdAt: string; type: 'user_message'; data: { text: string } }
+  | { id: number; createdAt: string; type: 'user_message'; data: { text: string; attachments?: MessageAttachment[] } }
   | { id: number; createdAt: string; type: 'assistant_text'; data: { text: string } }
   | { id: number; createdAt: string; type: 'tool_use'; data: { name: string; summary: string } }
   | { id: number; createdAt: string; type: 'question'; data: { questions: AgentQuestion[] } }

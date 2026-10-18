@@ -55,6 +55,19 @@ export interface LaunchAgentInput {
   workflowRunId?: string;
   /** Órbi conversation in this workspace (not accepted from the public launch API). */
   assistantWorkspaceId?: string;
+  /** Images and audios sent with the first message (shown in the timeline). */
+  attachments?: MessageAttachment[];
+  /** Writes the attachments into the empty work folder before the container starts. */
+  writeFiles?: (dir: string) => Promise<void>;
+}
+
+/** A file sent with a message, saved in the agent's work folder (path relative to it). */
+export interface MessageAttachment {
+  path: string;
+  kind: 'image' | 'audio';
+  name: string;
+  /** What was said in a voice note, transcribed by the browser while recording. */
+  transcript?: string;
 }
 
 /** Marks agents without a repository (their work folder is ready but has no base commit). */
@@ -148,6 +161,9 @@ const MEDIA_TYPES: Record<string, string> = {
   '.ogg': 'audio/ogg',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
+  // Voice notes recorded in the browser (Chrome/Firefox record webm, Safari mp4).
+  '.webm': 'audio/webm',
+  '.m4a': 'audio/mp4',
 };
 
 /** An image or a sound from the agent's copy, by path relative to it (only media, never outside the copy). */
@@ -287,12 +303,12 @@ export async function launchAgent(input: LaunchAgentInput) {
     },
     include: agentInclude,
   });
-  await addEvent(agent.id, 'user_message', { text: message });
+  await addEvent(agent.id, 'user_message', messageEvent(message, input.attachments));
   await prisma.agentInbox.create({ data: { agentId: agent.id, kind: 'MESSAGE', payload: { text: message } } });
 
   // A copy continuing another agent keeps that agent's branch; fresh copies follow the remote base.
   if (shareCopy) void startOnSharedCopy(agent.id, source!);
-  else void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch, Boolean(input.pullRequest));
+  else void prepareAndStart(agent.id, cloneFrom, project?.gitRemoteUrl ?? null, !source, source?.branch, Boolean(input.pullRequest), input.writeFiles);
   if (task) void reportTaskMove(agent, 'inProgress', true);
   return toResponse(agent);
 }
@@ -323,11 +339,13 @@ async function prepareAndStart(
   cloneBranch?: string,
   /** The agent's branch is the branch of a PR made outside the Studio that only exists on the remote. */
   onRemoteBranch = false,
+  writeFiles?: (dir: string) => Promise<void>,
 ) {
   try {
     const agent = await findOrThrow(agentId);
     if (!projectDir) {
       await prepareEmptyWorkdir(agent.workdir);
+      await writeFiles?.(workdirPath(agent.workdir));
       await prisma.agent.update({ where: { id: agentId }, data: { baseCommit: NO_REPOSITORY } });
       await addEvent(agentId, 'status', { message: 'Pasta de trabalho criada (agente sem repositório).' });
       await ensureContainer(agentId);
@@ -531,7 +549,11 @@ function wake(agentId: string) {
 
 // ---------------------------------------------------------------- interaction
 
-export async function sendMessage(id: string, text: string) {
+function messageEvent(text: string, attachments?: MessageAttachment[]): Prisma.InputJsonValue {
+  return attachments?.length ? { text, attachments: attachments as unknown as Prisma.InputJsonValue } : { text };
+}
+
+export async function sendMessage(id: string, text: string, attachments?: MessageAttachment[]) {
   const agent = await findOrThrow(id);
   if (agent.status === 'CANCELLED' || agent.status === 'FINALIZING') {
     throw new HttpError(409, 'Não é possível enviar mensagens para este agente agora.');
@@ -545,7 +567,7 @@ export async function sendMessage(id: string, text: string) {
   }
 
   await prisma.agentInbox.create({ data: { agentId: id, kind: 'MESSAGE', payload: { text } } });
-  await addEvent(id, 'user_message', { text });
+  await addEvent(id, 'user_message', messageEvent(text, attachments));
   await prisma.agent.update({
     where: { id },
     data: {

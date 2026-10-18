@@ -1,13 +1,14 @@
-import { type FormEvent, type KeyboardEvent, useEffect, useState } from 'react';
+import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useMatch } from 'react-router';
 import { type AgentEvent, useAgent } from '../../api/agents';
-import { useConversations, useProposals, useSendToConversation, useStartConversation } from '../../api/assistant';
+import { type AttachmentUpload, useConversations, useProposals, useSendToConversation, useStartConversation } from '../../api/assistant';
 import { useWorkspaces } from '../../api/workspaces';
 import { timeAgo } from '../../lib/time';
 import { Conversation } from '../agents/Conversation';
 import { Button } from '../Button';
 import { ErrorText, Select } from '../form';
 import { Logo } from '../Logo';
+import { ACCEPTED, AttachmentList, RecordButton, useAttachments } from './Attachments';
 import { ProposalCard } from './ProposalCard';
 
 const WORKSPACE_KEY = 'ams.orbi.workspace';
@@ -127,9 +128,21 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
   );
 }
 
-export function MessageBox({ placeholder, pending, error, onSend }: { placeholder: string; pending: boolean; error: Error | null; onSend: (text: string, done: () => void) => void }) {
+/** Sends the text and the attached images and audios; done() clears the box once the server took them. */
+type SendHandler = (text: string, attachments: AttachmentUpload[], done: () => void) => void;
+
+export function MessageBox({ placeholder, pending, error, onSend }: { placeholder: string; pending: boolean; error: Error | null; onSend: SendHandler }) {
   const [text, setText] = useState('');
-  const submit = () => text.trim() && onSend(text, () => setText(''));
+  const attachments = useAttachments();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const canSend = (text.trim() || attachments.items.length > 0) && !pending;
+  const submit = () =>
+    canSend &&
+    onSend(text, attachments.uploads(), () => {
+      setText('');
+      attachments.clear();
+    });
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     submit();
@@ -140,22 +153,72 @@ export function MessageBox({ placeholder, pending, error, onSend }: { placeholde
       submit();
     }
   };
+  const addFiles = (files: Iterable<File>) => {
+    for (const file of files) void attachments.add(file, file.name);
+  };
+  // A screenshot pasted with Ctrl+V becomes an attachment.
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...event.clipboardData.files];
+    if (files.length === 0) return;
+    event.preventDefault();
+    addFiles(files);
+  };
+  const handleDrop = (event: DragEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    addFiles(event.dataTransfer.files);
+  };
   return (
-    <form onSubmit={handleSubmit} className="sticky bottom-0 rounded-lg border border-border bg-panel p-2">
+    <form
+      onSubmit={handleSubmit}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes('Files')) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      className={`sticky bottom-0 rounded-lg border bg-panel p-2 ${dragging ? 'border-accent' : 'border-border'}`}
+    >
+      <AttachmentList items={attachments.items} onRemove={attachments.remove} />
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         rows={2}
         placeholder={placeholder}
         className="w-full resize-none rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
       />
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted">Enter envia · Shift+Enter quebra linha</span>
-        <Button type="submit" size="sm" variant="primary" disabled={!text.trim() || pending}>
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={fileInput}
+            type="file"
+            accept={ACCEPTED}
+            multiple
+            hidden
+            onChange={(event) => {
+              addFiles(event.target.files ?? []);
+              event.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent/60 hover:text-white"
+            title="Anexar imagens ou áudios (também dá para colar um print ou arrastar arquivos aqui)"
+          >
+            📎 Anexar
+          </button>
+          <RecordButton onRecorded={(blob, name, transcript) => void attachments.add(blob, name, transcript)} onError={attachments.setError} />
+        </div>
+        <span className="hidden text-[11px] text-muted sm:inline">Enter envia · Shift+Enter quebra linha</span>
+        <Button type="submit" size="sm" variant="primary" disabled={!canSend}>
           Enviar
         </Button>
       </div>
+      {attachments.error && <p className="mt-1 text-xs text-red-300">{attachments.error}</p>}
       <ErrorText error={error} />
     </form>
   );
@@ -164,9 +227,9 @@ export function MessageBox({ placeholder, pending, error, onSend }: { placeholde
 export function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onStarted: (id: string) => void }) {
   const start = useStartConversation(workspaceId);
   const context = usePageContext();
-  const send = (message: string, done: () => void) =>
+  const send: SendHandler = (message, attachments, done) =>
     start.mutate(
-      { message, context },
+      { message, context, ...(attachments.length > 0 && { attachments }) },
       {
         onSuccess: (agent) => {
           done();
@@ -186,7 +249,7 @@ export function NewConversation({ workspaceId, onStarted }: { workspaceId: strin
           <button
             key={suggestion}
             type="button"
-            onClick={() => send(suggestion, () => undefined)}
+            onClick={() => send(suggestion, [], () => undefined)}
             disabled={start.isPending}
             className="rounded-md border border-border px-3 py-2 text-left text-xs text-gray-300 hover:border-accent/60 hover:text-white disabled:opacity-50"
           >
@@ -233,7 +296,7 @@ export function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentI
           placeholder="Pergunte ou peça uma mudança..."
           pending={sendMessage.isPending}
           error={sendMessage.error}
-          onSend={(message, done) => sendMessage.mutate({ message, context }, { onSuccess: done })}
+          onSend={(message, attachments, done) => sendMessage.mutate({ message, context, ...(attachments.length > 0 && { attachments }) }, { onSuccess: done })}
         />
       }
     />

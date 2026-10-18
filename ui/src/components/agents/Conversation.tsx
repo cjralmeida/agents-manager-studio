@@ -1,5 +1,5 @@
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { type Agent, type AgentEvent, useAgentEvents, useSendAgentMessage, LIVE_STATUSES } from '../../api/agents';
+import { type Agent, type AgentEvent, type MessageAttachment, useAgentEvents, useSendAgentMessage, LIVE_STATUSES } from '../../api/agents';
 import { formatTime } from '../../lib/time';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
@@ -38,7 +38,7 @@ export function Conversation({ agent, speaker = 'Agente', renderEvent, composer 
       <ol className="space-y-3">
         {events.data?.map((event) => (
           <li key={event.id}>
-            {renderEvent?.(event) ?? <EventItem event={event} speaker={speaker} />}
+            {renderEvent?.(event) ?? <EventItem event={event} speaker={speaker} agentId={agent.id} />}
           </li>
         ))}
       </ol>
@@ -56,10 +56,34 @@ export function Conversation({ agent, speaker = 'Agente', renderEvent, composer 
   );
 }
 
-/** Context added to messages for Órbi ("[Contexto: ...]") is for the assistant, not for display. */
-const withoutContext = (text: string) => text.replace(/\n\n\[Contexto: [^\]]*\]$/, '');
+/**
+ * Context added to messages for Órbi ("[Contexto: ...]") and the list of attachments ("[Anexos do usuário]", shown as
+ * the files themselves) are for the assistant, not for display.
+ */
+const withoutContext = (text: string) => text.replace(/\n\n\[Contexto: [^\]]*\]$/, '').replace(/(^|\n\n)\[Anexos do usuário\][\s\S]*$/, '');
 
-function EventItem({ event, speaker }: { event: AgentEvent; speaker: string }) {
+/** Images and audios sent with a message, served from the agent's folder. */
+function MessageAttachments({ agentId, attachments }: { agentId: string; attachments: MessageAttachment[] }) {
+  const url = (attachment: MessageAttachment) => `/api/agents/${agentId}/files/${attachment.path.split('/').map(encodeURIComponent).join('/')}`;
+  return (
+    <div className="mt-2 space-y-2">
+      {attachments.map((attachment) =>
+        attachment.kind === 'image' ? (
+          <a key={attachment.path} href={url(attachment)} target="_blank" rel="noreferrer" title={`${attachment.name} — abrir em tamanho cheio`} className="block w-fit">
+            <img src={url(attachment)} alt={attachment.name} className="max-h-64 max-w-full rounded border border-border" />
+          </a>
+        ) : (
+          <div key={attachment.path} className="space-y-1">
+            <audio controls preload="metadata" src={url(attachment)} className="h-9 w-full max-w-xs" />
+            {attachment.transcript && <p className="text-xs text-muted italic">“{attachment.transcript}”</p>}
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
+
+function EventItem({ event, speaker, agentId }: { event: AgentEvent; speaker: string; agentId: string }) {
   const time = <span className="text-xs text-muted">{formatTime(event.createdAt)}</span>;
 
   switch (event.type) {
@@ -74,7 +98,8 @@ function EventItem({ event, speaker }: { event: AgentEvent; speaker: string }) {
             <span>Você</span>
             {time}
           </div>
-          <p className="text-sm whitespace-pre-wrap">{withoutContext(event.data.text)}</p>
+          {withoutContext(event.data.text) && <p className="text-sm whitespace-pre-wrap">{withoutContext(event.data.text)}</p>}
+          {event.data.attachments?.length ? <MessageAttachments agentId={agentId} attachments={event.data.attachments} /> : null}
         </div>
       );
     case 'assistant_text':
