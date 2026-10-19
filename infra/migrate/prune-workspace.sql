@@ -38,8 +38,12 @@ DELETE FROM user_settings WHERE key LIKE 'orbi%' OR key LIKE 'viewProfile%';
 DELETE FROM sessions;
 DELETE FROM users WHERE id NOT IN (SELECT owner_id FROM keep_ws);
 
--- 5. Nothing starts by itself on the new machine: workflows off, runs that were going are closed.
+-- 5. Nothing starts by itself on the new machine: workflows and Órbi routines off; routines watch only the kept
+-- workspace (an empty list means all, which there is that one).
 UPDATE workflows SET is_enabled = false;
+UPDATE orbi_routines
+SET enabled = false,
+    workspace_ids = ARRAY(SELECT unnest(workspace_ids) INTERSECT SELECT id FROM keep_ws);
 
 COMMIT;
 
