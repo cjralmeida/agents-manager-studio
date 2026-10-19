@@ -1,13 +1,11 @@
 import { prisma } from '../../db.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import { notFound } from '../../lib/errors.js';
-import { addEvent, sendMessage } from '../agents/service.js';
-import { startConversation } from '../assistant/service.js';
-import { getUserSetting, setUserSetting } from '../users/settings.js';
+import { HttpError, notFound } from '../../lib/errors.js';
+import { deliverToOrbi } from './conversation.js';
 
 export type ActivityKind = 'answer' | 'message' | 'task' | 'workflow' | 'pause' | 'resume' | 'capacity' | 'conflict' | 'flag';
 
-/** Records what Órbi did by itself, or (flag) something it left for the user. */
+/** Records what Órbi did by itself, or (flag) a decision it left for the user. */
 export async function logActivity(input: {
   ownerId: string;
   workspaceId?: string | null;
@@ -17,7 +15,7 @@ export async function logActivity(input: {
   details?: unknown;
   link?: string | null;
 }) {
-  const row = await prisma.orbiActivity.create({
+  return prisma.orbiActivity.create({
     data: {
       ownerId: input.ownerId,
       workspaceId: input.workspaceId ?? null,
@@ -28,31 +26,6 @@ export async function logActivity(input: {
       link: input.link ?? null,
     },
   });
-  // With the user away, a new flag goes straight to the Pendências conversation, which sorts it out alone.
-  // (Not a flag the Pendências conversation left itself: that one waits for the user.)
-  const pendingConversation = await getUserSetting<string>(input.ownerId, PENDING_CONVERSATION_KEY);
-  if (input.kind === 'flag' && input.conversationId !== pendingConversation && (await getPendingMode(input.ownerId)) === 'full') {
-    await discussFlag(input.ownerId, row.id).catch(() => undefined);
-  }
-  return row;
-}
-
-const PENDING_MODE_KEY = 'orbiPendingMode';
-export type PendingMode = 'technical' | 'full';
-
-/** "technical" (the user is around: flags wait for them) or "full" (away: Órbi sorts new flags out by itself). */
-export async function getPendingMode(ownerId: string): Promise<PendingMode> {
-  return (await getUserSetting<PendingMode>(ownerId, PENDING_MODE_KEY)) === 'full' ? 'full' : 'technical';
-}
-
-/** Switching to "away" also hands Órbi the flags still open that it has not brought up yet. */
-export async function setPendingMode(ownerId: string, mode: PendingMode) {
-  await setUserSetting(ownerId, PENDING_MODE_KEY, mode);
-  if (mode === 'full') {
-    const open = await prisma.orbiActivity.findMany({ where: { ownerId, kind: 'flag', resolvedAt: null }, orderBy: { createdAt: 'asc' }, take: 20 });
-    for (const flag of open) await discussFlag(ownerId, flag.id).catch(() => undefined);
-  }
-  return { mode };
 }
 
 async function withWorkspaceNames<T extends { workspaceId: string | null }>(rows: T[]) {
@@ -67,7 +40,7 @@ export async function listActivity(ownerId: string, limit = 50) {
   return withWorkspaceNames(rows);
 }
 
-/** Flags Órbi left for the user and nobody dealt with yet. */
+/** Decisions Órbi left for the user that nobody dealt with yet. */
 export async function listOpenFlags(ownerId: string) {
   const rows = await prisma.orbiActivity.findMany({ where: { ownerId, kind: 'flag', resolvedAt: null }, orderBy: { createdAt: 'desc' }, take: 50 });
   return withWorkspaceNames(rows);
@@ -75,64 +48,49 @@ export async function listOpenFlags(ownerId: string) {
 
 export async function resolveFlag(ownerId: string, id: string) {
   const flag = await prisma.orbiActivity.findFirst({ where: { id, ownerId, kind: 'flag' } });
-  if (!flag) throw notFound('Aviso não encontrado.');
+  if (!flag) throw notFound('Decisão não encontrada.');
   return prisma.orbiActivity.update({ where: { id }, data: { resolvedAt: new Date() } });
 }
 
-const PENDING_CONVERSATION_KEY = 'orbiPendingConversation';
+interface FlagDetails {
+  details?: string | null;
+  options?: string[];
+  decidedOption?: string | null;
+  decidedAt?: string;
+}
 
 /**
- * Flags are sorted out with the user in one conversation, "Pendências": each flag the user brings goes to it as a
- * new message (a new one starts when it was deleted or cancelled). The flag remembers it, so it can be reopened.
+ * The user's answer to a decision Órbi left: one of its options (and/or a note), or "let's talk" with neither. It goes
+ * to the Órbi conversation, which acts on it and marks the decision as resolved (studio_resolve_flag).
  */
-export async function discussFlag(ownerId: string, id: string) {
-  const flag = await prisma.orbiActivity.findFirst({ where: { id, ownerId, kind: 'flag' } });
-  if (!flag) throw notFound('Aviso não encontrado.');
-  const details = (flag.details ?? {}) as { details?: string | null; discussionId?: string };
-  const conversationId = await getUserSetting<string>(ownerId, PENDING_CONVERSATION_KEY);
-  const current = conversationId ? await prisma.agent.findUnique({ where: { id: conversationId }, select: { id: true, status: true } }) : null;
-  const usable = current && current.status !== 'CANCELLED';
-  // Already brought to the current conversation: just open it.
-  if (usable && details.discussionId === current.id) return { conversationId: current.id };
-
-  const away = (await getPendingMode(ownerId)) === 'full';
-  const message = away
-    ? [
-        'Nova pendência — um aviso que um piloto deixou. O usuário está FORA agora: resolva você, sem perguntar a ele.',
-        `"${flag.summary}"`,
-        ...(details.details ? ['', `Detalhes: ${details.details}`] : []),
-        ...(flag.link ? ['', `Link: ${flag.link}`] : []),
-        '',
-        `(id da pendência: ${flag.id})`,
-        'Veja a situação (a tarefa, as execuções e o que os agentes já fizeram) e decida pela opção mais segura e reversível que mantenha o trabalho andando, seguindo as regras do projeto e as decisões já registradas. Faça você mesmo o que for preciso com as suas ferramentas, registre na tarefa (ou na resposta) o que decidiu e por quê, e marque com studio_resolve_flag. Não pergunte nada ao usuário.',
-        'Só NÃO decida sozinho: apagar coisas, credenciais, gastos ou uma mudança grande de escopo ou de regra de negócio. Nesses casos, deixe a pendência aberta e escreva aqui o que propõe, para o usuário ver quando voltar.',
-      ].join('\n')
-    : [
-    'Nova pendência para resolvermos juntos — um aviso que um piloto deixou para mim:',
-    `"${flag.summary}"`,
-    ...(details.details ? ['', `Detalhes: ${details.details}`] : []),
-    ...(flag.link ? ['', `Link: ${flag.link}`] : []),
-    '',
-    `(id da pendência: ${flag.id})`,
-    'Veja a situação (a tarefa, as execuções e o que os agentes já fizeram), me explique em poucas linhas o que precisa ser decidido e me pergunte com opções (AskUserQuestion). Depois de eu decidir, faça você mesmo o que for preciso — com as suas ferramentas você faz o que eu faria no quadro (mover, editar, responsáveis, fechar), nos agentes e nos workflows — e, quando estiver resolvida, marque com studio_resolve_flag.',
-  ].join('\n');
-  let target: string;
-  if (usable) {
-    if (current.status === 'WAITING_INPUT') {
-      // A message now would answer the question Órbi is asking about the previous pendência: it waits in the inbox
-      // and comes after the user answers.
-      await prisma.agentInbox.create({ data: { agentId: current.id, kind: 'MESSAGE', payload: { text: message } } });
-      await addEvent(current.id, 'user_message', { text: message });
-    } else {
-      await sendMessage(current.id, message);
-    }
-    target = current.id;
-  } else {
-    const workspaceId = flag.workspaceId ?? (await prisma.workspace.findFirstOrThrow({ where: { ownerId, isIgnored: false }, select: { id: true } })).id;
-    const conversation = await startConversation(workspaceId, message, undefined, { title: 'Resolução de pendências' });
-    await setUserSetting(ownerId, PENDING_CONVERSATION_KEY, conversation.id);
-    target = conversation.id;
+export async function decideFlag(ownerId: string, id: string, input: { option?: string; note?: string }) {
+  const flag = await prisma.orbiActivity.findFirst({ where: { id, ownerId, kind: 'flag', resolvedAt: null } });
+  if (!flag) throw notFound('Decisão não encontrada ou já resolvida.');
+  const details = (flag.details ?? {}) as FlagDetails;
+  const option = input.option?.trim() || null;
+  if (option && !(details.options ?? []).includes(option)) throw new HttpError(400, 'Essa opção não existe nesta decisão.');
+  const note = input.note?.trim() || null;
+  const context = [`"${flag.summary}"`, ...(details.details ? [`Detalhes: ${details.details}`] : []), ...(flag.link ? [`Link: ${flag.link}`] : []), `(id da decisão: ${flag.id})`];
+  const message =
+    option || note
+      ? [
+          '[Decisão do usuário]',
+          ...context,
+          '',
+          ...(option ? [`Escolha: ${option}`] : []),
+          ...(note ? [`Observação: ${note}`] : []),
+          '',
+          'Faça o que for preciso para cumprir a escolha, com as suas ferramentas, conte em uma frase o que fez e marque a decisão com studio_resolve_flag.',
+        ]
+      : [
+          '[Vamos resolver juntos] O usuário abriu esta decisão para conversar:',
+          ...context,
+          '',
+          'Explique em poucas linhas o que precisa ser decidido e pergunte com opções (AskUserQuestion). Depois que ele decidir, faça o que for preciso e marque com studio_resolve_flag.',
+        ];
+  const conversation = await deliverToOrbi(ownerId, message.join('\n'), flag.workspaceId ?? undefined);
+  if (option || note) {
+    await prisma.orbiActivity.update({ where: { id }, data: { details: { ...details, decidedOption: option ?? note, decidedAt: new Date().toISOString() } } });
   }
-  await prisma.orbiActivity.update({ where: { id }, data: { details: { ...details, discussionId: target } } });
-  return { conversationId: target };
+  return { conversationId: conversation.id };
 }

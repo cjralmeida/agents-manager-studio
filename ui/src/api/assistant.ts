@@ -85,8 +85,8 @@ export function useSendToConversation(agentId: string) {
 }
 
 /**
- * Deletes an Órbi conversation: its history and its folder, with the images and audios sent to it, go with it (a pilot
- * or the Pendências conversation starts a new one).
+ * Deletes an Órbi conversation: its history and its folder, with the images and audios sent to it, go with it (the
+ * next message starts a new one).
  */
 export function useDeleteConversation() {
   const queryClient = useQueryClient();

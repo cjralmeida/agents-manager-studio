@@ -1,17 +1,15 @@
 import { type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useMatch } from 'react-router';
 import { type AgentEvent, useAgent } from '../../api/agents';
-import { type AttachmentUpload, useConversations, useProposals, useSendToConversation, useStartConversation } from '../../api/assistant';
+import { type AttachmentUpload, useProposals } from '../../api/assistant';
+import { useOrbiConversation, useSendToOrbi } from '../../api/orbi';
 import { useWorkspaces } from '../../api/workspaces';
-import { timeAgo } from '../../lib/time';
 import { Conversation } from '../agents/Conversation';
 import { Button } from '../Button';
-import { ErrorText, Select } from '../form';
+import { ErrorText } from '../form';
 import { Logo } from '../Logo';
 import { ACCEPTED, AttachmentList, RecordButton, useAttachments } from './Attachments';
 import { ProposalCard } from './ProposalCard';
-
-const WORKSPACE_KEY = 'ams.orbi.workspace';
 
 const SUGGESTIONS = [
   'Como estão os workspaces agora?',
@@ -21,47 +19,28 @@ const SUGGESTIONS = [
   'Monte um workflow que documenta, planeja, implementa, testa e publica em homologação.',
 ];
 
-function storedWorkspace() {
-  try {
-    return localStorage.getItem(WORKSPACE_KEY);
-  } catch {
-    return null;
-  }
-}
-
 /** Where the user is, sent with each message so Órbi understands "este workflow", "aqui". */
 function usePageContext() {
   const location = useLocation();
   return `página ${location.pathname}${location.search}`;
 }
 
-/** Órbi: the assistant panel, available from any screen. */
-export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; onConversation?: (id: string | null) => void }) {
+/** The workspace on screen: where a brand-new conversation starts. */
+function useScreenWorkspace() {
   const workspaces = useWorkspaces();
   const routeWorkspace = useMatch('/workspaces/:workspaceId/*')?.params.workspaceId ?? null;
   const available = workspaces.data?.filter((workspace) => !workspace.isMissing && !workspace.isIgnored) ?? [];
-  const [workspaceId, setWorkspaceId] = useState<string | null>(routeWorkspace ?? storedWorkspace());
-  const effectiveWorkspace = available.find((workspace) => workspace.id === workspaceId)?.id ?? available[0]?.id ?? null;
-  const conversations = useConversations();
-  /** null = most recent conversation; "new" = a fresh one. */
-  const [conversationId, setConversationId] = useState<string | 'new' | null>(null);
-  const current = conversationId === 'new' ? null : (conversationId ?? conversations.data?.[0]?.id ?? null);
-  // The layout follows the open conversation, so the Órbi button can light up while the panel is closed.
+  return available.find((workspace) => workspace.id === routeWorkspace)?.id ?? available[0]?.id ?? null;
+}
+
+/** Órbi: the assistant panel, available from any screen, with the user's one conversation. */
+export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; onConversation?: (id: string | null) => void }) {
+  const info = useOrbiConversation();
+  const current = info.data?.conversationId ?? null;
+  // The layout follows the conversation, so the Órbi button can light up while the panel is closed.
   useEffect(() => onConversation?.(current), [current, onConversation]);
   /** Órbi is answering: the panel gets the purple light, like working agents. */
   const [answering, setAnswering] = useState(false);
-
-  // Follows the workspace the user navigates to.
-  useEffect(() => {
-    if (routeWorkspace) setWorkspaceId(routeWorkspace);
-  }, [routeWorkspace]);
-  useEffect(() => {
-    try {
-      if (effectiveWorkspace) localStorage.setItem(WORKSPACE_KEY, effectiveWorkspace);
-    } catch {
-      // Preference only.
-    }
-  }, [effectiveWorkspace]);
 
   return (
     <aside
@@ -73,7 +52,7 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
         <Logo size={26} />
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Órbi</h2>
-          <p className="text-[11px] text-muted">Assistente do Studio · opera por você e propõe o que é estrutura</p>
+          <p className="text-[11px] text-muted">Opera o Studio com você · as rotinas ficam na página do Órbi</p>
         </div>
         <Link to="/orbi" onClick={onClose} className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent/60 hover:text-white">
           Abrir página
@@ -83,45 +62,15 @@ export function OrbiPanel({ onClose, onConversation }: { onClose: () => void; on
         </Button>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <Select
-          className="w-auto flex-1 py-1 text-xs"
-          value={effectiveWorkspace ?? ''}
-          onChange={(event) => {
-            setWorkspaceId(event.target.value);
-            setConversationId(null);
-          }}
-          aria-label="Workspace em foco"
-          title="Workspace em que uma conversa nova começa"
-        >
-          {available.map((workspace) => (
-            <option key={workspace.id} value={workspace.id}>
-              {workspace.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          className="w-auto flex-1 py-1 text-xs"
-          value={current ?? 'new'}
-          onChange={(event) => setConversationId(event.target.value)}
-          aria-label="Conversa"
-        >
-          <option value="new">Nova conversa</option>
-          {conversations.data?.map((conversation) => (
-            <option key={conversation.id} value={conversation.id}>
-              {conversation.title} · {conversation.workspaceName} · {timeAgo(conversation.lastActivityAt)}
-            </option>
-          ))}
-        </Select>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {!effectiveWorkspace ? (
-          <p className="text-sm text-muted">Nenhum workspace disponível.</p>
+        {info.error ? (
+          <ErrorText error={info.error} />
+        ) : !info.data ? (
+          <p className="text-sm text-muted">Carregando...</p>
         ) : current ? (
-          <OrbiConversation key={current} agentId={current} workspaceId={effectiveWorkspace} onAnswering={setAnswering} />
+          <OrbiConversation key={current} agentId={current} onAnswering={setAnswering} />
         ) : (
-          <NewConversation workspaceId={effectiveWorkspace} onStarted={setConversationId} />
+          <OrbiStart />
         )}
       </div>
     </aside>
@@ -224,33 +173,29 @@ export function MessageBox({ placeholder, pending, error, onSend }: { placeholde
   );
 }
 
-export function NewConversation({ workspaceId, onStarted }: { workspaceId: string; onStarted: (id: string) => void }) {
-  const start = useStartConversation(workspaceId);
+/** Before the first message: what Órbi does, a few suggestions and the box. */
+export function OrbiStart() {
+  const send = useSendToOrbi();
   const context = usePageContext();
-  const send: SendHandler = (message, attachments, done) =>
-    start.mutate(
-      { message, context, ...(attachments.length > 0 && { attachments }) },
-      {
-        onSuccess: (agent) => {
-          done();
-          onStarted(agent.id);
-        },
-      },
-    );
+  const workspaceId = useScreenWorkspace() ?? undefined;
+  const start: SendHandler = (message, attachments, done) =>
+    send.mutate({ message, context, workspaceId, ...(attachments.length > 0 && { attachments }) }, { onSuccess: done });
 
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="space-y-2">
         <p className="text-sm">Oi! Eu opero o Studio com você: respondo os agentes, acompanho as execuções, mexo no quadro, pauso e retomo workspaces e decido a capacidade.</p>
-        <p className="text-xs text-muted">O dia a dia eu faço direto e registro na atividade. Criar ou mudar agentes e workflows vira proposta, que só acontece quando você clica em Aplicar.</p>
+        <p className="text-xs text-muted">
+          Temos uma conversa só: o que você me pede e o que as rotinas me mandam fazer acontece aqui. Criar ou mudar agentes e workflows vira proposta, que só acontece quando você clica em Aplicar.
+        </p>
       </div>
       <div className="flex flex-col gap-1.5">
         {SUGGESTIONS.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
-            onClick={() => send(suggestion, [], () => undefined)}
-            disabled={start.isPending}
+            onClick={() => start(suggestion, [], () => undefined)}
+            disabled={send.isPending}
             className="rounded-md border border-border px-3 py-2 text-left text-xs text-gray-300 hover:border-accent/60 hover:text-white disabled:opacity-50"
           >
             {suggestion}
@@ -258,13 +203,13 @@ export function NewConversation({ workspaceId, onStarted }: { workspaceId: strin
         ))}
       </div>
       <div className="mt-auto">
-        <MessageBox placeholder="O que você quer montar ou entender?" pending={start.isPending} error={start.error} onSend={send} />
+        <MessageBox placeholder="O que você quer montar ou entender?" pending={send.isPending} error={send.error} onSend={start} />
       </div>
     </div>
   );
 }
 
-export function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentId: string; workspaceId: string; onAnswering: (answering: boolean) => void }) {
+export function OrbiConversation({ agentId, onAnswering }: { agentId: string; onAnswering: (answering: boolean) => void }) {
   const agent = useAgent(agentId);
   const answering = agent.data?.status === 'RUNNING' || agent.data?.status === 'PREPARING';
   useEffect(() => {
@@ -272,7 +217,7 @@ export function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentI
     return () => onAnswering(false);
   }, [answering, onAnswering]);
   const proposals = useProposals(agentId);
-  const sendMessage = useSendToConversation(agentId);
+  const sendMessage = useSendToOrbi();
   const context = usePageContext();
 
   if (agent.error) return <ErrorText error={agent.error} />;
@@ -283,7 +228,7 @@ export function OrbiConversation({ agentId, workspaceId, onAnswering }: { agentI
     if (event.type === 'status' && event.data.message.startsWith('Pasta de trabalho')) return <></>;
     if (event.type !== 'proposal') return undefined;
     const proposal = proposals.data?.find((entry) => entry.id === event.data.proposalId);
-    return proposal ? <ProposalCard proposal={proposal} workspaceId={workspaceId} /> : <p className="text-xs text-muted">{event.data.summary}</p>;
+    return proposal ? <ProposalCard proposal={proposal} workspaceId={agent.data.workspaceId} /> : <p className="text-xs text-muted">{event.data.summary}</p>;
   };
 
   return (

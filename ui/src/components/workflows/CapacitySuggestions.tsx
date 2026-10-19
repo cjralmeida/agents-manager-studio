@@ -3,7 +3,7 @@ import { timeAgo } from '../../lib/time';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 
-const LAST_LABELS = { pilot: 'O piloto do Órbi recebeu', applied: 'Aplicado', discarded: 'Descartado' } as const;
+const LAST_LABELS = { pilot: 'O Órbi recebeu', applied: 'Aplicado', discarded: 'Descartado' } as const;
 
 /**
  * Gestor de Capacidade: the agents of each step follow the queues, the computer and the Claude plan. Órbi's pilot
@@ -20,8 +20,8 @@ export function CapacitySuggestions({ workspaceId }: { workspaceId: string }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="text-sm font-medium">Gestor de Capacidade</h3>
         <p className="text-xs text-muted">
-          Ajusta os agentes de cada etapa pelas filas, pelo computador e pelo plano Claude. Com o piloto do Órbi ligado, ele mesmo aplica; desligado, a
-          mudança espera você aqui.
+          Ajusta os agentes de cada etapa pelas filas, pelo computador e pelo plano Claude. Uma rotina do Órbi que vigia a capacidade decide por você;
+          sem ela, a mudança espera você aqui.
         </p>
       </div>
       {data.suggestions.map((suggestion) => (

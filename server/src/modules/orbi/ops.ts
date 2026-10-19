@@ -457,20 +457,23 @@ async function flag(caller: Caller, workspaceId: string, args: Args) {
   const summary = text(args.summary, 500);
   if (!summary) throw new HttpError(400, 'Diga em uma frase o que o usuário precisa ver.');
   const workspace = args.workspace ? await resolveWorkspace(caller.ownerId, args.workspace) : { id: workspaceId };
+  // The choices the user picks from on the Órbi page (the recommended one first).
+  const options = Array.isArray(args.options) ? [...new Set(args.options.map((option) => text(option, 200)).filter(Boolean))] : [];
+  if (options.length > 4) throw new HttpError(400, 'No máximo 4 opções.');
   const created = await logActivity({
     ...activityBase(caller, workspace.id),
     kind: 'flag',
     summary,
-    details: { details: text(args.details) || null },
+    details: { details: text(args.details) || null, options },
     link: text(args.link, 500) || null,
   });
-  return { ok: true, id: created.id, message: 'Deixei o aviso para o usuário na página do Órbi.' };
+  return { ok: true, id: created.id, message: 'Deixei a decisão para o usuário na página do Órbi; a escolha dele chega aqui como "[Decisão do usuário]".' };
 }
 
-/** Marks a flag as dealt with (after sorting it out with the user). */
+/** Marks a decision as dealt with (after doing what the user chose). */
 async function resolveFlagOp(caller: Caller, args: Args) {
   const flag = await resolveFlag(caller.ownerId, text(args.id, 60));
-  return { ok: true, id: flag.id, message: 'Pendência marcada como resolvida.' };
+  return { ok: true, id: flag.id, message: 'Decisão marcada como resolvida.' };
 }
 
 /** The PR/MR of a board task in the focused workspace: the open one, or the latest merged. */

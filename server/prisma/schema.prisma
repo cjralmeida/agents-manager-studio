@@ -58,6 +58,7 @@ model User {
   pixellabAccounts PixellabAccount[]
   orbiActivities   OrbiActivity[]
   orbiPilotEvents  OrbiPilotEvent[]
+  orbiRoutines     OrbiRoutine[]
 
   @@map("users")
 }
@@ -992,6 +993,35 @@ model OrbiPilotEvent {
 
   @@id([ownerId, key])
   @@map("orbi_pilot_events")
+}
+
+/// Work Órbi does by itself on a schedule or when something happens (they replace the two fixed pilots). Every
+/// routine runs in the user's one Órbi conversation, one message at a time.
+model OrbiRoutine {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  ownerId      String    @map("owner_id") @db.Uuid
+  name         String
+  /// The user's own instructions: what to look at and how to decide.
+  instructions String    @default("")
+  /// Workspaces it watches; empty means all of the user's.
+  workspaceIds String[]  @default([]) @map("workspace_ids") @db.Uuid
+  /// Runs every N minutes (null: not by interval).
+  everyMinutes Int?      @map("every_minutes")
+  /// Runs every day at these times, "HH:MM" in America/Sao_Paulo.
+  dailyAt      String[]  @default([]) @map("daily_at")
+  /// Wakes up when these happen (see routines.ts ROUTINE_EVENTS).
+  events       String[]  @default([])
+  /// "auto" decides and acts; "assistant" leaves the options for the user and waits.
+  mode         String    @default("assistant")
+  enabled      Boolean   @default(false)
+  lastRunAt    DateTime? @map("last_run_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("orbi_routines")
 }
 
 /// A shared test user (a group of agent variables <PREFIX>_LOGIN/_PASSWORD) taken by a tester agent: the service

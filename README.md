@@ -182,7 +182,14 @@ O **Órbi** é o assistente do Studio. Ele abre pelo botão no canto inferior di
 - **Leitura:** é livre.
 - **Mudanças:** toda mudança vira uma **proposta** num cartão com **Aplicar** e **Descartar**. Os tipos de proposta são: criar, alterar ou excluir agentes e workflows; iniciar workflows; cancelar execuções; e criar tarefas. O Studio valida a proposta com as mesmas regras dos formulários, antes de mostrá-la e de novo ao aplicar.
 - **Limites:** ele não vê tokens nem mexe em contas.
-- **Como funciona por dentro:** é uma conversa no mesmo runner dos agentes, com ferramentas próprias (`studio_*`). As instruções dele estão em `server/src/modules/assistant/guide.ts`. As conversas ficam por workspace e não aparecem entre as execuções.
+- **Uma conversa só:** cada usuário tem uma conversa com o Órbi, na página dele e no painel. Nela acontece tudo: o que você pede, o que as rotinas mandam fazer e as decisões que você toma. **Recomeçar** abre uma conversa nova com o contexto limpo, e as antigas ficam no **Histórico**.
+- **Rotinas:** trabalho que o Órbi faz sozinho. Cada rotina tem nome, instruções, os workspaces que vigia e quando roda: a cada N minutos, todo dia em horários fixos (horário de Brasília) e/ou quando algo acontece (pergunta de agente, execução que falhou, agente parado, memória ou CPU no limite, plano Claude perto do limite, ambiente de teste preso, sugestão do Gestor de Capacidade).
+- **Modo de cada rotina:**
+  - **Automático:** decide e age sozinho. Apagar coisas, credenciais, gastos e mudança grande de escopo continuam com você.
+  - **Assistente:** investiga e deixa cada ação como uma **decisão** com opções.
+- **Fila das rotinas:** rodam uma por vez. Enquanto o Órbi trabalha ou espera uma resposta sua, a rotina espera a próxima rodada (1 minuto).
+- **Decisões:** o cartão Decisões da página do Órbi junta o que espera você: as decisões do Órbi (cada uma com botões de opção; a escolha vai para a conversa e ele executa), perguntas de agentes, sugestões de capacidade, propostas e falhas.
+- **Como funciona por dentro:** a conversa roda no mesmo runner dos agentes, com ferramentas próprias (`studio_*`). As instruções dele estão em `server/src/modules/assistant/guide.ts`, e as rotinas em `server/src/modules/orbi/routines.ts`.
 
 ## Deploy (Render)
 

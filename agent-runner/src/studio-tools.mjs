@@ -402,13 +402,19 @@ export function createStudioTools(call, groups) {
       ),
       tool(
         'studio_flag',
-        'Deixa um aviso para o usuário na página do Órbi (algo que precisa dele: mudança grande de escopo, credencial, decisão que você não deve tomar).',
-        { summary: z.string(), details: z.string().optional(), link: z.string().optional(), workspace: z.string().optional() },
+        'Deixa uma decisão para o usuário na página do Órbi (algo que precisa dele: no modo Assistente, cada ação; em qualquer modo, mudança grande de escopo, credencial, gasto, apagar algo). Com options (2 a 4, a recomendada primeiro), ele escolhe com um clique e a escolha volta para a conversa como "[Decisão do usuário]".',
+        {
+          summary: z.string(),
+          details: z.string().optional(),
+          options: z.array(z.string()).max(4).optional().describe('Opções curtas para o usuário escolher; a recomendada primeiro, terminando em "(recomendado)".'),
+          link: z.string().optional(),
+          workspace: z.string().optional(),
+        },
         run('studio_flag'),
       ),
       tool(
         'studio_resolve_flag',
-        'Marca um aviso (pendência) como resolvido, depois de resolvê-lo com o usuário. O id vem na mensagem da pendência ou em studio_pending (flags).',
+        'Marca uma decisão como resolvida, depois de fazer o que o usuário escolheu. O id vem na mensagem "[Decisão do usuário]" ou em studio_pending (flags).',
         { id: z.string() },
         run('studio_resolve_flag'),
       ),

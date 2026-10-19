@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AgentQuestion } from './agents';
+import type { Agent, AgentQuestion } from './agents';
+import type { AttachmentUpload } from './assistant';
 import { api } from './client';
 
 export interface OrbiActivity {
@@ -24,24 +25,36 @@ export interface OrbiPending {
   workspaces: { id: string; name: string }[];
 }
 
-export type PilotKind = 'tasks' | 'agents';
+export type RoutineMode = 'auto' | 'assistant';
 
-export interface PilotSettings {
-  enabled: boolean;
-  allWorkspaces: boolean;
-  workspaceIds: string[];
-  model: 'sonnet' | 'opus';
-  /** technical: the user is around (only technical problems); full: the user is away (everything). */
-  mode: 'technical' | 'full';
+export interface OrbiRoutine {
+  id: string;
+  name: string;
   instructions: string;
+  /** Empty: every workspace of the user. */
+  workspaceIds: string[];
+  everyMinutes: number | null;
+  /** "HH:MM", São Paulo time. */
+  dailyAt: string[];
+  events: string[];
+  mode: RoutineMode;
+  enabled: boolean;
+  lastRunAt: string | null;
+  createdAt: string;
+}
+
+export type RoutineInput = Omit<OrbiRoutine, 'id' | 'lastRunAt' | 'createdAt'>;
+
+export interface OrbiConversationInfo {
   conversationId: string | null;
-  lastEventAt: string | null;
+  model: 'sonnet' | 'opus';
 }
 
 const keys = {
   pending: ['orbi', 'pending'] as const,
   activity: ['orbi', 'activity'] as const,
-  pilots: ['orbi', 'pilots'] as const,
+  conversation: ['orbi', 'conversation'] as const,
+  routines: ['orbi', 'routines'] as const,
 };
 
 export function useOrbiPending() {
@@ -63,7 +76,7 @@ export function useResolveFlag() {
   });
 }
 
-/** Failures marked as seen leave the list: some runs, or (no runIds) everything up to now, flags included. */
+/** Failures marked as seen leave the list: some runs, or (no runIds) everything up to now. */
 export function useMarkSeen() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -75,55 +88,87 @@ export function useMarkSeen() {
   });
 }
 
-/** Both pilots: tasks (the work on the board) and agents (who works and how much). */
-/** Starts (or reopens) a conversation with Órbi to sort out a flag together. */
-export function useDiscussFlag() {
+/** The user's answer to a decision Órbi left: an option, a note, or neither ("let's talk"). It goes to the conversation. */
+export function useDecideFlag() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post<{ conversationId: string }>(`/orbi/flags/${id}/discuss`),
+    mutationFn: ({ id, option, note }: { id: string; option?: string; note?: string }) =>
+      api.post<{ conversationId: string }>(`/orbi/flags/${id}/decide`, { ...(option && { option }), ...(note && { note }) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.pending });
-      void queryClient.invalidateQueries({ queryKey: ['orbi', 'conversations'] });
+      void queryClient.invalidateQueries({ queryKey: keys.activity });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
   });
 }
 
-export type PendingMode = 'technical' | 'full';
-
-/** Pendências: "technical" (flags wait for the user) or "full" (away: Órbi sorts new flags out by itself). */
-export function usePendingMode() {
-  return useQuery({ queryKey: ['orbi', 'pending-mode'], queryFn: () => api.get<{ mode: PendingMode }>('/orbi/pending/mode') });
+/** The user's one Órbi conversation (null until the first message) and its model. */
+export function useOrbiConversation() {
+  return useQuery({ queryKey: keys.conversation, queryFn: () => api.get<OrbiConversationInfo>('/orbi/conversation'), refetchInterval: 15_000 });
 }
 
-export function useSetPendingMode() {
+export function useSendToOrbi() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (mode: PendingMode) => api.put<{ mode: PendingMode }>('/orbi/pending/mode', { mode }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['orbi', 'pending-mode'], data);
-      void queryClient.invalidateQueries({ queryKey: keys.pending });
+    mutationFn: (input: { message: string; context?: string; workspaceId?: string; attachments?: AttachmentUpload[] }) => api.post<Agent>('/orbi/conversation/messages', input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.conversation });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
     },
   });
 }
 
-/** Conversations pinned on the Órbi page: both pilots' and the one where pending items are sorted out. */
-export function usePinnedConversations() {
+export function useSetOrbiModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (model: OrbiConversationInfo['model']) => api.put<OrbiConversationInfo>('/orbi/conversation/model', { model }),
+    onSuccess: (data) => queryClient.setQueryData(keys.conversation, data),
+  });
+}
+
+/** The next message starts a fresh conversation; the old one stays in the history. */
+export function useRestartOrbi() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<OrbiConversationInfo>('/orbi/conversation/restart'),
+    onSuccess: (data) => queryClient.setQueryData(keys.conversation, data),
+  });
+}
+
+export function useRoutines() {
   return useQuery({
-    queryKey: ['orbi', 'pinned'],
-    queryFn: () => api.get<{ tasks: string | null; agents: string | null; pending: string | null }>('/orbi/pilots/conversations'),
+    queryKey: keys.routines,
+    queryFn: () => api.get<{ routines: OrbiRoutine[]; events: Record<string, string> }>('/orbi/routines'),
     refetchInterval: 30_000,
   });
 }
 
-export function usePilots() {
-  return useQuery({ queryKey: keys.pilots, queryFn: () => api.get<Record<PilotKind, PilotSettings>>('/orbi/pilots'), refetchInterval: 30_000 });
-}
-
-export function useUpdatePilot(kind: PilotKind) {
+export function useSaveRoutine() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<Omit<PilotSettings, 'conversationId' | 'lastEventAt'>>) => api.put<PilotSettings>(`/orbi/pilots/${kind}`, patch),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.pilots }),
+    mutationFn: ({ id, ...input }: Partial<RoutineInput> & { id?: string }) =>
+      id ? api.patch<OrbiRoutine>(`/orbi/routines/${id}`, input) : api.post<OrbiRoutine>('/orbi/routines', input),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.routines }),
+  });
+}
+
+export function useDeleteRoutine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/orbi/routines/${id}`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.routines }),
+  });
+}
+
+export function useRunRoutine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<OrbiRoutine>(`/orbi/routines/${id}/run`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.routines });
+      void queryClient.invalidateQueries({ queryKey: keys.conversation });
+      void queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
   });
 }
 

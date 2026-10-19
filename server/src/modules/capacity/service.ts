@@ -5,7 +5,6 @@ import type { Prisma, Workflow } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import type { BoardItem } from '../boards/types.js';
 import { logActivity } from '../orbi/activity.js';
-import { notifyPilot } from '../orbi/pilot.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import type { WorkflowStep } from '../workflows/definition.js';
@@ -117,29 +116,8 @@ async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<St
 const signalLine = (signal: CapacitySignal) =>
   `${signal.workflowName} · ${signal.stepName}: ${signal.from} → ${signal.to} agente(s) (${signal.reason})`;
 
-function pilotLines(signals: CapacitySignal[], loads: StepLoad[], plan: PlanState, machine: MachineState | null) {
-  const percent = (value: number | null) => (value === null ? '?' : `${Math.round(value)}%`);
-  const workflows = [...new Set(signals.map((signal) => signal.workflowId))];
-  return [
-    'Gestor de Capacidade — as regras pedem ajuste de agentes por etapa. Decida cada um e aplique com studio_set_workflow (stepAgents {"<etapa>": N}); não ajuste o que não fizer sentido e diga por quê.',
-    ...signals.map((signal) => `- ${signalLine(signal)} [workflowId ${signal.workflowId}]`),
-    `Plano: janela de 5 h ${percent(plan.sessionPercent)}, semanal ${percent(plan.weekPercent)} (pausa em ${plan.limitPercent}%). Computador: ${
-      machine ? `memória ${Math.round(machine.memoryPercent)}% (limite ${machine.memoryLimit}%), CPU ${Math.round(machine.cpuPercent)}%` : 'desconhecido'
-    }.`,
-    ...workflows.map(
-      (id) =>
-        `Etapas de ${loads.find((load) => load.workflowId === id)?.workflowName}: ${loads
-          .filter((load) => load.workflowId === id)
-          .map((load) => `${load.stepName} ${load.active}/${load.agents}${load.queued ? ` (+${load.queued} na fila)` : ''}${load.single ? ' [recurso único: fica em 1]' : ''}`)
-          .join(' → ')}${loads.find((load) => load.workflowId === id && load.index === 0)?.ready.length ? `; ${loads.find((load) => load.workflowId === id && load.index === 0)!.ready.length} tarefa(s) pronta(s)` : ''}.`,
-    ),
-    'Mais agentes só ajudam se as tarefas não mexem nos mesmos arquivos (conflito de merge). Subir só com o plano e o computador com folga; descer é seguro.',
-  ];
-}
-
 /** Looks at one workspace; raises its signals only when they changed (and not twice within the cooldown). */
 async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
-  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
   const [state, plan, machine] = await Promise.all([boardTaskState(workspaceId), planState(workspaceId), machineState()]);
   const loads = await stepLoads(workspaceId, state);
   if (loads.length === 0) return;
@@ -160,11 +138,9 @@ async function reviewWorkspace(workspaceId: string, log: FastifyBaseLogger) {
   if (lastRaised && Date.now() - lastRaised.createdAt.getTime() < COOLDOWN_MS) return;
 
   const summary = signals.map(signalLine).join('\n');
-  const delivered = await notifyPilot(workspace.ownerId, 'agents', workspaceId, pilotLines(signals, loads, plan, machine)).catch(() => false);
-  await prisma.capacityReview.create({
-    data: { workspaceId, signature, signals: signals as unknown as Prisma.InputJsonValue, summary, status: delivered ? 'pilot' : 'pending' },
-  });
-  log.info({ workspaceId, signals: summary, delivered }, 'Capacity signals raised');
+  // A pending suggestion: an Órbi routine that watches capacity decides it (studio_capacity), or the user does.
+  await prisma.capacityReview.create({ data: { workspaceId, signature, signals: signals as unknown as Prisma.InputJsonValue, summary, status: 'pending' } });
+  log.info({ workspaceId, signals: summary }, 'Capacity signals raised');
 }
 
 let reviewing = false;

@@ -9,7 +9,7 @@ import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startCopyCleanup } from './modules/agents/cleanup.js';
 import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
-import { startOrbiPilot } from './modules/orbi/pilot.js';
+import { startOrbiRoutines } from './modules/orbi/routines.js';
 import { startDiskMaintenance } from './modules/system/maintenance.js';
 import { startDockerSweep } from './modules/system/sweep.js';
 import { startCompactionWatch } from './modules/system/compaction.js';
@@ -66,8 +66,8 @@ const stopSeedCapture = startSeedCapture(app.log);
 const stopBoardWatch = startBoardWatch(app.log);
 app.addHook('onClose', async () => stopBoardWatch());
 // Órbi's pilot mode: when it is on, Órbi deals with agent questions, failed runs and capacity suggestions by itself.
-const stopOrbiPilot = startOrbiPilot(app.log);
-app.addHook('onClose', async () => stopOrbiPilot());
+const stopOrbiRoutines = startOrbiRoutines(app.log);
+app.addHook('onClose', async () => stopOrbiRoutines());
 // Docker disk upkeep: build cache and orphan images deleted and free space trimmed, daily (sooner when the disk is short).
 const stopDiskMaintenance = startDiskMaintenance(app.log);
 const stopDockerSweep = startDockerSweep(app.log);
