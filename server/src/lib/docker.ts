@@ -118,8 +118,32 @@ export interface ContainerSpec {
   pidMode?: 'host';
 }
 
-export async function createContainer(spec: ContainerSpec): Promise<string> {
+/**
+ * Containers are created two at a time: Docker Desktop slows down (and times out) when many agents start at once,
+ * so the rest wait their turn here instead of piling up on it.
+ */
+const CREATE_SLOTS = 2;
+let createsRunning = 0;
+const createQueue: (() => void)[] = [];
+
+async function createSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (createsRunning >= CREATE_SLOTS) await new Promise<void>((resolve) => createQueue.push(resolve));
+  createsRunning++;
+  try {
+    return await work();
+  } finally {
+    createsRunning--;
+    createQueue.shift()?.();
+  }
+}
+
+export function createContainer(spec: ContainerSpec): Promise<string> {
+  return createSlot(() => createContainerNow(spec));
+}
+
+async function createContainerNow(spec: ContainerSpec): Promise<string> {
   const query = spec.name ? `?name=${encodeURIComponent(spec.name)}` : '';
+  // Under load (many agents starting at once) Docker Desktop can take well over 30 s to create a container.
   const { Id } = await call<{ Id: string }>('POST', `/containers/create${query}`, {
     Image: spec.image,
     Cmd: spec.cmd,
@@ -134,12 +158,12 @@ export async function createContainer(spec: ContainerSpec): Promise<string> {
       ...(spec.privileged && { Privileged: true }),
       ...(spec.pidMode && { PidMode: spec.pidMode }),
     },
-  });
+  }, 120_000);
   return Id;
 }
 
 export async function startContainer(id: string) {
-  await call('POST', `/containers/${id}/start`);
+  await call('POST', `/containers/${id}/start`, undefined, 120_000);
 }
 
 /** Sends SIGTERM and kills after the grace period. Missing or stopped containers are ignored. */
@@ -284,6 +308,16 @@ export interface ContainerSummary {
 
 export function listRunningContainers() {
   return call<ContainerSummary[]>('GET', '/containers/json');
+}
+
+/** Every container (also stopped, dead or never started), optionally filtered (Docker filters JSON). */
+export function listAllContainers(filters?: string) {
+  return call<ContainerSummary[]>('GET', `/containers/json?all=1${filters ? `&filters=${encodeURIComponent(filters)}` : ''}`);
+}
+
+export async function listVolumes() {
+  const data = await call<{ Volumes: { Name: string }[] | null }>('GET', '/volumes', undefined, 120_000);
+  return data.Volumes ?? [];
 }
 
 export interface ContainerStats {

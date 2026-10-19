@@ -44,6 +44,8 @@ const envSchema = z.object({
   // Launching an agent asks for confirmation when Docker usage is at or above these percentages.
   AGENT_LAUNCH_MEMORY_PERCENT: z.coerce.number().min(1).max(100).default(80),
   AGENT_LAUNCH_CPU_PERCENT: z.coerce.number().min(1).max(100).default(85),
+  /** Agent containers running at once (task agents; Órbi conversations are light and not counted). */
+  MAX_RUNNING_AGENTS: z.coerce.number().int().min(1).max(50).default(6),
   // No agent starts while the disk of the agent copies has less free space than this (GB); old copies are cleaned then.
   AGENT_MIN_FREE_DISK_GB: z.coerce.number().min(0).default(10),
   // The copy of a finished agent is deleted after this many hours (completed) or days (failed or cancelled).
@@ -94,6 +96,7 @@ function loadConfig() {
     agentIdleTimeoutMs: env.AGENT_IDLE_TIMEOUT_MS,
     launchMemoryPercent: env.AGENT_LAUNCH_MEMORY_PERCENT,
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
+    maxRunningAgents: env.MAX_RUNNING_AGENTS,
     minFreeDiskGb: env.AGENT_MIN_FREE_DISK_GB,
     copyRetentionHours: env.AGENT_COPY_RETENTION_HOURS,
     failedCopyRetentionDays: env.AGENT_FAILED_COPY_RETENTION_DAYS,

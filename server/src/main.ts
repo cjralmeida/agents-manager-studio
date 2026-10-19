@@ -11,6 +11,7 @@ import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
 import { startOrbiPilot } from './modules/orbi/pilot.js';
 import { startDiskMaintenance } from './modules/system/maintenance.js';
+import { startDockerSweep } from './modules/system/sweep.js';
 import { startCompactionWatch } from './modules/system/compaction.js';
 import { startTestEnvMonitor } from './modules/test-envs/service.js';
 import { startPreviewMonitor } from './modules/previews/service.js';
@@ -69,7 +70,11 @@ const stopOrbiPilot = startOrbiPilot(app.log);
 app.addHook('onClose', async () => stopOrbiPilot());
 // Docker disk upkeep: build cache and orphan images deleted and free space trimmed, daily (sooner when the disk is short).
 const stopDiskMaintenance = startDiskMaintenance(app.log);
-app.addHook('onClose', async () => stopDiskMaintenance());
+const stopDockerSweep = startDockerSweep(app.log);
+app.addHook('onClose', async () => {
+  stopDiskMaintenance();
+  stopDockerSweep();
+});
 // Back from a disk compaction (the Windows helper stopped and restarted Docker): resumes what was paused for it.
 const stopCompactionWatch = startCompactionWatch(app.log);
 app.addHook('onClose', async () => stopCompactionWatch());

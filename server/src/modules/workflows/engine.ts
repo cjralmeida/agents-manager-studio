@@ -5,7 +5,7 @@ import { prisma } from '../../db.js';
 import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
-import { type AgentModel, PREPARATION_INTERRUPTED, cancelAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
+import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensureContainer, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
 import { REVALIDATE_AFTER_MERGE, revalidationNote } from '../agents/revalidation.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
@@ -178,6 +178,30 @@ const ACTIVE_AGENT = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW
 export type BoardTaskState = Awaited<ReturnType<typeof boardTaskState>>;
 
 /**
+ * Whether the machine has room for another agent. Every agent step is checked (not only the first): a review or a
+ * test also compiles and runs suites. New work stops earlier — one agent below the cap and at the launch memory
+ * limit — so what already started keeps going and finishes instead of everything slowing down together.
+ */
+async function machineBlocker(newWork: boolean): Promise<string | null> {
+  const running = await prisma.agent.count({ where: { kind: 'TASK', containerId: { not: null }, status: { in: ['PREPARING', 'RUNNING'] } } });
+  const cap = config.maxRunningAgents - (newWork ? 1 : 0);
+  if (running >= cap) return `Aguardando: ${running} agentes rodando (limite ${cap}).`;
+  const usage = await getResourceUsage().catch(() => null);
+  if (!usage) return null;
+  const memoryLimit = newWork ? config.launchMemoryPercent : Math.min(95, config.launchMemoryPercent + 8);
+  if (usage.totals.memoryPercent >= memoryLimit) return `Aguardando: memória em ${Math.round(usage.totals.memoryPercent)}% (limite ${memoryLimit}%).`;
+  return null;
+}
+
+/** Failures of the machine, not of the work: Docker too slow to answer, a copy cut by a restart. */
+export function isTransientFailure(error: string | null | undefined) {
+  return Boolean(error) && (/Docker request timed out/i.test(error!) || error!.includes(PREPARATION_INTERRUPTED));
+}
+
+/** How many times a step's agent is started again after a machine failure before the step fails for good. */
+const TRANSIENT_RESUMES = 3;
+
+/**
  * The board of the workspace and which tasks are taken: an agent works on it, its run is going, or its last run did
  * not finish well and nobody changed the task since.
  */
@@ -188,7 +212,7 @@ export async function boardTaskState(workspaceId: string) {
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({
       where: { workspaceId, taskItemId: { not: null } },
-      select: { taskItemId: true, status: true, finishedAt: true, trigger: true },
+      select: { taskItemId: true, status: true, finishedAt: true, trigger: true, steps: { where: { status: 'FAILED' }, select: { error: true } } },
       orderBy: { startedAt: 'desc' },
     }),
   ]);
@@ -199,7 +223,9 @@ export async function boardTaskState(workspaceId: string) {
     const run = lastRun.get(item.id);
     if (!run) continue;
     const changedSince = run.finishedAt !== null && new Date(item.updatedAt).getTime() > run.finishedAt.getTime();
-    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince)) taken.add(item.id);
+    // A run that failed because of the machine (Docker too slow, a restart) is not the task's fault: it is taken again.
+    const machineFailure = run.status === 'FAILED' && run.steps.length > 0 && run.steps.every((step) => isTransientFailure(step.error));
+    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince && !machineFailure)) taken.add(item.id);
   }
   return { snapshot, projectOf, statusMap, delivered, taken, lastRun };
 }
@@ -528,6 +554,15 @@ async function syncStep(stepRun: WorkflowStepRun) {
   if (agent.status === 'COMPLETED') {
     return result.status === 'failure' ? finish('FAILED', output, result.summary ?? 'O agente reportou falha.') : finish('SUCCEEDED', output);
   }
+  if (agent.status === 'FAILED' && agent.baseCommit && isTransientFailure(agent.errorMessage)) {
+    const resumes = await prisma.agentEvent.count({ where: { agentId: agent.id, type: 'status', data: { path: ['transientResume'], equals: true } } });
+    if (resumes < TRANSIENT_RESUMES) {
+      await prisma.agent.update({ where: { id: agent.id }, data: { status: 'RUNNING', errorMessage: null, finishedAt: null, lastActivityAt: new Date() } });
+      await addEvent(agent.id, 'status', { message: 'O Docker demorou para responder: o agente é iniciado de novo.', transientResume: true });
+      await ensureContainer(agent.id).catch(() => undefined);
+      return;
+    }
+  }
   if (agent.status === 'FAILED' || agent.status === 'CANCELLED') {
     return finish('FAILED', output, agent.errorMessage ?? (agent.status === 'CANCELLED' ? 'Agente cancelado.' : 'Agente falhou.'));
   }
@@ -749,6 +784,8 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       data: { runId: run.id, stepId: step.id, stepIndex: index, lane, attempt, agentId: agent.id },
     });
   } catch (error) {
+    // Docker too slow to create the container: nothing to blame on the task, the step is started again next round.
+    if (isTransientFailure(errorText(error))) return;
     return fail(errorText(error));
   }
 }
@@ -984,6 +1021,11 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
         // Not started yet (or sent back): start it, unless the workspace is at its limits.
         const startsNewWork = index === 0 || index === fanOut;
         if (startsNewWork ? fullBlocker : planBlocker) {
+          pending = true;
+          return;
+        }
+        // The machine decides too: a step waits while it is full, and new work waits earlier than work already started.
+        if (steps[index]!.kind === 'agent' && (await machineBlocker(startsNewWork))) {
           pending = true;
           return;
         }
