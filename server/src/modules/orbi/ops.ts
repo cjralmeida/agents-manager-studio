@@ -199,6 +199,8 @@ export async function overview(ownerId: string) {
           runningAgents: resources.totals.runningAgents,
           launchLimitMemoryPercent: resources.limits.memoryPercent,
           warnings: resources.launchWarnings,
+          // Docker did not answer: its numbers are from sampledAt (the computer's are fresh).
+          ...(resources.stale && { dockerSampledAt: resources.sampledAt }),
         }
       : null,
     testEnvironments: testEnvs,

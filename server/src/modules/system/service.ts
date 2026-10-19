@@ -19,6 +19,9 @@ const STUDIO_PROJECT = 'agents-manager-studio';
 const RESOURCES_TTL_MS = 4_000;
 const DISK_TTL_MS = 120_000;
 let resourcesCache: { at: number; value: Promise<ResourceUsage> } | null = null;
+/** Docker can stop answering for a while under load; the last good sample is used up to this long. */
+const STALE_MAX_MS = 5 * 60_000;
+let lastGoodResources: ResourceUsage | null = null;
 let diskCache: { at: number; value: Promise<RawDisk> } | null = null;
 const folderSizeCache = new Map<string, { at: number; value: Promise<number> }>();
 type RawDisk = Awaited<ReturnType<typeof diskUsage>>;
@@ -59,6 +62,8 @@ export interface ResourceUsage {
   launchWarnings: string[];
   containers: ContainerUsage[];
   sampledAt: string;
+  /** Docker did not answer: the Docker part is the last good sample (sampledAt), the host part is fresh. */
+  stale?: boolean;
 }
 
 export interface DiskSummary {
@@ -162,9 +167,22 @@ export async function freeAgentsDiskGb() {
   }
 }
 
+/**
+ * When Docker does not answer (a busy machine: exactly when the limits matter), the last good sample stands in for a
+ * few minutes with the computer's numbers read fresh from the helper, instead of everyone getting nothing.
+ */
+async function staleSample(error: unknown): Promise<ResourceUsage> {
+  const last = lastGoodResources;
+  if (!last || Date.now() - Date.parse(last.sampledAt) > STALE_MAX_MS) throw error;
+  return { ...last, host: (await readHostStats()) ?? last.host, stale: true };
+}
+
 export function getResourceUsage(): Promise<ResourceUsage> {
   if (!resourcesCache || Date.now() - resourcesCache.at > RESOURCES_TTL_MS) {
-    const value = sampleResources();
+    const value = sampleResources().then(
+      (usage) => (lastGoodResources = usage),
+      (error: unknown) => staleSample(error),
+    );
     resourcesCache = { at: Date.now(), value };
     // A failed sample must not be served from the cache.
     value.catch(() => {
