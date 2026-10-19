@@ -1,4 +1,10 @@
+import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { prisma } from '../../db.js';
+import { workdirPath } from '../agents/workdir.js';
+import type { MessageAttachment } from '../agents/service.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { stopAgentContainer } from '../agents/runtime.js';
 import { agentMedia, answerQuestion, getAgent, listAgentEvents, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
@@ -266,13 +272,60 @@ function activityBase(caller: Caller, workspaceId: string | null) {
   return { ownerId: caller.ownerId, conversationId: caller.conversationId, workspaceId };
 }
 
+const FORWARD_MAX_IMAGES = 8;
+
+/**
+ * Images Órbi passes on to an agent: files of its own conversation (the user's attachments, e.g. /workspace/anexos/x.png)
+ * or previews another agent showed (/api/agents/<id>/files/...). They are copied into the target's work folder
+ * (anexos/), where its Read tool sees them, and shown with the message in the Studio.
+ */
+async function forwardImages(caller: Caller, target: { id: string; workdir: string }, refs: unknown) {
+  const list = Array.isArray(refs) ? refs.map((ref) => text(ref, 2000)).filter(Boolean) : [];
+  if (list.length === 0) return { attachments: [] as MessageAttachment[], note: '' };
+  if (list.length > FORWARD_MAX_IMAGES) throw new HttpError(400, `No máximo ${FORWARD_MAX_IMAGES} imagens por mensagem.`);
+  const folder = path.posix.join(workdirPath(target.workdir), 'anexos');
+  await mkdir(folder, { recursive: true });
+  const attachments: MessageAttachment[] = [];
+  for (const ref of list) {
+    const fromUrl = /\/api\/agents\/([0-9a-f-]{36})\/files\/(.+)$/.exec(ref);
+    let sourceId: string;
+    let relative: string;
+    if (fromUrl) {
+      sourceId = (await ownedAgent(caller.ownerId, fromUrl[1])).id;
+      relative = fromUrl[2]!;
+    } else {
+      if (!caller.conversationId) throw new HttpError(422, `"${ref}": sem conversa do Órbi para ler o arquivo; use a URL /api/agents/.../files/... da imagem.`);
+      sourceId = caller.conversationId;
+      relative = ref.replace(/^\/workspace\//, '');
+    }
+    const file = await agentMedia(sourceId, relative);
+    if (!file.contentType.startsWith('image/')) throw new HttpError(422, `"${ref}" não é uma imagem.`);
+    if (file.content.length > 10_000_000) throw new HttpError(413, `"${ref}" passa de 10 MB.`);
+    const base = path.posix.basename(decodeURIComponent(relative)).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-60);
+    const name = `${new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}-${randomBytes(3).toString('hex')}-${base}`;
+    await writeFile(path.posix.join(folder, name), file.content);
+    attachments.push({ path: `anexos/${name}`, kind: 'image', name: base });
+  }
+  // The agent runs as "node": the folder is its own, like the rest of /workspace.
+  await new Promise<void>((resolve) => execFile('chown', ['-R', '1000:1000', folder], () => resolve()));
+  const note = ['', '[Imagens enviadas pelo Órbi]', ...attachments.map((entry) => `- /workspace/${entry.path} (abra com a ferramenta Read para ver)`)].join('\n');
+  return { attachments, note };
+}
+
 async function message(caller: Caller, args: Args) {
   const agent = await ownedAgent(caller.ownerId, args.agentId);
   const body = text(args.text);
   if (!body) throw new HttpError(400, 'Escreva a mensagem.');
-  await sendMessage(agent.id, body);
-  await logActivity({ ...activityBase(caller, agent.workspaceId), kind: 'message', summary: `Mensagem para "${agent.title}"`, details: { text: body }, link: `/agents/${agent.id}` });
-  return { ok: true, message: 'Mensagem entregue; o agente volta a trabalhar.' };
+  const images = await forwardImages(caller, agent, args.images);
+  await sendMessage(agent.id, `${body}${images.note}`, images.attachments);
+  await logActivity({
+    ...activityBase(caller, agent.workspaceId),
+    kind: 'message',
+    summary: `Mensagem para "${agent.title}"${images.attachments.length ? ` (${images.attachments.length} imagem(ns))` : ''}`,
+    details: { text: body, images: images.attachments.map((entry) => entry.path) },
+    link: `/agents/${agent.id}`,
+  });
+  return { ok: true, message: `Mensagem entregue${images.attachments.length ? ` com ${images.attachments.length} imagem(ns)` : ''}; o agente volta a trabalhar.` };
 }
 
 async function setWorkflow(caller: Caller, args: Args) {

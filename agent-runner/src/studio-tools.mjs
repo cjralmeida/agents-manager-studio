@@ -356,8 +356,12 @@ export function createStudioTools(call, groups) {
       ),
       tool(
         'studio_message',
-        'Manda uma mensagem a uma execução de agente (ela volta a trabalhar com a mensagem). Ex.: retomar um agente parado, passar uma regra nova, pedir uma correção.',
-        { agentId: z.string(), text: z.string() },
+        'Manda uma mensagem a uma execução de agente (ela volta a trabalhar com a mensagem). Ex.: retomar um agente parado, passar uma regra nova, pedir uma correção. Pode levar imagens: os anexos do usuário nesta conversa (/workspace/anexos/...) ou as imagens que outro agente mostrou (URL /api/agents/<id>/files/...); o agente recebe uma cópia e as vê.',
+        {
+          agentId: z.string(),
+          text: z.string(),
+          images: z.array(z.string()).max(8).optional().describe('Caminhos (/workspace/anexos/arquivo.png) ou URLs /api/agents/<id>/files/... das imagens a enviar.'),
+        },
         run('studio_message'),
       ),
       tool(
