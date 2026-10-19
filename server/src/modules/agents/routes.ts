@@ -5,6 +5,8 @@ import { parseInput } from '../../lib/validation.js';
 import { AGENT_TOOL_NAMES, runAgentTool } from '../agent-tools/service.js';
 import { assertOwnsProfile, assertOwnsProject } from '../auth/ownership.js';
 import { copyArchive, requestMirror } from './mirror.js';
+import { ATTACHMENTS_BODY_LIMIT, attachmentsSchema } from '../assistant/attachments.js';
+import { saveUserAttachments } from './user-attachments.js';
 import { applyRunnerEvents, authenticateRunner, type RunnerEvent, takeInbox } from './runner-api.js';
 import {
   AGENT_MODELS,
@@ -54,10 +56,13 @@ const launchBody = z
 
 const eventsQuery = z.object({ after: z.coerce.number().int().min(0).default(0) }).strict();
 
-const messageBody = z.object({ text: z.string().trim().min(1).max(20_000) }).strict();
+const messageBody = z
+  .object({ text: z.string().trim().max(20_000), attachments: attachmentsSchema.optional() })
+  .strict()
+  .refine((body) => body.text.length > 0 || (body.attachments?.length ?? 0) > 0, 'Escreva a mensagem ou anexe um arquivo.');
 
 const answerBody = z
-  .object({ answers: z.record(z.string(), z.string().trim().min(1).max(5_000)) })
+  .object({ answers: z.record(z.string(), z.string().trim().min(1).max(5_000)), attachments: attachmentsSchema.optional() })
   .strict()
   .refine((body) => Object.keys(body.answers).length > 0, 'Responda ao menos uma pergunta.');
 
@@ -102,14 +107,19 @@ export async function agentRoutes(app: FastifyInstance) {
     return reply.header('Content-Type', file.contentType).header('Cache-Control', 'no-store').send(file.content);
   });
 
-  app.post('/agents/:id/messages', async (request) => {
+  app.post('/agents/:id/messages', { bodyLimit: ATTACHMENTS_BODY_LIMIT }, async (request) => {
     const { id } = parseInput(idParams, request.params);
-    return sendMessage(id, parseInput(messageBody, request.body).text);
+    const body = parseInput(messageBody, request.body);
+    const { attachments, note } = await saveUserAttachments(id, body.attachments);
+    return sendMessage(id, `${body.text || 'Veja os anexos.'}${note}`, attachments);
   });
 
-  app.post('/agents/:id/answer', async (request) => {
+  app.post('/agents/:id/answer', { bodyLimit: ATTACHMENTS_BODY_LIMIT }, async (request) => {
     const { id } = parseInput(idParams, request.params);
-    return answerQuestion(id, parseInput(answerBody, request.body).answers);
+    const body = parseInput(answerBody, request.body);
+    const { note } = await saveUserAttachments(id, body.attachments);
+    // The attachments go with every answer (the agent reads them from the paths in the text).
+    return answerQuestion(id, note ? Object.fromEntries(Object.entries(body.answers).map(([question, text]) => [question, `${text}${note}`])) : body.answers);
   });
 
   app.post('/agents/:id/finalize', async (request) => finalizeAgent(parseInput(idParams, request.params).id));

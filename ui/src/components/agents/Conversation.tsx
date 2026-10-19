@@ -1,9 +1,10 @@
-import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Agent, type AgentEvent, type MessageAttachment, useAgentEvents, useSendAgentMessage, LIVE_STATUSES } from '../../api/agents';
 import { formatTime } from '../../lib/time';
 import { Button } from '../Button';
 import { ErrorText } from '../form';
 import { ImagePreviews, LinkedText, QuestionCard } from './QuestionCard';
+import { ACCEPTED, AttachmentList, useAttachments } from '../orbi/Attachments';
 
 interface ConversationProps {
   agent: Agent;
@@ -163,10 +164,31 @@ function EventItem({ event, speaker, agentId }: { event: AgentEvent; speaker: st
 function Composer({ agent }: { agent: Agent }) {
   const [text, setText] = useState('');
   const send = useSendAgentMessage(agent.id);
+  const attachments = useAttachments();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const canSend = (text.trim() || attachments.items.length > 0) && !send.isPending;
 
   const submit = () => {
-    if (!text.trim()) return;
-    send.mutate(text, { onSuccess: () => setText('') });
+    if (!canSend) return;
+    send.mutate(
+      { text, attachments: attachments.uploads() },
+      {
+        onSuccess: () => {
+          setText('');
+          attachments.clear();
+        },
+      },
+    );
+  };
+  const addFiles = (files: Iterable<File>) => {
+    for (const file of files) void attachments.add(file, file.name);
+  };
+  // A screenshot pasted with Ctrl+V becomes an attachment.
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...event.clipboardData.files];
+    if (files.length === 0) return;
+    event.preventDefault();
+    addFiles(files);
   };
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -177,11 +199,21 @@ function Composer({ agent }: { agent: Agent }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="sticky bottom-0 rounded-lg border border-border bg-panel p-3">
+    <form
+      onSubmit={handleSubmit}
+      onDragOver={(event) => event.dataTransfer.types.includes('Files') && event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        addFiles(event.dataTransfer.files);
+      }}
+      className="sticky bottom-0 rounded-lg border border-border bg-panel p-3"
+    >
+      <AttachmentList items={attachments.items} onRemove={attachments.remove} />
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         rows={3}
         placeholder={
           agent.status === 'RUNNING' ? 'Mensagem para corrigir o rumo enquanto ele trabalha...' : 'Peça ajustes ou uma nova tarefa...'
@@ -189,10 +221,27 @@ function Composer({ agent }: { agent: Agent }) {
         className="w-full resize-y rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-xs text-muted">Ctrl+Enter envia</span>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInput}
+            type="file"
+            accept={ACCEPTED}
+            multiple
+            hidden
+            onChange={(event) => {
+              addFiles(event.target.files ?? []);
+              event.target.value = '';
+            }}
+          />
+          <Button type="button" size="sm" onClick={() => fileInput.current?.click()} title="Anexar imagens (ou cole com Ctrl+V / arraste)">
+            Anexar
+          </Button>
+          <span className="text-xs text-muted">Ctrl+Enter envia · cole ou arraste imagens</span>
+        </div>
         <div className="flex items-center gap-3">
+          {attachments.error && <span className="text-xs text-red-300">{attachments.error}</span>}
           <ErrorText error={send.error} />
-          <Button type="submit" variant="primary" disabled={!text.trim() || send.isPending}>
+          <Button type="submit" variant="primary" disabled={!canSend}>
             Enviar
           </Button>
         </div>

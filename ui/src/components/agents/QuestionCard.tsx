@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { type AgentQuestion, useAnswerAgent } from "../../api/agents";
 import { Button } from "../Button";
 import { ErrorText, TextInput } from "../form";
+import { ACCEPTED, AttachmentList, useAttachments } from "../orbi/Attachments";
 
 const OTHER = "__other__";
 
@@ -16,6 +17,8 @@ export function QuestionCard({
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState<Record<string, string>>({});
   const answer = useAnswerAgent(agentId);
+  const attachments = useAttachments();
+  const fileInput = useRef<HTMLInputElement>(null);
   // Opened from a task card ("Responder"): the page comes with #pergunta and scrolls straight to the question.
   const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -105,10 +108,26 @@ export function QuestionCard({
           );
         })}
       </div>
+      <AttachmentList items={attachments.items} onRemove={attachments.remove} />
       <div className="mt-4 flex items-center gap-3">
+        <input
+          ref={fileInput}
+          type="file"
+          accept={ACCEPTED}
+          multiple
+          hidden
+          onChange={(event) => {
+            for (const file of event.target.files ?? []) void attachments.add(file, file.name);
+            event.target.value = "";
+          }}
+        />
+        <Button size="sm" onClick={() => fileInput.current?.click()} title="Anexar imagens à resposta (ex.: uma referência)">
+          Anexar imagem
+        </Button>
+        {attachments.error && <span className="text-xs text-red-300">{attachments.error}</span>}
         <Button
           variant="primary"
-          onClick={() => answer.mutate(answers)}
+          onClick={() => answer.mutate({ answers, attachments: attachments.uploads() }, { onSuccess: () => attachments.clear() })}
           disabled={!complete || answer.isPending}
         >
           {answer.isPending ? "Enviando..." : "Responder"}

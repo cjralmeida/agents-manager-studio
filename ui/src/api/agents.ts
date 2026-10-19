@@ -1,3 +1,4 @@
+import type { AttachmentUpload } from './assistant';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 import type { UsageTotals } from './usage';
@@ -201,7 +202,7 @@ export function useLaunchAgent() {
 export function useSendAgentMessage(id: string) {
   const invalidate = useInvalidateAgents();
   return useMutation({
-    mutationFn: (text: string) => api.post<Agent>(`/agents/${id}/messages`, { text }),
+    mutationFn: (input: { text: string; attachments?: AttachmentUpload[] }) => api.post<Agent>(`/agents/${id}/messages`, input),
     onSuccess: invalidate,
   });
 }
@@ -209,7 +210,7 @@ export function useSendAgentMessage(id: string) {
 export function useAnswerAgent(id: string) {
   const invalidate = useInvalidateAgents();
   return useMutation({
-    mutationFn: (answers: Record<string, string>) => api.post<Agent>(`/agents/${id}/answer`, { answers }),
+    mutationFn: (input: { answers: Record<string, string>; attachments?: AttachmentUpload[] }) => api.post<Agent>(`/agents/${id}/answer`, input),
     onSuccess: invalidate,
   });
 }
