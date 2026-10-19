@@ -7,7 +7,7 @@ import { HttpError, notFound } from '../../lib/errors.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { getUserSetting, setUserSetting } from '../users/settings.js';
-import { deliverToOrbi, orbiState } from './conversation.js';
+import { busiestWorkspace, deliverToOrbi, orbiState } from './conversation.js';
 import { type RoutineMode, dueByInterval, dueDailyTime, routineMessage } from './routine-schedule.js';
 import { ownerWorkspaces, pendingItems } from './ops.js';
 
@@ -91,7 +91,7 @@ export async function runRoutineNow(ownerId: string, id: string) {
   const workspaces = await scopeOf(ownerId, routine);
   if (workspaces.length === 0) throw new HttpError(422, 'A rotina não tem workspace para olhar.');
   const events = await collectEvents(ownerId, workspaces, routine.events as RoutineEvent[]);
-  await deliverToOrbi(ownerId, routineMessage(routine, workspaces, ['você pediu para rodar agora'], events.map((event) => event.line)), workspaces[0]!.id);
+  await deliverToOrbi(ownerId, routineMessage(routine, workspaces, ['você pediu para rodar agora'], events.map((event) => event.line)), (await busiestWorkspace(workspaces))!.id);
   await markSeen(ownerId, routine.id, events);
   return prisma.orbiRoutine.update({ where: { id }, data: { lastRunAt: new Date() } });
 }
@@ -249,7 +249,7 @@ async function tickRoutine(routine: OrbiRoutine, log: FastifyBaseLogger) {
   const state = await orbiState(routine.ownerId);
   if (state === 'busy' || state === 'waiting') return false;
 
-  await deliverToOrbi(routine.ownerId, routineMessage(routine, workspaces, reasons, events.map((event) => event.line)), workspaces[0]!.id);
+  await deliverToOrbi(routine.ownerId, routineMessage(routine, workspaces, reasons, events.map((event) => event.line)), (await busiestWorkspace(workspaces))!.id);
   await markSeen(routine.ownerId, routine.id, events);
   await prisma.orbiRoutine.update({ where: { id: routine.id }, data: { lastRunAt: new Date() } });
   log.info({ routine: routine.name, ownerId: routine.ownerId, events: events.length, reasons }, 'Órbi routine ran');

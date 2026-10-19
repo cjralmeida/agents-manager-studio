@@ -36,11 +36,20 @@ export async function conversationInfo(ownerId: string) {
 
 async function startIn(ownerId: string, workspaceId: string | undefined, message: string, context?: string, attachments?: AttachmentInput[]) {
   const workspaces = await ownerWorkspaces(ownerId);
-  const workspace = workspaces.find((entry) => entry.id === workspaceId) ?? workspaces[0];
+  const workspace = workspaces.find((entry) => entry.id === workspaceId) ?? (await busiestWorkspace(workspaces));
   if (!workspace) throw new HttpError(422, 'Nenhum workspace disponível para o Órbi.');
-  const agent = await startConversation(workspace.id, message, context, { title: 'Órbi', model: await orbiModel(ownerId), attachments });
+  // Dated, so the conversations in the history tell apart.
+  const since = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+  const agent = await startConversation(workspace.id, message, context, { title: `Conversa desde ${since}`, model: await orbiModel(ownerId), attachments });
   await setUserSetting(ownerId, CONVERSATION_KEY, agent.id);
   return agent;
+}
+
+/** The workspace with the most workflows on (where the work is), to start focused on it. */
+export async function busiestWorkspace<T extends { id: string }>(workspaces: T[]): Promise<T | undefined> {
+  const counts = await prisma.workflow.groupBy({ by: ['workspaceId'], where: { workspaceId: { in: workspaces.map((entry) => entry.id) }, isEnabled: true }, _count: true });
+  const on = (id: string) => counts.find((entry) => entry.workspaceId === id)?._count ?? 0;
+  return [...workspaces].sort((a, b) => on(b.id) - on(a.id))[0];
 }
 
 /** A message from the user (the Órbi page or the side panel). */
