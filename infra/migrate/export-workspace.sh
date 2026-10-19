@@ -36,7 +36,7 @@ while IFS='|' read -r id workdir; do
 done < "$OUT/agentes.txt"
 
 echo "== Codigo do Studio, skills e configuracao"
-git bundle create "$OUT/studio.bundle" "$(git rev-parse --abbrev-ref HEAD)"
+git bundle create "$(cygpath -w "$OUT")\studio.bundle" "$(git rev-parse --abbrev-ref HEAD)"
 git remote get-url origin > "$OUT/origin.txt"
 tar czf "$OUT/skills.tgz" -C "$HOME/.claude" skills
 cp .env "$OUT/env.txt"
