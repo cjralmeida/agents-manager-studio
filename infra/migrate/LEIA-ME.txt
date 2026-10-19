@@ -1,0 +1,36 @@
+Instalador do Agents Manager Studio — pacote de um workspace
+===========================================================
+
+ATENÇÃO: este pacote tem segredos (o .env com as chaves e os tokens das contas, criptografados com elas).
+Leve num pendrive ou disco seu e apague depois de instalar. Não mande por e-mail nem deixe numa nuvem compartilhada.
+
+O que vem no pacote
+- studio.bundle   código do Studio (o git aponta para o GitHub depois de clonado)
+- studio.dump     banco só com o workspace (quadro, workflows, perfis, contas, histórico dos agentes)
+- volumes\        sessão do Claude e cópia de cada agente que não terminou (ex.: os pausados)
+- skills.tgz      as skills dos agentes (~\.claude\skills)
+- env.txt         o .env daqui (as pastas são trocadas pelas da máquina nova)
+- projetos.txt    projetos do workspace, clonados do GitHub na instalação
+- claude-contas.ps1  troca de conta do Claude (empresa/pessoal); vai para D:\Programs\utilitaries,
+                     com atalho na Área de Trabalho. Faça login em cada conta uma vez no PC novo.
+                     O Claude Code precisa estar instalado: npm install -g @anthropic-ai/claude-code
+
+Antes de instalar, no PC novo
+1. Instale o Git:            winget install Git.Git
+2. Instale o Docker Desktop: winget install Docker.DockerDesktop
+   Abra o Docker Desktop e espere ele dizer que está rodando.
+3. Faça login no GitHub uma vez (o clone dos projetos pede): gh auth login, ou o Git abre o navegador sozinho.
+
+Instalar
+  Abra o PowerShell na pasta do pacote e rode:
+    powershell -ExecutionPolicy Bypass -File .\instalar.ps1
+  Outras pastas (padrão: D:\Projetos, ou C:\Users\<você>\Projetos sem disco D:):
+    powershell -ExecutionPolicy Bypass -File .\instalar.ps1 -ProjetosDir E:\Projetos
+
+  Pode rodar de novo se algo falhar: o que já foi feito é pulado.
+
+Depois
+- Abra http://studio.localhost e entre com o mesmo usuário e senha.
+- Os workflows chegam desligados: ligue no Studio quando quiser.
+- O Órbi começa do zero (conversas e pilotos ficam na outra máquina).
+- Confira em Configurações se a conta Claude do workspace está válida.
