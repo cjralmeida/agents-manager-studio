@@ -18,6 +18,12 @@ const EVERY_MS = 24 * 60 * 60_000;
 const SHORT_EVERY_MS = 3 * 60 * 60_000;
 const SHORT_FREE_GB = 25;
 const TRIM_IMAGE = 'alpine:3.20';
+/**
+ * Trimmed blocks are reused inside Docker's disk file, so it only grows to the peak of what is really stored at once.
+ * Trimmed once a day, everything the agents wrote and deleted in between (copies, builds, test databases) kept its
+ * blocks and the file grew by the day's churn (54 to 93 GB in 14 hours), until a compaction. Trimming is cheap.
+ */
+const TRIM_EVERY_MS = 15 * 60_000;
 
 export interface MaintenanceRun {
   at: string;
@@ -41,6 +47,19 @@ async function agentsDiskFreeGb() {
   return disk ? gb(disk.free) : null;
 }
 
+/** Tells Docker's disk which blocks are free, so new writes reuse them instead of growing the file. */
+async function trimFreeBlocks() {
+  await ensureImage(TRIM_IMAGE);
+  const trim = await runOnce({
+    image: TRIM_IMAGE,
+    cmd: ['nsenter', '-t', '1', '-m', '--', 'fstrim', '-av'],
+    privileged: true,
+    pidMode: 'host',
+    timeoutMs: 10 * 60_000,
+  });
+  return (trim.stdout || trim.stderr).trim().split('\n').filter(Boolean).join(' · ').slice(0, 500) || null;
+}
+
 /** One maintenance round; skipped while a test environment is being built (its build uses the cache). */
 export async function runDiskMaintenance(log?: FastifyBaseLogger): Promise<MaintenanceRun | null> {
   const building = await prisma.testEnvironment.count({ where: { status: 'building' } });
@@ -49,15 +68,7 @@ export async function runDiskMaintenance(log?: FastifyBaseLogger): Promise<Maint
   try {
     run.buildCacheGb = gb(await pruneBuildCache());
     run.imagesGb = gb(await pruneDanglingImages());
-    await ensureImage(TRIM_IMAGE);
-    const trim = await runOnce({
-      image: TRIM_IMAGE,
-      cmd: ['nsenter', '-t', '1', '-m', '--', 'fstrim', '-av'],
-      privileged: true,
-      pidMode: 'host',
-      timeoutMs: 10 * 60_000,
-    });
-    run.trimmed = (trim.stdout || trim.stderr).trim().split('\n').filter(Boolean).join(' · ').slice(0, 500) || null;
+    run.trimmed = await trimFreeBlocks();
   } catch (error) {
     run.error = error instanceof Error ? error.message : String(error);
   }
@@ -94,5 +105,12 @@ export function startDiskMaintenance(log: FastifyBaseLogger) {
     }
   };
   const timer = setInterval(() => void tick(), TICK_MS);
-  return () => clearInterval(timer);
+  const trimTimer = setInterval(() => {
+    if (running) return;
+    void trimFreeBlocks().catch((err: unknown) => log.warn({ err }, 'Trimming Docker disk failed'));
+  }, TRIM_EVERY_MS);
+  return () => {
+    clearInterval(timer);
+    clearInterval(trimTimer);
+  };
 }
