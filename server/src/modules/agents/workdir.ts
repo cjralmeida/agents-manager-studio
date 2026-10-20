@@ -297,7 +297,23 @@ export async function commitAndPush(input: {
     const head = (await git(dir, ['rev-parse', 'HEAD'])).trim();
     if (head === input.baseCommit && !input.allowUnchanged) throw new HttpError(422, NO_CHANGES_MESSAGE);
 
-    await git(dir, ['push', '--quiet', input.pushUrl, `HEAD:refs/heads/${input.branch}`], { timeoutMs: 300_000 });
+    const push = () => git(dir, ['push', '--quiet', input.pushUrl, `HEAD:refs/heads/${input.branch}`], { timeoutMs: 300_000 });
+    try {
+      await push();
+    } catch (error) {
+      if (!(error instanceof GitError) || !/fetch first|non-fast-forward|\[rejected\]|integrate the remote changes|Note about fast-forwards/i.test(error.message)) throw error;
+      // The branch got new commits meanwhile (e.g. whoever made a PR/MR kept pushing while it was being published):
+      // they are merged into the copy and the push is tried again, instead of the deploy giving up.
+      const conflicts = await mergeRemoteBase({ workdir: input.workdir, baseBranch: input.branch, fetchUrl: input.pushUrl, token: input.token, author: input.author });
+      if (conflicts.length > 0) {
+        throw new HttpError(
+          409,
+          `A branch ${input.branch} recebeu commits novos enquanto o deploy era preparado, e eles conflitam com esta cópia em: ${conflicts.join(', ')}. ` +
+            'A junção ficou em andamento na cópia: resolva os conflitos simples mantendo as duas mudanças, sem merge --abort nem commit, e chame render_deploy de novo.',
+        );
+      }
+      await push();
+    }
   } catch (error) {
     if (error instanceof GitError) throw new HttpError(502, redact(error.message));
     throw error;
