@@ -48,15 +48,33 @@ export async function cleanFinishedCopies(log: FastifyBaseLogger) {
   return removed;
 }
 
+let requestCleanup: (() => void) | null = null;
+
+/** Cleans up now instead of at the next tick (a workflow run just completed: its copy can go). */
+export function cleanCopiesNow() {
+  requestCleanup?.();
+}
+
 export function startCopyCleanup(log: FastifyBaseLogger) {
   let running = false;
+  let again = false;
   const tick = () => {
-    if (running) return;
+    if (running) {
+      again = true;
+      return;
+    }
     running = true;
     cleanFinishedCopies(log)
       .catch((err: unknown) => log.error({ err }, 'Copy cleanup failed'))
-      .finally(() => (running = false));
+      .finally(() => {
+        running = false;
+        if (again) {
+          again = false;
+          tick();
+        }
+      });
   };
+  requestCleanup = tick;
   // Also checks the disk every 5 minutes: when it is short, the cleanup runs right away instead of waiting the tick.
   const hourly = setInterval(tick, TICK_MS);
   const diskWatch = setInterval(() => {
@@ -66,6 +84,7 @@ export function startCopyCleanup(log: FastifyBaseLogger) {
   }, 5 * 60_000);
   setTimeout(tick, 60_000).unref();
   return () => {
+    requestCleanup = null;
     clearInterval(hourly);
     clearInterval(diskWatch);
   };

@@ -6,6 +6,7 @@ import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../gener
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensureContainer, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
+import { cleanCopiesNow } from '../agents/cleanup.js';
 import { REVALIDATE_AFTER_MERGE, revalidationNote } from '../agents/revalidation.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
@@ -1078,6 +1079,8 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
         data: { status: failed ? 'FAILED' : 'COMPLETED', finishedAt: new Date(), error: failed ? 'Um ou mais passos falharam.' : null },
       });
       log?.info({ runId, failed }, 'Workflow run finished');
+      // The delivered work is in the PR: its copy and build volumes go now.
+      if (!failed) cleanCopiesNow();
     }
   } catch (err) {
     log?.error({ runId, err }, 'Workflow run could not advance');
