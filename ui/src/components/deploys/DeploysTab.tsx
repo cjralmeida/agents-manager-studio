@@ -29,134 +29,226 @@ const targetLabels: Record<Target, string> = {
   amplify: 'Frontend no Amplify (AWS)',
 };
 
+type Editing = { projectId: string; environment: DeployEnvironment; isNew: boolean };
+
 /**
  * Where each project is published in homologation and production: nowhere, a Render service, or the workspace's AWS
  * account (an EC2 instance for a backend, an Amplify app for a frontend). The Studio creates and sets up the AWS side;
- * the workflows publish wherever this says.
+ * the workflows publish wherever this says. Only projects with a deploy are listed; "+ Novo deploy" adds one.
  */
 export function DeploysTab({ workspace }: { workspace: WorkspaceDetail }) {
   const render = useRenderSettings(workspace.id);
   const aws = useAwsSettings(workspace.id);
   const deployments = useDeployments(workspace.id);
   const deploy = useStartDeploy(workspace.id);
-  const [editing, setEditing] = useState<{ projectId: string; environment: DeployEnvironment } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const projects = workspace.projects.filter((project) => project.isGitRepo && !project.isMissing);
   const find = <T extends { projectId: string; environment: DeployEnvironment }>(list: T[] | undefined, projectId: string, environment: DeployEnvironment) =>
     list?.find((entry) => entry.projectId === projectId && entry.environment === environment);
-  const lastDeploy = (projectId: string, environment: DeployEnvironment) =>
-    deployments.data?.find((entry) => entry.projectId === projectId && entry.environment === environment);
+  const awsFor = (projectId: string, environment: DeployEnvironment) => find(aws.data?.services, projectId, environment);
+  const renderFor = (projectId: string, environment: DeployEnvironment) =>
+    awsFor(projectId, environment) ? undefined : find(render.data?.services, projectId, environment);
+  const hasDeploy = (projectId: string) => ENVIRONMENTS.some((environment) => awsFor(projectId, environment) ?? renderFor(projectId, environment));
+  const configured = projects.filter((project) => hasDeploy(project.id));
+  const withoutDeploy = projects.filter((project) => !hasDeploy(project.id));
+  const loading = render.isLoading || aws.isLoading;
+  const addNew = () => withoutDeploy[0] && setEditing({ projectId: withoutDeploy[0].id, environment: 'HOMOLOGACAO', isNew: true });
 
   return (
-    <div className="space-y-4">
-      <p className="max-w-3xl text-sm text-muted">
-        Onde cada projeto é publicado em homologação e em produção. Os workflows fazem o merge do PR/MR e publicam no destino daqui; um projeto sem deploy não é
-        publicado. Na AWS o Studio cria o que falta (instância, IP, DNS, Docker e Caddy; app do Amplify e domínio) usando a conta escolhida na aba Conectores
-        {aws.data && !aws.data.connection && (
-          <>
-            {' '}
-            — <span className="text-amber-300">este workspace ainda não tem conta da AWS</span> (
-            <Link to="/guia/aws" className="text-accent hover:underline">
-              passo a passo
-            </Link>
-            )
-          </>
-        )}
-        .
-      </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <p className="max-w-3xl text-sm text-muted">
+          Onde cada projeto é publicado em homologação e em produção. Os workflows fazem o merge do PR/MR e publicam no destino daqui. Na AWS o Studio cria o que
+          falta (instância, IP, DNS, Docker e Caddy; app do Amplify e domínio) usando a conta escolhida na aba Conectores
+          {aws.data && !aws.data.connection && (
+            <>
+              {' '}
+              — <span className="text-amber-300">este workspace ainda não tem conta da AWS</span> (
+              <Link to="/guia/aws" className="text-accent hover:underline">
+                passo a passo
+              </Link>
+              )
+            </>
+          )}
+          .
+        </p>
+        <Button variant="primary" onClick={addNew} disabled={withoutDeploy.length === 0} title={withoutDeploy.length === 0 ? 'Todos os projetos já têm deploy' : undefined}>
+          + Novo deploy
+        </Button>
+      </div>
       <ErrorText error={render.error ?? aws.error ?? deploy.error} />
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-surface/60 text-xs text-muted">
-            <tr>
-              <th className="px-3 py-2 font-medium">Projeto</th>
+      {!loading && configured.length === 0 && (
+        <button
+          type="button"
+          onClick={addNew}
+          disabled={withoutDeploy.length === 0}
+          className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-12 text-center text-muted transition-colors hover:border-accent/60 hover:text-gray-200"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/15 text-2xl text-accent">+</span>
+          <span className="text-sm font-medium">Nenhum projeto com deploy configurado</span>
+          <span className="text-xs">Escolha um projeto e onde ele é publicado em homologação e em produção.</span>
+        </button>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {configured.map((project) => (
+          <section key={project.id} className="overflow-hidden rounded-xl border border-border bg-panel/40">
+            <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+              <h3 className="font-semibold">{project.name}</h3>
+              {project.baseBranch && <span className="font-mono text-xs text-muted">{project.baseBranch}</span>}
+            </header>
+            <div className="divide-y divide-border">
               {ENVIRONMENTS.map((environment) => (
-                <th key={environment} className="px-3 py-2 font-medium">
-                  {environmentLabels[environment]}
-                </th>
+                <EnvironmentRow
+                  key={environment}
+                  environment={environment}
+                  awsService={awsFor(project.id, environment)}
+                  renderService={renderFor(project.id, environment)}
+                  last={deployments.data?.find((entry) => entry.projectId === project.id && entry.environment === environment)}
+                  deploying={deploy.isPending}
+                  onEdit={() => setEditing({ projectId: project.id, environment, isNew: false })}
+                  onDeploy={() =>
+                    window.confirm(`Publicar agora ${project.name} em ${environmentLabels[environment].toLowerCase()}?`) &&
+                    deploy.mutate({ projectId: project.id, environment })
+                  }
+                />
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {projects.map((project) => (
-              <tr key={project.id}>
-                <td className="px-3 py-2 align-top font-medium">{project.name}</td>
-                {ENVIRONMENTS.map((environment) => {
-                  const awsService = find(aws.data?.services, project.id, environment);
-                  const renderService = awsService ? undefined : find(render.data?.services, project.id, environment);
-                  const last = lastDeploy(project.id, environment);
-                  const isEditing = editing?.projectId === project.id && editing.environment === environment;
-                  return (
-                    <td key={environment} className={`px-3 py-2 align-top ${isEditing ? 'bg-accent/5' : ''}`}>
-                      <DeployCell awsService={awsService} renderService={renderService} last={last} />
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        <button type="button" className="text-xs text-accent hover:underline" onClick={() => setEditing({ projectId: project.id, environment })}>
-                          {awsService || renderService ? 'Alterar' : 'Configurar'}
-                        </button>
-                        {(awsService || renderService) && (
-                          <button
-                            type="button"
-                            className="text-xs text-accent hover:underline disabled:opacity-50"
-                            disabled={deploy.isPending}
-                            onClick={() =>
-                              window.confirm(`Publicar agora ${project.name} em ${environmentLabels[environment].toLowerCase()}?`) &&
-                              deploy.mutate({ projectId: project.id, environment })
-                            }
-                          >
-                            Publicar agora
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </div>
+          </section>
+        ))}
       </div>
 
       {editing && (
-        <DeployForm
-          key={`${editing.projectId}-${editing.environment}`}
-          workspace={workspace}
-          projectId={editing.projectId}
-          environment={editing.environment}
-          awsService={find(aws.data?.services, editing.projectId, editing.environment)}
-          renderService={find(render.data?.services, editing.projectId, editing.environment)}
-          renderConnected={Boolean(render.data?.connection)}
-          awsConnected={Boolean(aws.data?.connection)}
-          onDone={() => setEditing(null)}
-        />
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-6" onClick={() => setEditing(null)}>
+          <div onClick={(event) => event.stopPropagation()} className="w-full max-w-3xl space-y-4 rounded-xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {editing.isNew
+                    ? 'Novo deploy'
+                    : `${workspace.projects.find((entry) => entry.id === editing.projectId)?.name} — ${environmentLabels[editing.environment]}`}
+                </h2>
+                <p className="mt-1 text-xs text-muted">Um destino por ambiente: escolher um tira o outro daquele ambiente.</p>
+              </div>
+              <Button size="sm" onClick={() => setEditing(null)}>
+                Fechar
+              </Button>
+            </div>
+            {editing.isNew && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Projeto">
+                  <Select value={editing.projectId} onChange={(event) => setEditing({ ...editing, projectId: event.target.value })}>
+                    {withoutDeploy.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Ambiente" hint="O outro ambiente pode ser configurado depois, no card do projeto.">
+                  <Select value={editing.environment} onChange={(event) => setEditing({ ...editing, environment: event.target.value as DeployEnvironment })}>
+                    {ENVIRONMENTS.map((environment) => (
+                      <option key={environment} value={environment}>
+                        {environmentLabels[environment]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            )}
+            <DeployForm
+              key={`${editing.projectId}-${editing.environment}`}
+              workspace={workspace}
+              projectId={editing.projectId}
+              environment={editing.environment}
+              awsService={awsFor(editing.projectId, editing.environment)}
+              renderService={renderFor(editing.projectId, editing.environment)}
+              renderConnected={Boolean(render.data?.connection)}
+              awsConnected={Boolean(aws.data?.connection)}
+              onDone={() => setEditing(null)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-function DeployCell({ awsService, renderService, last }: { awsService?: AwsServiceLink; renderService?: RenderServiceLink; last?: Deployment }) {
-  if (!awsService && !renderService) return <span className="text-xs text-muted">Sem deploy</span>;
-  return (
-    <div className="space-y-1 text-xs">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge tone="info">{awsService ? (awsService.kind === 'ec2' ? 'EC2' : 'Amplify') : 'Render'}</Badge>
-        <span className="font-medium">{awsService?.url?.replace(/^https?:\/\//, '') ?? renderService?.serviceName}</span>
-        {(awsService?.branch ?? renderService?.branch) && <span className="text-muted">({awsService?.branch ?? renderService?.branch})</span>}
+const targetBadges: Record<Exclude<Target, 'none'>, string> = { render: 'Render', ec2: 'EC2', amplify: 'Amplify' };
+
+function EnvironmentRow({
+  environment,
+  awsService,
+  renderService,
+  last,
+  deploying,
+  onEdit,
+  onDeploy,
+}: {
+  environment: DeployEnvironment;
+  awsService?: AwsServiceLink;
+  renderService?: RenderServiceLink;
+  last?: Deployment;
+  deploying: boolean;
+  onEdit: () => void;
+  onDeploy: () => void;
+}) {
+  const label = <span className="w-28 shrink-0 pt-0.5 text-xs font-medium tracking-wide text-muted uppercase">{environmentLabels[environment]}</span>;
+  if (!awsService && !renderService) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3">
+        {label}
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-md border border-dashed border-border px-3 py-1 text-xs text-muted transition-colors hover:border-accent/60 hover:text-accent"
+        >
+          + Configurar {environmentLabels[environment].toLowerCase()}
+        </button>
       </div>
-      {awsService?.config.setup && <SetupLine setup={awsService.config.setup} />}
-      {last && (
-        <p className="text-muted">
-          Último deploy: <span className={last.isSuccess ? 'text-emerald-300' : last.isFinished ? 'text-red-300' : 'text-amber-300'}>{last.statusLabel}</span> ·{' '}
-          {timeAgo(last.startedAt)}
+    );
+  }
+  const url = awsService?.url ?? renderService?.url ?? null;
+  const branch = awsService?.branch ?? renderService?.branch;
+  const dot = !last ? 'bg-border' : last.isSuccess ? 'bg-emerald-400' : last.isFinished ? 'bg-red-400' : 'animate-pulse bg-amber-400';
+  return (
+    <div className="flex flex-wrap items-start gap-3 px-4 py-3">
+      {label}
+      <div className="min-w-0 flex-1 space-y-1 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="info">{targetBadges[awsService?.kind ?? 'render']}</Badge>
+          {url ? (
+            <a href={url} target="_blank" rel="noreferrer" className="truncate font-medium hover:text-accent hover:underline">
+              {url.replace(/^https?:\/\//, '')}
+            </a>
+          ) : (
+            <span className="truncate font-medium">{renderService?.serviceName}</span>
+          )}
+          {branch && <span className="rounded bg-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted">{branch}</span>}
+        </div>
+        {awsService?.config.setup && <SetupLine setup={awsService.config.setup} />}
+        <p className="flex items-center gap-1.5 text-xs text-muted">
+          <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+          {last ? `${last.statusLabel} · ${timeAgo(last.startedAt)}` : 'Ainda sem deploy pelo Studio'}
         </p>
-      )}
+      </div>
+      <div className="flex shrink-0 gap-1.5">
+        <Button size="sm" onClick={onDeploy} disabled={deploying}>
+          Publicar
+        </Button>
+        <Button size="sm" onClick={onEdit}>
+          Alterar
+        </Button>
+      </div>
     </div>
   );
 }
 
 function SetupLine({ setup }: { setup: AwsSetupState }) {
-  if (setup.status === 'running') return <p className="text-amber-300">Configurando: {setup.step}…</p>;
-  if (setup.status === 'failed') return <p className="text-red-300">Configuração falhou (abra em Alterar)</p>;
-  if (setup.dnsManual && setup.dns.length > 0) return <p className="text-amber-300">Falta criar o DNS (abra em Alterar)</p>;
+  if (setup.status === 'running') return <p className="text-xs text-amber-300">Configurando: {setup.step}…</p>;
+  if (setup.status === 'failed') return <p className="text-xs text-red-300">A configuração na AWS falhou (abra em Alterar)</p>;
+  if (setup.dnsManual && setup.dns.length > 0) return <p className="text-xs text-amber-300">Falta criar o DNS (abra em Alterar)</p>;
   return null;
 }
 
@@ -179,7 +271,6 @@ function DeployForm({
   awsConnected: boolean;
   onDone: () => void;
 }) {
-  const project = workspace.projects.find((entry) => entry.id === projectId);
   const initial: Target = awsService ? awsService.kind : renderService ? 'render' : 'none';
   const [target, setTarget] = useState<Target>(initial);
   const setAws = useSetAwsService(workspace.id);
@@ -193,15 +284,7 @@ function DeployForm({
   };
 
   return (
-    <div className="space-y-4 rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">
-          {project?.name} — {environmentLabels[environment]}
-        </p>
-        <Button size="sm" onClick={onDone}>
-          Fechar
-        </Button>
-      </div>
+    <div className="space-y-4">
       <Field label="Destino">
         <Select value={target} onChange={(event) => setTarget(event.target.value as Target)} className="max-w-sm">
           {(Object.keys(targetLabels) as Target[]).map((value) => (
