@@ -145,6 +145,8 @@ function helpPrompt(found: Found) {
     '- uma falha ficou sem dono (ex.: um teste reprovou algo de outra tarefa): crie a tarefa da correção e ponha nesta a linha "Depende de:";',
     '- precisa ser refeita: escreva o motivo na tarefa e devolva para "A fazer";',
     '- a decisão é do usuário: deixe no Backlog com o campo Decisão = "Aguardando decisão".',
+    '',
+    'Sem achismo: relatórios e notas no corpo da tarefa podem ser antigos. Antes de propor devolver para "A fazer", confira o estado de AGORA — o PR/MR está aberto, mergeado ou fechado (e se o merge chegou à branch de HOM), o último deploy publicou essa versão, e, numa tela, ela abre em HOM com o que a tarefa pede. Cite na pergunta o que você conferiu e quando. Se o problema do relatório já não existe, a recomendada é seguir (mover para a coluna certa ou deixar o teste rodar de novo), nunca devolver. Só recomende devolver quando conferiu agora que o defeito continua.',
     'Só mova cards depois do sim do usuário. No fim, report_result com o que foi feito.',
     '',
     item.body.trim().slice(0, 6000),

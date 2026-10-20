@@ -229,6 +229,33 @@ export async function pullRequestInfo(input: MergeInput): Promise<{ state: PullR
   return { state, target: response.body.target_branch ?? '', source: response.body.source_branch ?? '' };
 }
 
+/** Leaves a comment on a PR/MR. */
+export async function commentPullRequest(input: MergeInput, comment: string) {
+  if (input.provider === 'GITHUB') {
+    const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
+    const [owner, repo] = input.remote.path.split('/');
+    const headers = {
+      Authorization: `Bearer ${input.token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'agents-manager-studio',
+      'Content-Type': 'application/json',
+    };
+    const posted = await api<{ message?: string }>(`${apiBase}/repos/${owner}/${repo}/issues/${input.number}/comments`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ body: comment }),
+    });
+    if (posted.status !== 201) throw new HttpError(502, `GitHub: ${posted.body.message ?? `erro ${posted.status}`}`);
+    return;
+  }
+  const posted = await api<{ message?: unknown }>(`${gitLabMergeRequestUrl(input)}/${input.number}/notes`, {
+    method: 'POST',
+    headers: { 'PRIVATE-TOKEN': input.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: comment }),
+  });
+  if (posted.status !== 201) throw new HttpError(502, `GitLab: ${JSON.stringify(posted.body.message ?? `erro ${posted.status}`)}`);
+}
+
 /** Closes a PR/MR without merging it, leaving a comment that says why. */
 export async function closePullRequest(input: MergeInput, comment: string) {
   if (input.provider === 'GITHUB') {
@@ -240,7 +267,7 @@ export async function closePullRequest(input: MergeInput, comment: string) {
       'User-Agent': 'agents-manager-studio',
       'Content-Type': 'application/json',
     };
-    await api(`${apiBase}/repos/${owner}/${repo}/issues/${input.number}/comments`, { method: 'POST', headers, body: JSON.stringify({ body: comment }) });
+    await commentPullRequest(input, comment).catch(() => undefined); // the close says why; it still closes without the comment
     const closed = await api<{ message?: string }>(`${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`, {
       method: 'PATCH',
       headers,
@@ -251,7 +278,7 @@ export async function closePullRequest(input: MergeInput, comment: string) {
   }
   const headers = { 'PRIVATE-TOKEN': input.token, 'Content-Type': 'application/json' };
   const url = `${gitLabMergeRequestUrl(input)}/${input.number}`;
-  await api(`${url}/notes`, { method: 'POST', headers, body: JSON.stringify({ body: comment }) });
+  await commentPullRequest(input, comment).catch(() => undefined); // the close says why; it still closes without the comment
   const closed = await api<{ message?: unknown }>(url, { method: 'PUT', headers, body: JSON.stringify({ state_event: 'close' }) });
   if (closed.status !== 200) throw new HttpError(502, `GitLab: ${JSON.stringify(closed.body.message ?? `erro ${closed.status}`)}`);
 }

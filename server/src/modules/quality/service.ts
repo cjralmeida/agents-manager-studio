@@ -42,7 +42,7 @@ const SKILL_PHASES: Record<string, LearningPhase[]> = {
   'hom-ranger': ['testes', 'codificacao'],
   'hom-screen-ranger': ['testes', 'codificacao'],
   'play-tester': ['testes', 'codificacao'],
-  'hom-launcher': ['publicacao'],
+  'hom-launcher': ['publicacao', 'codificacao'], // coding lessons for the pre-check of PR/MRs made outside the Studio
 };
 
 /** Lessons in a prompt: the most frequent first, enough to be read. */

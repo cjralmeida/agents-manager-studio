@@ -7,7 +7,7 @@ describe('phasesOfProfile', () => {
 
   it('takes the stage from the role skill the instructions mention', () => {
     assert.deepEqual(phasesOfProfile(profile('Construtor', 'Use a skill backend-builder para implementar.'), true), ['codificacao']);
-    assert.deepEqual(phasesOfProfile(profile('hom-launcher', '', 'RESULT'), true), ['publicacao']);
+    assert.deepEqual(phasesOfProfile(profile('hom-launcher', '', 'RESULT'), true), ['publicacao', 'codificacao']);
   });
 
   it('gives testers their own lessons first and the coding ones to check', () => {
