@@ -405,11 +405,15 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         doneColumnId: statusMap.done ?? null,
         repositories: trigger.repositories,
       }, snapshot.fields, snapshot.allOpenListed);
-      // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed).
+      // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed), or
+      // a while after a test that failed without deciding the task (it is still here, e.g. the front of HOM was down).
       const candidates = ready.filter((entry) => {
         if (screenTesting.has(entry.task.id)) return false;
         const last = lastRun.get(entry.task.id);
-        return !last || (last.status !== 'RUNNING' && (last.trigger as { signature?: string }).signature !== frontendSignature(entry));
+        if (!last) return true;
+        if (last.status === 'RUNNING') return false;
+        if ((last.trigger as { signature?: string }).signature !== frontendSignature(entry)) return true;
+        return last.status === 'FAILED' && Boolean(last.finishedAt) && Date.now() - last.finishedAt!.getTime() > FEATURE_RETEST_AFTER_MS;
       });
       if (candidates.length === 0) {
         await report(workflow, 'Vigiando: nenhuma tarefa de frontend nova pronta em homologação.');
@@ -792,7 +796,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
 }
 
 /** Tasks one tester session goes through before a fresh agent takes over (its context keeps growing). */
-/** A feature test that failed leaving its tasks in homologation is tried again after this long. */
+/** A feature or screen test that failed leaving its tasks in homologation is tried again after this long. */
 const FEATURE_RETEST_AFTER_MS = 30 * 60_000;
 
 const TESTER_REUSE_LIMIT = 8;
