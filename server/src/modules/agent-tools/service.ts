@@ -13,7 +13,7 @@ import { ORBI_OPS_TOOLS, runOrbiOp } from '../orbi/ops.js';
 import { logActivity } from '../orbi/activity.js';
 import { getTestEnv, listTestEnvs, startTestEnv, stopTestEnv } from '../test-envs/service.js';
 import { acquireTestUser, releaseTestUser, testUserStatus } from '../test-users/service.js';
-import { QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
+import { LEARNING_PHASES, type LearningPhase, QUALITY_STATUSES, type QualityStatus, listQuality, logOccurrence, updateCategory } from '../quality/service.js';
 
 /** Tools the runner can call for an agent; board tools need the "board" group on the agent. */
 export const AGENT_TOOL_NAMES = [
@@ -223,7 +223,7 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
   }
 
   if (name.startsWith('quality_')) {
-    if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente não tem acesso ao registro de defeitos.');
+    if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente não tem acesso ao Aprendizado.');
     if (name === 'quality_list') return { categories: await listQuality(agent.workspaceId) };
     if (name === 'quality_log') {
       const profile = agent.profileId ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true } }) : null;
@@ -232,13 +232,23 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
         task: text(args.task, 300) ?? '',
         expected: text(args.expected, 2000) ?? '',
         obtained: text(args.obtained, 2000) ?? '',
+        phase: text(args.phase) as LearningPhase | undefined,
+        lesson: text(args.lesson, 1000),
         reviewer: profile?.name ?? null,
         agentId: agent.id,
       });
     }
     const status = text(args.status) as QualityStatus | undefined;
     if (status && !QUALITY_STATUSES.includes(status)) throw new HttpError(400, `Situação inválida. Use: ${QUALITY_STATUSES.join(', ')}.`);
-    return updateCategory(agent.workspaceId, { category: text(args.category, 200), status, transversalRef: text(args.transversalRef, 300) });
+    const phase = text(args.phase) as LearningPhase | undefined;
+    if (phase && !LEARNING_PHASES.includes(phase)) throw new HttpError(400, `Etapa inválida. Use: ${LEARNING_PHASES.join(', ')}.`);
+    return updateCategory(agent.workspaceId, {
+      category: text(args.category, 200),
+      status,
+      transversalRef: text(args.transversalRef, 300),
+      phase,
+      ...(args.lesson !== undefined && { lesson: text(args.lesson, 1000) ?? null }),
+    });
   }
 
   if (!agent.tools.includes('board') && !agent.tools.includes('board_read')) {

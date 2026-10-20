@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
 import { launchAgent } from '../agents/service.js';
-import { dependenciesDelivered, dependencyRefs, itemRef } from '../boards/dependencies.js';
+import { closedOffBoard, dependenciesDelivered, dependencyRefs, itemRef, refResolver } from '../boards/dependencies.js';
 import { boardContext } from '../boards/service.js';
 import type { BoardItem, StatusMap } from '../boards/types.js';
 import { parseSteps, parseTrigger, startBoardRun } from '../workflows/engine.js';
@@ -153,24 +153,41 @@ function helpPrompt(found: Found) {
 
 /** One round over a workspace: lists what is stuck and acts on it. */
 /**
- * Keeps the recurring defects registry in step with the board: a category whose transversal task was delivered (done
- * or closed) is resolved; if that task opens again, the category goes back to "transversal".
+ * Keeps the Aprendizado in step with the board: a category whose transversal task was delivered (done or closed) is
+ * resolved, and goes back to "transversal" if that task opens again. A category without a transversal task is
+ * resolved when every task it was found in was fixed and delivered (homologation, done or closed): the defect was
+ * corrected where it appeared, and its lesson keeps teaching the agents. A new occurrence opens it again.
  */
 async function syncQualityCategories(workspaceId: string, log: FastifyBaseLogger) {
   const categories = await prisma.qualityCategory.findMany({
-    where: { workspaceId, status: { in: ['transversal', 'resolvida'] }, transversalRef: { not: null } },
+    where: { workspaceId, status: { in: ['aberta', 'transversal', 'resolvida'] } },
+    include: { occurrences: { select: { taskRef: true } } },
   });
   if (categories.length === 0) return;
   const { snapshot, statusMap } = await boardContext(workspaceId);
-  const byRef = new Map(snapshot.items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const resolve = refResolver(snapshot.items);
+  const closed = closedOffBoard(snapshot.allOpenListed);
+  const delivered = (ref: string, withHomologation: boolean) => {
+    const task = resolve(ref.trim());
+    if (!task) return closed(ref.trim());
+    return task.isClosed || task.columnId === statusMap.done || (withHomologation && Boolean(statusMap.homologation) && task.columnId === statusMap.homologation);
+  };
   for (const category of categories) {
-    const task = byRef.get(category.transversalRef!.trim().toLowerCase());
-    if (!task) continue;
-    const delivered = task.isClosed || task.columnId === statusMap.done;
-    const status = delivered ? 'resolvida' : 'transversal';
+    let status = category.status;
+    if (category.transversalRef) {
+      if (category.status === 'aberta') continue;
+      const task = resolve(category.transversalRef.trim());
+      if (!task) continue;
+      status = delivered(category.transversalRef, false) ? 'resolvida' : 'transversal';
+    } else if (category.status === 'aberta') {
+      // Only real task refs ("repo#N") can be followed; a category logged against something else waits for the user.
+      const refs = category.occurrences.map((occurrence) => occurrence.taskRef);
+      if (refs.length === 0 || !refs.every((ref) => /#\d+\s*$/.test(ref))) continue;
+      if (refs.every((ref) => delivered(ref, true))) status = 'resolvida';
+    }
     if (status === category.status) continue;
     await prisma.qualityCategory.update({ where: { id: category.id }, data: { status } });
-    log.info({ category: category.name, status }, 'Quality category follows its transversal task');
+    log.info({ category: category.name, status }, 'Quality category follows its tasks');
   }
 }
 

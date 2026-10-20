@@ -21,6 +21,7 @@ import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote
 import { removeBuildVolumes } from './build-dirs.js';
 import { isMirroring } from './mirror.js';
 import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
+import { learningsPrompt, phasesOfProfile } from '../quality/service.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
@@ -505,11 +506,20 @@ export async function ensureContainer(agentId: string) {
       skillIds: settings.enabledSkillIds,
       env: { ...(await testServicesEnv(agent, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
       variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
+      learnings: agent.kind === 'TASK' ? await learningsOf(agent).catch(() => null) : null,
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
   } finally {
     starting.delete(agentId);
   }
+}
+
+/** What the workspace learned for the stage of the agent's role (Aprendizado tab), taught in its prompt. */
+async function learningsOf(agent: Agent) {
+  const profile = agent.profileId
+    ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true, instructions: true, output: true } })
+    : null;
+  return learningsPrompt(agent.workspaceId, phasesOfProfile(profile, Boolean(agent.projectId)));
 }
 
 /**

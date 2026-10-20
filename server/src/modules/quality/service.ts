@@ -2,14 +2,51 @@ import { prisma } from '../../db.js';
 import { HttpError } from '../../lib/errors.js';
 
 /**
- * Recurring defects: reviewers (code-guardian, hom-ranger, play-tester) log each defect that blocked a task, by
- * category. When a category reaches several different tasks, it is fixed once in the base by a transversal task
- * (created in the Backlog for the user to approve). Expected errors are never logged: only "expected X, got Y" against
- * a rule, a criterion or the contract.
+ * Aprendizado: reviewers (code-guardian, hom-ranger, play-tester) log each defect that blocked a task, by category,
+ * with the stage whose agents should learn from it and the lesson to follow. The lessons go into the prompt of the
+ * agents of that stage, so a mistake already found and fixed is not made again. When a category reaches several
+ * different tasks, it is fixed once in the base by a transversal task (created in the Backlog for the user to approve).
+ * Expected errors are never logged: only "expected X, got Y" against a rule, a criterion or the contract.
  */
 
 export const QUALITY_STATUSES = ['aberta', 'transversal', 'resolvida', 'nao_defeito'] as const;
 export type QualityStatus = (typeof QUALITY_STATUSES)[number];
+
+/** Stages of the work, each with the agents that learn from its lessons. */
+export const LEARNING_PHASES = ['especificacao', 'codificacao', 'assets', 'testes', 'publicacao'] as const;
+export type LearningPhase = (typeof LEARNING_PHASES)[number];
+
+const phaseLabels: Record<LearningPhase, string> = {
+  especificacao: 'especificação',
+  codificacao: 'codificação',
+  assets: 'arte e áudio',
+  testes: 'testes',
+  publicacao: 'publicação',
+};
+
+/** The stages each role skill works in; a tester also gets the coding lessons, to check the delivery against them. */
+const SKILL_PHASES: Record<string, LearningPhase[]> = {
+  'spec-architect': ['especificacao'],
+  'task-forge': ['especificacao'],
+  'backlog-steward': ['especificacao'],
+  'game-scout': ['especificacao'],
+  'game-designer': ['especificacao'],
+  'game-planner': ['especificacao'],
+  'game-advisor': ['especificacao'],
+  'backend-builder': ['codificacao'],
+  'game-builder': ['codificacao'],
+  'pixel-forge': ['assets'],
+  'audio-forge': ['assets'],
+  'code-guardian': ['codificacao', 'testes'],
+  'hom-api-ranger': ['testes', 'codificacao'],
+  'hom-ranger': ['testes', 'codificacao'],
+  'hom-screen-ranger': ['testes', 'codificacao'],
+  'play-tester': ['testes', 'codificacao'],
+  'hom-launcher': ['publicacao'],
+};
+
+/** Lessons in a prompt: the most frequent first, enough to be read. */
+const MAX_LESSONS = 30;
 
 /** Different tasks with the same defect that call for a fix in the base. */
 export const TRANSVERSAL_THRESHOLD = 3;
@@ -27,6 +64,8 @@ export async function listQuality(workspaceId: string) {
     name: category.name,
     status: category.status as QualityStatus,
     transversalRef: category.transversalRef,
+    phase: category.phase as LearningPhase,
+    lesson: category.lesson,
     tasks: new Set(category.occurrences.map((occurrence) => occurrence.taskRef.toLowerCase())).size,
     updatedAt: category.updatedAt,
     occurrences: category.occurrences.map((occurrence) => ({
@@ -54,15 +93,26 @@ function nextStep(status: string, transversalRef: string | null, tasks: number) 
 
 export async function logOccurrence(
   workspaceId: string,
-  input: { category: string; task: string; expected: string; obtained: string; reviewer?: string | null; agentId?: string | null },
+  input: {
+    category: string;
+    task: string;
+    expected: string;
+    obtained: string;
+    phase?: LearningPhase;
+    lesson?: string | null;
+    reviewer?: string | null;
+    agentId?: string | null;
+  },
 ) {
   const name = normalize(input.category);
   if (!name || !input.task.trim() || !input.expected.trim() || !input.obtained.trim()) {
     throw new HttpError(400, 'Informe a categoria, a tarefa, o esperado e o obtido.');
   }
+  if (input.phase && !LEARNING_PHASES.includes(input.phase)) throw new HttpError(400, `Etapa inválida. Use: ${LEARNING_PHASES.join(', ')}.`);
+  const lesson = input.lesson?.trim() || null;
   const category = await prisma.qualityCategory.upsert({
     where: { workspaceId_name: { workspaceId, name } },
-    create: { workspaceId, name },
+    create: { workspaceId, name, ...(input.phase && { phase: input.phase }), lesson },
     update: { updatedAt: new Date() },
   });
   await prisma.qualityOccurrence.create({
@@ -75,24 +125,120 @@ export async function logOccurrence(
       agentId: input.agentId ?? null,
     },
   });
+  // A lesson already written (maybe edited by the user) is kept; a new one only fills an empty category. A category
+  // resolved where it appeared (no transversal task) opens again: the defect is back.
+  const reopen = category.status === 'resolvida' && !category.transversalRef;
+  if ((lesson && !category.lesson) || reopen) {
+    await prisma.qualityCategory.update({
+      where: { id: category.id },
+      data: { ...(lesson && !category.lesson && { lesson }), ...(reopen && { status: 'aberta' }) },
+    });
+    if (reopen) category.status = 'aberta';
+  }
   const occurrences = await prisma.qualityOccurrence.findMany({ where: { categoryId: category.id }, select: { taskRef: true } });
   const tasks = new Set(occurrences.map((occurrence) => occurrence.taskRef.toLowerCase())).size;
   return { category: name, status: category.status, transversalRef: category.transversalRef, tasks, next: nextStep(category.status, category.transversalRef, tasks) };
 }
 
-export async function updateCategory(workspaceId: string, input: { category?: string; id?: string; status?: QualityStatus; transversalRef?: string | null; name?: string }) {
+export async function updateCategory(
+  workspaceId: string,
+  input: { category?: string; id?: string; status?: QualityStatus; transversalRef?: string | null; name?: string; phase?: LearningPhase; lesson?: string | null },
+) {
   const category = input.id
     ? await prisma.qualityCategory.findFirst({ where: { id: input.id, workspaceId } })
     : await prisma.qualityCategory.findUnique({ where: { workspaceId_name: { workspaceId, name: normalize(input.category ?? '') } } });
   if (!category) throw new HttpError(404, `Categoria "${input.category ?? input.id}" não existe no registro. Use quality_list para ver as categorias.`);
   if (input.status && !QUALITY_STATUSES.includes(input.status)) throw new HttpError(400, `Situação inválida. Use: ${QUALITY_STATUSES.join(', ')}.`);
+  if (input.phase && !LEARNING_PHASES.includes(input.phase)) throw new HttpError(400, `Etapa inválida. Use: ${LEARNING_PHASES.join(', ')}.`);
   const updated = await prisma.qualityCategory.update({
     where: { id: category.id },
     data: {
       ...(input.status && { status: input.status }),
       ...(input.transversalRef !== undefined && { transversalRef: input.transversalRef?.trim() || null }),
       ...(input.name && { name: normalize(input.name) }),
+      ...(input.phase && { phase: input.phase }),
+      ...(input.lesson !== undefined && { lesson: input.lesson?.trim() || null }),
     },
   });
-  return { id: updated.id, name: updated.name, status: updated.status, transversalRef: updated.transversalRef };
+  return { id: updated.id, name: updated.name, status: updated.status, transversalRef: updated.transversalRef, phase: updated.phase, lesson: updated.lesson };
+}
+
+/**
+ * Joins categories that are the same defect under different names (each reviewer names it its own way, so none
+ * reaches the transversal threshold): the occurrences move to one category with the given name, stage and lesson.
+ * Its status is the most advanced of them (a transversal task in progress wins over "aberta").
+ */
+export async function mergeCategories(
+  workspaceId: string,
+  input: { categoryIds: string[]; name: string; phase?: LearningPhase; lesson?: string | null },
+) {
+  const name = normalize(input.name);
+  if (!name) throw new HttpError(400, 'Informe o nome da categoria.');
+  const sources = await prisma.qualityCategory.findMany({ where: { workspaceId, id: { in: input.categoryIds } } });
+  if (sources.length !== new Set(input.categoryIds).size) throw new HttpError(404, 'Categoria não encontrada neste workspace.');
+  const rank = { nao_defeito: 0, aberta: 1, resolvida: 2, transversal: 3 } as Record<string, number>;
+  const lead = [...sources].sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.qualityCategory.findUnique({ where: { workspaceId_name: { workspaceId, name } } });
+    const target =
+      existing ??
+      (await tx.qualityCategory.create({
+        data: { workspaceId, name, status: lead?.status ?? 'aberta', transversalRef: lead?.transversalRef ?? null, phase: input.phase ?? lead?.phase },
+      }));
+    const others = sources.filter((source) => source.id !== target.id).map((source) => source.id);
+    await tx.qualityOccurrence.updateMany({ where: { categoryId: { in: others } }, data: { categoryId: target.id } });
+    await tx.qualityCategory.deleteMany({ where: { id: { in: others } } });
+    return tx.qualityCategory.update({
+      where: { id: target.id },
+      data: {
+        ...(input.phase && { phase: input.phase }),
+        lesson: input.lesson?.trim() || target.lesson || sources.find((source) => source.lesson)?.lesson || null,
+      },
+    });
+  });
+}
+
+/** The stages an agent profile works in, from the role skill its name or instructions mention. */
+export function phasesOfProfile(profile: { name: string; instructions: string; output: string } | null, hasProject: boolean): LearningPhase[] {
+  const text = profile ? `${profile.name} ${profile.instructions}` : '';
+  const phases = Object.entries(SKILL_PHASES)
+    .filter(([skill]) => new RegExp(`(^|[^\\w-])${skill}($|[^\\w-])`).test(text))
+    .flatMap(([, list]) => list);
+  if (phases.length > 0) return [...new Set(phases)];
+  return profile?.output === 'PULL_REQUEST' && hasProject ? ['codificacao'] : [];
+}
+
+/**
+ * The lessons of the workspace for an agent working in these stages, for its prompt (null: none). A category without
+ * a written lesson is taught by its name and its last "expected × obtained". Categories judged not to be defects are
+ * left out; resolved ones stay, so the fix is not undone.
+ */
+export async function learningsPrompt(workspaceId: string, phases: LearningPhase[]) {
+  if (phases.length === 0) return null;
+  const categories = await prisma.qualityCategory.findMany({
+    where: { workspaceId, phase: { in: phases }, status: { not: 'nao_defeito' } },
+    include: { occurrences: { orderBy: { createdAt: 'desc' }, select: { taskRef: true, expected: true, obtained: true } } },
+  });
+  if (categories.length === 0) return null;
+  const ranked = categories
+    .map((category) => ({ category, tasks: new Set(category.occurrences.map((occurrence) => occurrence.taskRef.toLowerCase())).size }))
+    .sort((a, b) => b.tasks - a.tasks || b.category.updatedAt.getTime() - a.category.updatedAt.getTime())
+    .slice(0, MAX_LESSONS);
+
+  const several = phases.length > 1;
+  const lines = [
+    `Aprendizado deste workspace: erros que já reprovaram entregas e foram corrigidos. Não os repita${several ? ' e confira se a entrega que você recebe não os repete' : ''}.`,
+  ];
+  for (const phase of phases) {
+    const entries = ranked.filter((entry) => entry.category.phase === phase);
+    if (entries.length === 0) continue;
+    if (several) lines.push(phase === phases[0] ? `- Na sua etapa (${phaseLabels[phase]}):` : `- Na etapa de ${phaseLabels[phase]} (confira na entrega):`);
+    for (const { category, tasks } of entries) {
+      const last = category.occurrences[0];
+      const lesson =
+        category.lesson ?? (last ? `${category.name} — esperado: ${last.expected.slice(0, 160)}; obtido: ${last.obtained.slice(0, 160)}` : category.name);
+      lines.push(`${several ? '  ' : ''}- ${lesson}${tasks > 1 ? ` (${tasks} tarefas)` : ''}`);
+    }
+  }
+  return lines.join('\n');
 }

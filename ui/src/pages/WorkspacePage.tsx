@@ -24,7 +24,7 @@ const tabs = [
   { id: 'agents', label: 'Agentes' },
   { id: 'workflows', label: 'Workflows' },
   { id: 'roadmap', label: 'Roadmap' },
-  { id: 'quality', label: 'Defeitos' },
+  { id: 'quality', label: 'Aprendizado' },
   { id: 'projects', label: 'Projetos' },
   { id: 'deploys', label: 'Deploys' },
   { id: 'connectors', label: 'Conectores' },

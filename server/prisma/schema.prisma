@@ -908,6 +908,10 @@ model QualityCategory {
   status         String              @default("aberta")
   /// The transversal task ("repo#N") fixing the category.
   transversalRef String?             @map("transversal_ref")
+  /// Stage whose agents learn from it: "especificacao", "codificacao", "assets", "testes" or "publicacao".
+  phase          String              @default("codificacao")
+  /// What the agents of that stage do to avoid it (taught in their prompt).
+  lesson         String?
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

@@ -82,28 +82,35 @@ export function createStudioTools(call, groups) {
       ),
       tool(
         'quality_list',
-        'Lista o registro de defeitos recorrentes do workspace: categorias, situação (aberta, transversal, resolvida, nao_defeito), tarefa transversal e ocorrências.',
+        'Lista o Aprendizado do workspace (os defeitos que já reprovaram entregas): categorias com etapa, lição, situação (aberta, transversal, resolvida, nao_defeito), tarefa transversal e ocorrências.',
         {},
         run('quality_list'),
       ),
       tool(
         'quality_log',
-        'Registra um DEFEITO que bloqueou uma tarefa (reprovação): o resultado diferiu de uma RN, um CA ou do contrato. Nunca registre erro esperado (o teste contrário recebeu a recusa documentada). Devolve quantas tarefas a categoria já tem e o que fazer a seguir.',
+        'Registra no Aprendizado um DEFEITO que bloqueou uma tarefa (reprovação): o resultado diferiu de uma RN, um CA ou do contrato. Nunca registre erro esperado (o teste contrário recebeu a recusa documentada). A lição vai para o prompt dos agentes da etapa, para não repetirem o erro. Devolve quantas tarefas a categoria já tem e o que fazer a seguir.',
         {
           category: z.string().describe('Categoria curta e estável do defeito (reuse uma de quality_list se for o mesmo), ex.: "corpo nulo dá 500".'),
           task: z.string().describe('A tarefa reprovada, "repo#N".'),
           expected: z.string().describe('O que a regra, o critério ou o contrato mandam.'),
           obtained: z.string().describe('O que aconteceu.'),
+          phase: z.enum(['especificacao', 'codificacao', 'assets', 'testes', 'publicacao']).optional().describe('Etapa cujos agentes devem aprender com isso: "codificacao" (quem implementa errou; o padrão), "especificacao" (a regra ou o critério estava errado ou faltando), "assets" (arte ou áudio), "testes" (o teste ou o testador errou) ou "publicacao" (deploy, variáveis, build de produção).'),
+          lesson: z
+            .string()
+            .optional()
+            .describe('Numa categoria nova: a lição com a CORREÇÃO a seguir, em frases imperativas e gerais, para quem trabalha na etapa não repetir o erro em nenhuma tarefa: o que fazer, como fazer no projeto (a técnica, a configuração, o lugar do código) e o teste que garante (ex.: "Valide o corpo antes da regra e responda 400 VALIDACAO no campo para corpo nulo ou tipo trocado, nunca 500; ative FAIL_ON_TRAILING_TOKENS; teste e2e cada caso"). Não descreva só o defeito.'),
         },
         run('quality_log'),
       ),
       tool(
         'quality_update',
-        'Muda a situação de uma categoria do registro: "transversal" com a referência da tarefa transversal criada, "resolvida", "nao_defeito" ou "aberta".',
+        'Muda uma categoria do Aprendizado: a situação ("transversal" com a referência da tarefa transversal criada, "resolvida", "nao_defeito" ou "aberta"), a etapa ou a lição.',
         {
           category: z.string(),
           status: z.enum(['aberta', 'transversal', 'resolvida', 'nao_defeito']).optional(),
           transversalRef: z.string().optional().describe('A tarefa transversal, "repo#N".'),
+          phase: z.enum(['especificacao', 'codificacao', 'assets', 'testes', 'publicacao']).optional(),
+          lesson: z.string().optional().describe('A lição (substitui a atual).'),
         },
         run('quality_update'),
       ),

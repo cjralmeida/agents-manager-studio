@@ -42,7 +42,7 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind
 
 export const TIME_NOTE = '- Horários: o usuário está no fuso America/Sao_Paulo (UTC−3), e este container também (TZ). As ferramentas e as APIs do Studio devolvem horários em UTC (ISO terminando em Z): converta para o horário de Brasília antes de mostrar ao usuário ou de escrever em tarefas e relatórios (ex.: 17:44Z → 14:44).';
 
-function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = []) {
+function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = [], learnings: string | null = null) {
   // Órbi has its own guide (always the current version, also for resumed conversations).
   if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
@@ -129,6 +129,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
       `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: no shell, carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa; em código (Node, Python, testes), leia /run/studio/variables.json (objeto nome → valor). Nunca leia o .env como texto: os valores dele estão entre aspas de shell. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Configuração → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
     );
   }
+  if (learnings) lines.push('', learnings);
   if (agent.instructions.trim()) lines.push('', 'Seu papel neste workspace:', agent.instructions.trim());
   return lines.join('\n');
 }
@@ -154,6 +155,8 @@ export interface StartAgentInput {
   variableNames?: string[] | null;
   /** Projects mounted read-only at /context/<name>, as they are on disk. */
   contextProjects?: ContextProject[];
+  /** Lessons of the workspace for the agent's stage (Aprendizado tab). */
+  learnings?: string | null;
 }
 
 export interface ContextProject {
@@ -171,7 +174,7 @@ export interface ContextProject {
 const contextMount = (name: string) => `/context/${name.replace(/[^\w.-]/g, '_')}`;
 
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [] }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [], learnings = null }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
   const buildBinds = await buildDirBinds(agent).catch(() => []);
@@ -206,7 +209,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       SERVER_URL: config.serverInternalUrl,
       MODEL: agent.model,
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
-      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects),
+      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects, learnings),
       STUDIO_TOOLS: runnerTools(agent).join(','),
       // An agent's work ends with its turn (the Studio concludes it then): nothing may keep running in the
       // background, or it would be killed with the container (e.g. subagents creating tasks).
