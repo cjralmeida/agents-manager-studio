@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { decisionMark, dependencyRefs, itemRef, refResolver } from '../boards/dependencies.js';
+import { closedOffBoard, decisionMark, dependencyRefs, itemRef, refResolver } from '../boards/dependencies.js';
 import type { BoardField, BoardItem } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
@@ -286,15 +286,20 @@ export function frontendTasksReady(
   items: BoardItem[],
   input: { homologationColumnId: string; doneColumnId: string | null; repositories: string[] },
   fields: BoardField[] = [],
+  allOpenListed: string[] = [],
 ): ReadyFrontendTask[] {
   const resolve = refResolver(items);
+  const closed = closedOffBoard(allOpenListed);
   const accepts = (item: BoardItem) =>
     input.repositories.length === 0 || input.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase());
   const done = (item: BoardItem) => item.isClosed || item.columnId === input.doneColumnId;
   const ready: ReadyFrontendTask[] = [];
   for (const task of items) {
     if (task.isClosed || task.columnId !== input.homologationColumnId || !accepts(task)) continue;
-    const dependencies = dependencyRefs(task.body).map((ref) => resolve(ref));
+    // A dependency closed off the board is done: it neither holds the task nor goes into the test.
+    const dependencies = dependencyRefs(task.body)
+      .filter((ref) => resolve(ref) || !closed(ref))
+      .map((ref) => resolve(ref));
     const delivered = dependencies.every(
       (dependency) => dependency && (done(dependency) || (!accepts(dependency) && dependency.columnId === input.homologationColumnId)),
     );

@@ -208,7 +208,7 @@ const TRANSIENT_RESUMES = 3;
  */
 export async function boardTaskState(workspaceId: string) {
   const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
-  const delivered = dependenciesDelivered(snapshot.items, statusMap);
+  const delivered = dependenciesDelivered(snapshot.items, statusMap, snapshot.allOpenListed);
   const [activeAgents, runs] = await Promise.all([
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({
@@ -404,7 +404,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         homologationColumnId: statusMap.homologation,
         doneColumnId: statusMap.done ?? null,
         repositories: trigger.repositories,
-      }, snapshot.fields);
+      }, snapshot.fields, snapshot.allOpenListed);
       // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed).
       const candidates = ready.filter((entry) => {
         if (screenTesting.has(entry.task.id)) return false;

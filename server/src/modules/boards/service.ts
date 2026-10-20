@@ -448,6 +448,7 @@ export async function boardContext(workspaceId: string): Promise<JoinedBoard> {
   const excluded: JoinedBoard['excluded'] = [];
   let readme: string | null = null;
   let supportsDrafts = false;
+  const allOpenListed = new Set<string>();
 
   for (const source of sources) {
     if (!joinable(source)) {
@@ -464,6 +465,7 @@ export async function boardContext(workspaceId: string): Promise<JoinedBoard> {
     readme ??= snapshot.readme ?? source.readme;
     supportsDrafts ||= snapshot.supportsDrafts;
     for (const item of snapshot.items) items.push(toJoinedItem(source.id, mappingOf(source), model, item));
+    if (source.provider === 'GITLAB') for (const item of snapshot.items) if (item.repository) allOpenListed.add(item.repository.toLowerCase());
   }
 
   const sourceById = new Map(sources.map((source) => [source.id, source]));
@@ -490,6 +492,7 @@ export async function boardContext(workspaceId: string): Promise<JoinedBoard> {
       fields: layout.fields,
       items,
       supportsDrafts,
+      allOpenListed: [...allOpenListed],
     },
     statusMap: layout.statusMap,
     repos,
@@ -620,7 +623,7 @@ export async function createTask(workspaceId: string, task: NewTask) {
 export async function releaseDependents(workspaceId: string) {
   const { snapshot, statusMap } = await boardContext(workspaceId);
   const released: string[] = [];
-  for (const item of releasableItems(snapshot.items, statusMap, snapshot.fields)) {
+  for (const item of releasableItems(snapshot.items, statusMap, snapshot.fields, snapshot.allOpenListed)) {
     await moveItem(workspaceId, item.id, statusMap.todo!);
     released.push(itemRef(item) ?? item.title);
   }

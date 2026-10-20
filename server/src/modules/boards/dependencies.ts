@@ -31,13 +31,26 @@ export function refResolver<T extends Pick<BoardItem, 'repository' | 'number'>>(
 }
 
 /**
+ * Whether a ref not on the board names a task closed long ago: its repository is one whose open issues are all on the
+ * board (`allOpenListed`, full path or a short one that ends exactly one of them).
+ */
+export function closedOffBoard(allOpenListed: string[] = []) {
+  return (ref: string) => {
+    const repository = ref.slice(0, ref.lastIndexOf('#')).toLowerCase();
+    if (!repository) return false;
+    return allOpenListed.includes(repository) || allOpenListed.filter((path) => path.endsWith(`/${repository}`)).length === 1;
+  };
+}
+
+/**
  * Blocked tasks whose dependencies are all delivered: done, closed, or in homologation (merged and published, waiting
  * for the whole feature to be tested — which needs the dependent tasks too). A dependency that is not on the
- * board keeps the task blocked: it may be on another board, or the ref may be wrong.
+ * board keeps the task blocked (it may be on another board, or the ref may be wrong), unless its repository has every
+ * open issue on the board: then it is closed.
  */
-export function releasableItems(items: BoardItem[], statusMap: StatusMap, fields: BoardField[] = []): BoardItem[] {
+export function releasableItems(items: BoardItem[], statusMap: StatusMap, fields: BoardField[] = [], allOpenListed: string[] = []): BoardItem[] {
   if (!statusMap.blocked || !statusMap.todo) return [];
-  const delivered = dependenciesDelivered(items, statusMap);
+  const delivered = dependenciesDelivered(items, statusMap, allOpenListed);
   // A task that also waits for a decision stays until it is decided (the decision clears the mark).
   const mark = decisionMark(fields);
   return items.filter(
@@ -62,14 +75,15 @@ export function decisionMark(fields: BoardField[]) {
 /**
  * Whether every task an item depends on ("Depende de:") is delivered: done, closed, or in homologation. Without the
  * line, it is. A dependency that is not on the board counts as not delivered (it may be on another board, or the ref
- * may be wrong).
+ * may be wrong), unless it is closed off the board (see closedOffBoard).
  */
-export function dependenciesDelivered(items: BoardItem[], statusMap: StatusMap) {
+export function dependenciesDelivered(items: BoardItem[], statusMap: StatusMap, allOpenListed: string[] = []) {
   const resolve = refResolver(items);
+  const closed = closedOffBoard(allOpenListed);
   return (item: BoardItem) =>
     dependencyRefs(item.body).every((ref) => {
       const dependency = resolve(ref);
-      if (!dependency) return false;
+      if (!dependency) return closed(ref);
       return dependency.isClosed || dependency.columnId === statusMap.done || (Boolean(statusMap.homologation) && dependency.columnId === statusMap.homologation);
     });
 }

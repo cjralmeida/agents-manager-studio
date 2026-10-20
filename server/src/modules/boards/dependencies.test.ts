@@ -78,4 +78,13 @@ describe('dependenciesDelivered', () => {
     // Only other/globalfarm has a #7: the short ref resolves to it, and it is still open.
     assert.equal(delivered(items[3]!), false);
   });
+
+  it('counts a ref missing from a repository with every open issue on the board as closed', () => {
+    const items = [item('group/front/app', 53, 'blocked', 'Depende de: app#2, group/api/api#19, elsewhere/repo#4')];
+    // Without the list, a missing ref waits.
+    assert.equal(dependenciesDelivered(items, statusMap)(items[0]!), false);
+    // app#2 and api#19 are closed long ago; elsewhere/repo is not fully listed, so #4 still waits.
+    assert.equal(dependenciesDelivered(items, statusMap, ['group/front/app', 'group/api/api'])(items[0]!), false);
+    assert.equal(dependenciesDelivered(items, statusMap, ['group/front/app', 'group/api/api', 'elsewhere/repo'])(items[0]!), true);
+  });
 });

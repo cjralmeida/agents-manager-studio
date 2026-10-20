@@ -73,7 +73,7 @@ async function findStuck(workspaceId: string): Promise<{ found: Found[]; statusM
   const activeRunIds = new Set(agents.map((agent) => agent.workflowRunId).filter(Boolean));
   for (const run of runs) if (run.status === 'RUNNING' || activeRunIds.has(run.id)) for (const id of runTaskIds(run)) busy.add(id);
 
-  const delivered = dependenciesDelivered(snapshot.items, statusMap);
+  const delivered = dependenciesDelivered(snapshot.items, statusMap, snapshot.allOpenListed);
   // Homologation tests that pick tasks from the homologation column: a task waiting for its turn there is not stuck.
   const tests = (await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, select: { trigger: true } }))
     .map((workflow) => workflow.trigger as { type?: string; repositories?: string[] })

@@ -59,6 +59,11 @@ export interface BoardSnapshot {
   items: BoardItem[];
   /** Board can create items without a repository (GitHub drafts). */
   supportsDrafts: boolean;
+  /**
+   * Repositories whose open issues are all on the board (a GitLab group board loads every open issue, but only the
+   * recently closed ones): a task of theirs that is not on the board was closed long ago.
+   */
+  allOpenListed?: string[];
 }
 
 /** A board found while detecting, or resolved from a URL, before it is linked. */
