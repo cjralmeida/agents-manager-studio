@@ -120,6 +120,19 @@ services:
       - ui
       - n8n
 
+  # Cloudflare Tunnel: a public https address for the git webhooks, with no port opened on the router and no fixed IP.
+  # Its public hostname (in Cloudflare) points to http://server:3000 with the path ^/api/webhooks/; the server also
+  # refuses anything else that comes through it. Turned on with COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN in .env.
+  tunnel:
+    image: cloudflare/cloudflared:2025.9.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    profiles: ["tunnel"]
+    depends_on:
+      - server
+
 volumes:
   postgres_data:
   n8n_data:

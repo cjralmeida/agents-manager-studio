@@ -11,8 +11,8 @@ declare module 'fastify' {
   }
 }
 
-/** Routes without a session: login, health check, and agent containers (they use their own token). */
-const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/health']);
+/** Routes without a session: login, health check, git webhooks (checked by their secret) and agent containers (they use their own token). */
+const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/health', '/api/webhooks/gitlab', '/api/webhooks/github']);
 const isPublic = (url: string) => PUBLIC_ROUTES.has(url) || url.startsWith('/api/internal/');
 
 export const sessionToken = (request: FastifyRequest) => readCookie(request.headers.cookie, SESSION_COOKIE);

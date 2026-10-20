@@ -29,6 +29,23 @@ async function syncAndTrigger(workspaceId: string, log: FastifyBaseLogger, trigg
   }
 }
 
+const soon = new Map<string, NodeJS.Timeout>();
+
+/**
+ * A webhook said the workspace's board changed: it is read again in a few seconds (a burst of deliveries, like a task
+ * moved and labeled, becomes one read) and the board triggers run.
+ */
+export function syncWorkspaceSoon(workspaceId: string, log: FastifyBaseLogger) {
+  if (soon.has(workspaceId)) return;
+  soon.set(
+    workspaceId,
+    setTimeout(() => {
+      soon.delete(workspaceId);
+      void syncAndTrigger(workspaceId, log, true);
+    }, 3_000),
+  );
+}
+
 async function boardTick(log: FastifyBaseLogger) {
   const boards = await prisma.taskBoard.findMany({
     where: { workspace: { isIgnored: false, missingAt: null } },

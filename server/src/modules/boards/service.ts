@@ -18,6 +18,7 @@ import { type FieldOrder, GITLAB_FIXED_COLUMNS, fieldOrderOf, structureOf } from
 import { BOARD_TEMPLATE, GITHUB_COLORS, TASK_BODY_TEMPLATE } from './template.js';
 import type { BoardCandidate, BoardItem, BoardRef, BoardSnapshot, NewTask, StatusMap, StatusRole } from './types.js';
 import { type SourceMapping, joinedItemId, modelLayout, splitItemId, toJoinedItem, toSourceColumn, toSourceField, toSourceFields } from './unified.js';
+import { ensureBoardWebhook, removeBoardWebhook } from '../webhooks/hooks.js';
 
 /**
  * A workspace board joins one or more sources: GitHub Projects, GitLab group boards and the Studio's own tasks. Each
@@ -251,6 +252,8 @@ async function saveSource(workspaceId: string, provider: BoardProvider, host: st
       modelStatus: synced ? 'synced' : 'pending',
     },
   });
+  // The provider tells the Studio when a task changes (in the background: the board is linked either way).
+  void ensureBoardWebhook(saved).catch(() => undefined);
   return sourceResponse(saved);
 }
 
@@ -340,6 +343,7 @@ export async function createLocalBoard(workspaceId: string) {
 
 export async function unlinkSource(workspaceId: string, sourceId: string) {
   const source = await findSource(workspaceId, sourceId);
+  await removeBoardWebhook(source);
   await prisma.taskBoard.delete({ where: { id: source.id } });
   forgetSnapshot(source.id);
 }

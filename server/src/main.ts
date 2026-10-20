@@ -9,6 +9,7 @@ import { startPlanLimitResume } from './modules/plan-limit/service.js';
 import { startCopyCleanup } from './modules/agents/cleanup.js';
 import { startSeedCapture } from './modules/agents/build-dirs.js';
 import { startBoardWatch } from './modules/board-watch/service.js';
+import { startWebhookUpkeep } from './modules/webhooks/hooks.js';
 import { startOrbiRoutines } from './modules/orbi/routines.js';
 import { startDiskMaintenance } from './modules/system/maintenance.js';
 import { startDockerSweep } from './modules/system/sweep.js';
@@ -65,6 +66,9 @@ const stopSeedCapture = startSeedCapture(app.log);
 // Tasks left stuck on the board (no agent, no run, no reason to wait) are found and sorted out.
 const stopBoardWatch = startBoardWatch(app.log);
 app.addHook('onClose', async () => stopBoardWatch());
+// Git webhooks: the hooks of the linked boards are checked again every few hours.
+const stopWebhookUpkeep = startWebhookUpkeep(app.log);
+app.addHook('onClose', async () => stopWebhookUpkeep());
 // Órbi's pilot mode: when it is on, Órbi deals with agent questions, failed runs and capacity suggestions by itself.
 const stopOrbiRoutines = startOrbiRoutines(app.log);
 app.addHook('onClose', async () => stopOrbiRoutines());

@@ -4,6 +4,7 @@ import { AutoAnswerSection } from '../components/settings/AutoAnswerSection';
 import { ProjectsRootSection } from '../components/settings/ProjectsRootSection';
 import { SkillsSection } from '../components/settings/SkillsSection';
 import { ViewProfilesSection } from '../components/settings/ViewProfilesSection';
+import { WebhooksSection } from '../components/settings/WebhooksSection';
 import { Tabs, useTabParam } from '../components/Tabs';
 
 const tabs = [
@@ -38,6 +39,7 @@ export function SettingsPage() {
         ) : (
           <>
             <AutoAnswerSection />
+            {isAdmin && <WebhooksSection />}
             {isAdmin ? (
               <ProjectsRootSection />
             ) : (

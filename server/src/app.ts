@@ -18,6 +18,7 @@ import { renderRoutes } from './modules/render/routes.js';
 import { awsRoutes } from './modules/aws/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
+import { webhookRoutes } from './modules/webhooks/routes.js';
 import { systemRoutes } from './modules/system/routes.js';
 import { usageRoutes } from './modules/usage/routes.js';
 import { userRoutes } from './modules/users/routes.js';
@@ -63,6 +64,14 @@ export async function buildApp() {
     await prisma.$disconnect();
   });
 
+  // The Cloudflare Tunnel only carries the git webhooks: anything else that comes through it (Cloudflare adds cf-ray) is
+  // refused, even if the public hostname in Cloudflare was set without the path filter.
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.headers['cf-ray'] && !request.url.startsWith('/api/webhooks/git')) {
+      await reply.code(404).send({ message: 'Rota não encontrada.' });
+    }
+  });
+
   await app.register(
     async (api) => {
       installAuthGuard(api);
@@ -82,6 +91,7 @@ export async function buildApp() {
       await api.register(agentAccountRoutes);
       await api.register(skillRoutes);
       await api.register(studioSettingsRoutes);
+      await api.register(webhookRoutes);
       await api.register(boardRoutes);
       await api.register(qualityRoutes);
       await api.register(testEnvRoutes);
