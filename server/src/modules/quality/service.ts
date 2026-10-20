@@ -88,7 +88,7 @@ function nextStep(status: string, transversalRef: string | null, tasks: number) 
   if (tasks >= TRANSVERSAL_THRESHOLD) {
     return `A categoria chegou a ${tasks} tarefas diferentes: procure uma tarefa transversal aberta do mesmo padrão; se não houver, crie-a no Backlog com Decisão = "Aguardando decisão" e registre a referência com quality_update (status "transversal").`;
   }
-  return `Registrado (${tasks} de ${TRANSVERSAL_THRESHOLD} tarefas para pedir a correção na base).`;
+  return `Registrado (${tasks} de ${TRANSVERSAL_THRESHOLD} tarefas para pedir a correção na base). A categoria fica resolvida sozinha quando as tarefas em que apareceu forem entregues corrigidas; se a lição não cobre bem o que você viu, ajuste-a com quality_update.`;
 }
 
 export async function logOccurrence(
@@ -110,6 +110,12 @@ export async function logOccurrence(
   }
   if (input.phase && !LEARNING_PHASES.includes(input.phase)) throw new HttpError(400, `Etapa inválida. Use: ${LEARNING_PHASES.join(', ')}.`);
   const lesson = input.lesson?.trim() || null;
+  // Every category teaches: a new one comes with its lesson (the correction to follow), so that when the problem is
+  // fixed — by the task itself or a transversal one — it is resolved with the lesson already there.
+  const exists = await prisma.qualityCategory.count({ where: { workspaceId, name } });
+  if (!exists && !lesson) {
+    throw new HttpError(400, 'Categoria nova: informe a lição (lesson) com a correção a seguir, para os agentes não repetirem o erro.');
+  }
   const category = await prisma.qualityCategory.upsert({
     where: { workspaceId_name: { workspaceId, name } },
     create: { workspaceId, name, ...(input.phase && { phase: input.phase }), lesson },

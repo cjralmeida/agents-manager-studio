@@ -98,7 +98,7 @@ export function createStudioTools(call, groups) {
           lesson: z
             .string()
             .optional()
-            .describe('Numa categoria nova: a lição com a CORREÇÃO a seguir, em frases imperativas e gerais, para quem trabalha na etapa não repetir o erro em nenhuma tarefa: o que fazer, como fazer no projeto (a técnica, a configuração, o lugar do código) e o teste que garante (ex.: "Valide o corpo antes da regra e responda 400 VALIDACAO no campo para corpo nulo ou tipo trocado, nunca 500; ative FAIL_ON_TRAILING_TOKENS; teste e2e cada caso"). Não descreva só o defeito.'),
+            .describe('OBRIGATÓRIA numa categoria nova: a lição com a CORREÇÃO a seguir, em frases imperativas e gerais, para quem trabalha na etapa não repetir o erro em nenhuma tarefa: o que fazer, como fazer no projeto (a técnica, a configuração, o lugar do código) e o teste que garante (ex.: "Valide o corpo antes da regra e responda 400 VALIDACAO no campo para corpo nulo ou tipo trocado, nunca 500; ative FAIL_ON_TRAILING_TOKENS; teste e2e cada caso"). Não descreva só o defeito.'),
         },
         run('quality_log'),
       ),
