@@ -26,7 +26,7 @@ import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runt
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
-import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, isVolumeCopy, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
+import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, isVolumeCopy, unresolvedConflicts, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
@@ -459,6 +459,18 @@ export async function mergeBaseIntoCopy(agentId: string) {
       email: account.authorEmail || defaultAuthorEmail(provider, account.username, remoteHostname(remote)),
     },
   });
+}
+
+/**
+ * Before a deploy merges the work, the latest base branch is brought into the copy, so the agent that publishes
+ * resolves the conflicts (the simple ones) instead of the task going back to whoever made it. Returns the files left
+ * with conflict: the ones a merge in progress still has unresolved, or the new merge's.
+ */
+export async function baseIntoCopyBeforeDeploy(agentId: string) {
+  const agent = await prisma.agent.findUniqueOrThrow({ where: { id: agentId } });
+  const pending = await unresolvedConflicts(agent.workdir);
+  if (pending.length > 0) return pending;
+  return mergeBaseIntoCopy(agentId);
 }
 
 // ---------------------------------------------------------------- container

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../../config.js';
 import type { ContainerMount } from '../../lib/docker.js';
@@ -179,6 +179,18 @@ export async function mergeRemoteBase(input: {
   } finally {
     await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, dir], () => resolve()));
   }
+}
+
+/** Files of a merge in progress that still have conflict markers (the agent has not resolved them yet). */
+export async function unresolvedConflicts(workdir: string) {
+  const dir = workdirPath(workdir);
+  const files = (await git(dir, ['diff', '--name-only', '--diff-filter=U']).catch(() => '')).split('\n').filter(Boolean);
+  const marked: string[] = [];
+  for (const file of files) {
+    const text = await readFile(path.join(dir, file), 'utf8').catch(() => '');
+    if (/^(<{7}|>{7})( |$)|^={7}$/m.test(text)) marked.push(file);
+  }
+  return marked;
 }
 
 /** Moves the copy to a branch fetched from the remote (e.g. a person's PR/MR branch); returns its head commit. */

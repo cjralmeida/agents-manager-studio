@@ -2,7 +2,8 @@ import { prisma } from '../../db.js';
 import type { Agent } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
-import { addEvent, publishAgentWork } from '../agents/service.js';
+import { addEvent, baseIntoCopyBeforeDeploy, publishAgentWork } from '../agents/service.js';
+import { REVALIDATE_AFTER_MERGE } from '../agents/revalidation.js';
 import { createRenderClient } from './api.js';
 import { parseEnvVars } from './env-vars.js';
 import { getDeployment, startDeploy } from './service.js';
@@ -33,6 +34,33 @@ type Args = Record<string, unknown>;
 const ENVIRONMENT = 'HOMOLOGACAO' as const;
 const MAX_WAIT_SECONDS = 240;
 const POLL_MS = 10_000;
+
+/**
+ * The base branch moved on while the work waited (other tasks were delivered): it is merged into the copy before the
+ * deploy. Conflicts git could not join go to the agent publishing, to resolve the simple ones and deploy again, so the
+ * task does not go back just for that; only a conflict between two different decisions goes back. Null: nothing left.
+ */
+async function conflictsBeforeDeploy(agent: Agent) {
+  const files = await baseIntoCopyBeforeDeploy(agent.id);
+  if (files.length === 0) return null;
+  await addEvent(agent.id, 'status', { message: `A branch ${agent.baseBranch} foi trazida para a cópia antes do deploy: ${files.length} arquivo(s) com conflito para resolver.` });
+  return {
+    deployed: false,
+    conflict: true,
+    files,
+    message: [
+      `Nada foi publicado: a branch ${agent.baseBranch} avançou (outras tarefas foram entregues) e conflita com esta entrega. O Studio já trouxe a ${agent.baseBranch} para a sua cópia (merge em andamento); ficaram com conflito os arquivos acima.`,
+      '',
+      'Resolva você mesmo quando o conflito for simples — e quase todos são: as duas versões mexeram perto uma da outra (imports, listas, rotas, registros, tipos, testes, contrato openapi, lockfile, textos) ou uma mudou o que a outra não usa. Junte mantendo as DUAS mudanças (o que veio da base já foi entregue e aprovado), tire todos os marcadores (<<<<<<<, =======, >>>>>>>), não rode "git merge --abort" nem faça commit. Lockfile: regenere com o gerenciador do projeto em vez de editar à mão.',
+      '',
+      REVALIDATE_AFTER_MERGE,
+      '',
+      'Depois chame render_deploy de novo: o Studio envia a junção para a branch do PR/MR e faz o merge.',
+      '',
+      'Só NÃO resolva quando as duas versões tomam decisões diferentes sobre a mesma regra (ex.: o mesmo cálculo ou validação mudou de dois jeitos) ou quando juntar exige reescrever a funcionalidade: aí reporte failure com os arquivos e o motivo, e a tarefa volta para quem fez.',
+    ].join('\n'),
+  };
+}
 
 /** Project named by the agent (read tools), or the agent's own project. */
 async function projectIdFor(agent: Agent, projectName: unknown) {
@@ -138,6 +166,8 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
         return awsEvents(agent, aws, args);
       case 'render_deploy': {
         requireAwsBranch(agent, aws);
+        const conflict = await conflictsBeforeDeploy(agent);
+        if (conflict) return conflict;
         const published = await publishAgentWork(agent.id);
         const deployment = await startDeploy({ workspaceId: agent.workspaceId, projectId: agent.projectId!, environment: ENVIRONMENT, ...(published.toMerge && { agentId: agent.id }) });
         await addEvent(agent.id, 'status', { message: `Deploy em homologação iniciado na AWS (${aws.name}).` });
@@ -199,6 +229,8 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
 
     case 'render_deploy': {
       checkBranch(agent, (await client.serviceDetails(service.serviceId)).branch);
+      const conflict = await conflictsBeforeDeploy(agent);
+      if (conflict) return conflict;
       const published = await publishAgentWork(agent.id);
       const deployment = await startDeploy({
         workspaceId: agent.workspaceId,
