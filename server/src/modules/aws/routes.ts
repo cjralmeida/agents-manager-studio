@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { parseInput } from '../../lib/validation.js';
+import { serviceBody } from './schema.js';
 import {
-  INSTANCE_TYPES,
   createAwsAccount,
   deleteAwsAccount,
   getAwsSettings,
@@ -25,32 +25,6 @@ const accountUpdateBody = z
   .object({ label: z.string().trim().min(1).max(80).optional(), region: region.optional(), accessKeyId: noSpaces(16, 128).optional(), secretAccessKey: noSpaces(20, 200).optional() })
   .strict();
 const workspaceAccountBody = z.object({ accountId: z.uuid().nullable() }).strict();
-const url = z.string().trim().url().max(300);
-const branch = z.string().trim().min(1).max(200);
-const serviceBody = z.discriminatedUnion('kind', [
-  z.object({
-    projectId: z.uuid(),
-    environment,
-    kind: z.literal('ec2'),
-    url,
-    branch,
-    instanceId: z.string().trim().regex(/^(i|mi)-[0-9a-f]+$/, 'Id de instância inválido.').optional(),
-    newInstanceType: z.enum(INSTANCE_TYPES).optional(),
-    port: z.number().int().min(1).max(65535).optional(),
-    healthPath: z.string().trim().startsWith('/').max(200).optional(),
-    dockerfile: z.string().trim().max(200).optional(),
-  }),
-  z.object({
-    projectId: z.uuid(),
-    environment,
-    kind: z.literal('amplify'),
-    url: url.optional(),
-    branch,
-    appId: z.string().trim().min(1).max(100).optional(),
-    outputDir: z.string().trim().regex(/^[\w.\/-]+$/, 'Pasta inválida.').max(100).optional(),
-  }),
-  z.object({ projectId: z.uuid(), environment, kind: z.null() }),
-]);
 const serviceParams = z.object({ id: z.uuid(), serviceId: z.uuid() });
 
 export async function awsRoutes(app: FastifyInstance) {

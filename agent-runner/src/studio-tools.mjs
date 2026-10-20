@@ -315,6 +315,12 @@ export function createStudioTools(call, groups) {
         run('studio_render_services'),
       ),
       tool(
+        'studio_aws_targets',
+        'Lista o que a conta da AWS do workspace tem para receber deploys: instâncias EC2 (id, nome, tipo, estado, IP, se é do Studio), instâncias gerenciadas pelo SSM, apps do Amplify e os tipos de instância que o Studio pode criar.',
+        {},
+        run('studio_aws_targets'),
+      ),
+      tool(
         'studio_overview',
         'Visão geral de TODOS os workspaces do usuário: workflows ligados/desligados, pausas do Órbi, execuções rodando, agentes (e se o container está no ar), perguntas esperando, falhas, sugestões de capacidade, memória do computador, ambientes de teste e uso do plano.',
         {},
@@ -449,6 +455,10 @@ export function createStudioTools(call, groups) {
             'link_board',
             'create_local_board',
             'set_render_service',
+            'set_aws_account',
+            'set_aws_service',
+            'retry_aws_setup',
+            'start_deploy',
           ]),
           summary: z.string().describe('Uma frase dizendo o que a proposta faz, para o cartão.'),
           payload: z.record(z.string(), z.unknown()).describe('Dados da mudança, no formato descrito nas suas instruções.'),

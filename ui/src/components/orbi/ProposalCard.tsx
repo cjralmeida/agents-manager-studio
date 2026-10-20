@@ -108,6 +108,29 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
     const environment = payload.environment === 'PRODUCAO' ? 'produção' : 'homologação';
     return <p className="text-xs text-muted">{payload.serviceId ? `Serviço ${String(payload.serviceId)} em ${environment}` : `Sem serviço em ${environment}`}</p>;
   }
+
+  if (proposal.kind === 'set_aws_service') {
+    const environment = payload.environment === 'PRODUCAO' ? 'produção' : 'homologação';
+    if (payload.kind === null) return <p className="text-xs text-muted">Sem deploy na AWS em {environment}</p>;
+    const where =
+      payload.kind === 'ec2'
+        ? payload.instanceId
+          ? `EC2 na instância ${String(payload.instanceId)}`
+          : `EC2 numa instância nova ${String(payload.newInstanceType ?? '')} (cobrada todo mês)`
+        : payload.appId
+          ? `Amplify no app ${String(payload.appId)}`
+          : 'Amplify num app novo ligado ao repositório';
+    return (
+      <p className="text-xs text-muted">
+        {where} · {environment} · branch {String(payload.branch)}
+        {payload.url ? ` · ${String(payload.url)}` : ''}
+      </p>
+    );
+  }
+
+  if (proposal.kind === 'start_deploy') {
+    return <p className="text-xs text-muted">Em {payload.environment === 'PRODUCAO' ? 'produção' : 'homologação'}, sem merge</p>;
+  }
   return null;
 }
 

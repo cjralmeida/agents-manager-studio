@@ -7,8 +7,10 @@ import { prepareTaskByNames } from '../agent-tools/service.js';
 import { profileSchema } from '../agent-profiles/schema.js';
 import { createAgentProfile, deleteAgentProfile, updateAgentProfile } from '../agent-profiles/service.js';
 import { addEvent, sendMessage } from '../agents/service.js';
+import { serviceBody as awsServiceBody } from '../aws/schema.js';
+import { retryAwsSetup, setAwsService, setWorkspaceAwsAccount } from '../aws/service.js';
 import { createBoard, createLocalBoard, createTask, linkBoard } from '../boards/service.js';
-import { setProjectService } from '../render/service.js';
+import { setProjectService, startDeploy } from '../render/service.js';
 import { getWorkspaceSettings, updateWorkspaceSettings } from '../workspace-settings/service.js';
 import { workflowSchema } from '../workflows/definition.js';
 import { cancelWorkflowRun, createWorkflow, deleteWorkflow, startWorkflow, updateWorkflow, validateWorkflow } from '../workflows/service.js';
@@ -28,6 +30,10 @@ export const PROPOSAL_KINDS = [
   'link_board',
   'create_local_board',
   'set_render_service',
+  'set_aws_account',
+  'set_aws_service',
+  'retry_aws_setup',
+  'start_deploy',
 ] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 
@@ -76,6 +82,10 @@ const payloadSchemas: Record<ProposalKind, z.ZodType> = {
   set_render_service: z
     .object({ projectId: z.uuid(), environment: z.enum(['HOMOLOGACAO', 'PRODUCAO']), serviceId: z.string().min(1).max(100).nullable() })
     .strict(),
+  set_aws_account: z.object({ accountId: z.uuid().nullable() }).strict(),
+  set_aws_service: awsServiceBody,
+  retry_aws_setup: z.object({ serviceId: z.uuid() }).strict(),
+  start_deploy: z.object({ projectId: z.uuid(), environment: z.enum(['HOMOLOGACAO', 'PRODUCAO']) }).strict(),
 };
 
 function zodProblems(error: z.ZodError) {
@@ -118,7 +128,16 @@ async function validateProposal(workspaceId: string, kind: ProposalKind, payload
       throw new HttpError(422, 'Conta git não encontrada. Use os ids de accounts.git do studio_context.');
     }
   }
-  if (kind === 'set_render_service' && !(await prisma.project.count({ where: { id: String(data.projectId), workspaceId } }))) {
+  if (kind === 'set_aws_account' && data.accountId) {
+    const { ownerId } = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { ownerId: true } });
+    if (!(await prisma.awsAccount.count({ where: { id: String(data.accountId), ownerId } }))) {
+      throw new HttpError(422, 'Conta da AWS não encontrada. Use os ids de accounts.aws do studio_context.');
+    }
+  }
+  if (kind === 'retry_aws_setup' && !(await prisma.awsService.count({ where: { id: String(data.serviceId), workspaceId } }))) {
+    throw new HttpError(422, 'Deploy da AWS não encontrado neste workspace. Use os ids de deploys do studio_context.');
+  }
+  if ((kind === 'set_render_service' || kind === 'set_aws_service' || kind === 'start_deploy') && !(await prisma.project.count({ where: { id: String(data.projectId), workspaceId } }))) {
     throw new HttpError(422, 'Projeto não encontrado neste workspace.');
   }
   return data;
@@ -183,6 +202,20 @@ async function apply(workspaceId: string, kind: ProposalKind, payload: Record<st
     case 'set_render_service': {
       const render = await setProjectService(workspaceId, payload as never);
       return { services: render.services.length };
+    }
+    case 'set_aws_account':
+      return { connection: (await setWorkspaceAwsAccount(workspaceId, payload.accountId as string | null)).connection };
+    case 'set_aws_service': {
+      const aws = await setAwsService(workspaceId, payload as never);
+      const service = aws.services.find((entry) => entry.projectId === payload.projectId && entry.environment === payload.environment);
+      return service ? { serviceId: service.id, url: service.url, note: 'A configuração na AWS segue em segundo plano (veja deploys[].setup no studio_context).' } : { removed: true };
+    }
+    case 'retry_aws_setup':
+      await retryAwsSetup(workspaceId, String(payload.serviceId));
+      return { serviceId: payload.serviceId, note: 'Configuração reiniciada em segundo plano.' };
+    case 'start_deploy': {
+      const deployment = await startDeploy({ workspaceId, projectId: String(payload.projectId), environment: payload.environment as 'HOMOLOGACAO' | 'PRODUCAO' });
+      return { deploymentId: deployment.id, status: deployment.status };
     }
   }
 }

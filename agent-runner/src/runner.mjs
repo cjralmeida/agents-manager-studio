@@ -199,6 +199,7 @@ const STUDIO_TOOL_LABELS = {
   studio_usage: () => 'Lendo o consumo',
   studio_board_options: () => 'Procurando quadros',
   studio_render_services: () => 'Lendo os serviços do Render',
+  studio_aws_targets: () => 'Lendo as instâncias e apps da AWS',
   studio_propose: (input) => `Proposta: ${input.summary ?? input.kind ?? ''}`,
   studio_overview: () => 'Visão geral dos workspaces',
   studio_focus: (input) => `Foco em ${input.workspace ?? ''}`,

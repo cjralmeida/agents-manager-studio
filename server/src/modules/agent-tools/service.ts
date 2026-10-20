@@ -42,6 +42,7 @@ export const AGENT_TOOL_NAMES = [
   'project_use',
   'studio_board_options',
   'studio_render_services',
+  'studio_aws_targets',
   ...ORBI_OPS_TOOLS,
   ...RENDER_TOOL_NAMES,
   ...CLICKUP_TOOL_NAMES,

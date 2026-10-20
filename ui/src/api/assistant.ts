@@ -52,6 +52,10 @@ export const proposalKindLabels: Record<string, string> = {
   link_board: 'Vincular quadro',
   create_local_board: 'Tarefas do Studio no quadro',
   set_render_service: 'Serviço do Render',
+  set_aws_account: 'Conta da AWS',
+  set_aws_service: 'Deploy na AWS',
+  retry_aws_setup: 'Repetir a configuração na AWS',
+  start_deploy: 'Publicar agora',
 };
 
 const keys = {

@@ -4,6 +4,7 @@ import { listAgentProfiles } from '../agent-profiles/service.js';
 import { getAgent, listAgentEvents, listAgents } from '../agents/service.js';
 import { PROPOSAL_KINDS, type ProposalKind, createProposal } from '../assistant/proposals.js';
 import { listAgentAccounts } from '../agent-accounts/service.js';
+import { getAwsSettings, listAwsAccounts, listAwsTargets } from '../aws/service.js';
 import { boardContext, detectBoards, hasBoard } from '../boards/service.js';
 import { listClickupAccounts } from '../clickup/service.js';
 import { listGitAccounts } from '../git-accounts/service.js';
@@ -23,7 +24,7 @@ async function context(workspaceId: string) {
     where: { id: workspaceId },
     include: { projects: { where: { missingAt: null }, orderBy: { name: 'asc' } }, settings: true },
   });
-  const [linked, profiles, workflows, render, settings, claudeAccounts, gitAccounts, renderAccounts, skills, clickupAccounts] = await Promise.all([
+  const [linked, profiles, workflows, render, settings, claudeAccounts, gitAccounts, renderAccounts, skills, clickupAccounts, aws, awsAccounts] = await Promise.all([
     hasBoard(workspaceId),
     listAgentProfiles(workspaceId),
     listWorkflows(workspaceId),
@@ -34,6 +35,8 @@ async function context(workspaceId: string) {
     listRenderAccounts(workspace.ownerId),
     listSkills(),
     listClickupAccounts(workspace.ownerId),
+    getAwsSettings(workspaceId),
+    listAwsAccounts(workspace.ownerId),
   ]);
   const board = linked ? await boardContext(workspaceId).catch(() => null) : null;
   const projectName = (id: string) => workspace.projects.find((project) => project.id === id)?.name ?? id;
@@ -47,6 +50,7 @@ async function context(workspaceId: string) {
       git: gitAccounts.map((account) => ({ id: account.id, provider: account.provider, host: account.host, username: account.username, label: account.label })),
       render: renderAccounts.map((account) => ({ id: account.id, label: account.label, owner: account.ownerName })),
       clickup: clickupAccounts.map((account) => ({ id: account.id, label: account.label, user: account.username })),
+      aws: awsAccounts.map((account) => ({ id: account.id, label: account.label, region: account.region, accountNumber: account.awsAccountNumber })),
     },
     skills: skills.map((skill) => ({ id: skill.id, name: skill.name })),
     projects: workspace.projects.map((project) => ({
@@ -82,6 +86,33 @@ async function context(workspaceId: string) {
         service: service.serviceName,
       })),
     },
+    aws: { connected: Boolean(aws.connection), account: aws.connection?.label ?? null, region: aws.connection?.region ?? null },
+    // Where each project is published (Deploys tab): one destination per environment, Render or AWS.
+    deploys: [
+      ...aws.services.map((service) => ({
+        serviceId: service.id,
+        projectId: service.projectId,
+        project: projectName(service.projectId),
+        environment: service.environment,
+        target: service.kind,
+        url: service.url,
+        branch: service.branch,
+        instanceId: (service.config as { instanceId?: string }).instanceId ?? null,
+        appId: (service.config as { appId?: string }).appId ?? null,
+        setup: (service.config as { setup?: unknown }).setup ?? null,
+      })),
+      ...render.services
+        .filter((service: { projectId: string; environment: string }) => !aws.services.some((entry) => entry.projectId === service.projectId && entry.environment === service.environment))
+        .map((service: { projectId: string; environment: string; serviceName: string; url: string | null; branch: string | null }) => ({
+          projectId: service.projectId,
+          project: projectName(service.projectId),
+          environment: service.environment,
+          target: 'render',
+          service: service.serviceName,
+          url: service.url,
+          branch: service.branch,
+        })),
+    ],
     agents: profiles.map((profile) => ({
       id: profile.id,
       name: profile.name,
@@ -209,6 +240,10 @@ export async function runStudioTool(agentId: string, workspaceId: string, name: 
         branch: service.branch,
         url: service.url,
       }));
+
+    case 'studio_aws_targets':
+      // Existing instances (EC2 and SSM-managed) and Amplify apps of the workspace's AWS account, and the types for a new instance.
+      return listAwsTargets(workspaceId);
 
     case 'studio_propose': {
       const kind = String(args.kind) as ProposalKind;
