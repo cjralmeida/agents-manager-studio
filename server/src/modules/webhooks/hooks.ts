@@ -10,7 +10,8 @@ import { type BoardWebhookState, boardWebhookState, forgetBoardWebhookState, rec
  * is linked (and again for every board when the public address changes, and daily for new GitLab projects):
  * - GitHub: an organization hook (the only one GitHub sends Projects events from; needs an owner of the organization
  *   and the token scope admin:org_hook). A user's project has no such events and stays on the periodic read.
- * - GitLab: a group hook (paid plans), else one hook in each project of the group (needs Maintainer).
+ * - GitLab: a group hook on a paid plan (on Free GitLab accepts it but never sends), else one hook in each project of
+ *   the group (needs Maintainer).
  * Failures are kept in the board's state and shown in the Studio; the periodic read goes on either way.
  */
 
@@ -90,9 +91,12 @@ async function ensureGitLab(board: TaskBoard, url: string, secret: string, previ
   const groupId = groupIdOf(board);
   const data = gitLabEvents(url, secret);
 
-  // A group hook covers every project, also the ones created later (GitLab Premium).
-  const groupHooks = await call(`${api}/groups/${groupId}/hooks?per_page=100`, { headers });
-  if (groupHooks.status === 200) {
+  // A group hook covers every project, also the ones created later, but only on a paid plan: on Free, GitLab accepts
+  // the hook and never sends anything. The plan is the root group's.
+  const namespace = await call(`${api}/namespaces/${groupId}`, { headers });
+  const plan = String((namespace.body as { plan?: string } | null)?.plan ?? 'free');
+  const groupHooks = plan === 'free' ? null : await call(`${api}/groups/${groupId}/hooks?per_page=100`, { headers });
+  if (groupHooks?.status === 200) {
     const existing = (groupHooks.body as { id: number; url: string }[]).find(
       (hook) => hook.url === url || previous?.hookIds.includes(String(hook.id)),
     );
@@ -133,6 +137,10 @@ async function ensureGitLab(board: TaskBoard, url: string, secret: string, previ
   }
   if (hookIds.length === 0) {
     return failed('projects', `O GitLab recusou os webhooks: o grupo precisa do plano pago ou a conta precisa ser Maintainer dos projetos. ${refused.join('; ')}`.trim());
+  }
+  // A group hook made before (it never fired on Free) is removed: the project hooks replace it.
+  if (previous?.scope === 'group') {
+    for (const id of previous.hookIds) await call(`${api}/groups/${groupId}/hooks/${id}`, { method: 'DELETE', headers });
   }
   return {
     ...ok('projects', hookIds),
