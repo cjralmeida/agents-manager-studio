@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { decisionMark, dependencyRefs, itemRef } from '../boards/dependencies.js';
+import { decisionMark, dependencyRefs, itemRef, refResolver } from '../boards/dependencies.js';
 import type { BoardField, BoardItem } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
@@ -39,7 +39,7 @@ export function priorityRank(item: BoardItem, fields: BoardField[]) {
  * through others). A P2 task that a P1 task needs is done as a P1, so what blocks urgent work goes first.
  */
 export function effectivePriorityRanks(items: BoardItem[], fields: BoardField[]) {
-  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const resolve = refResolver(items);
   const rank = new Map(items.map((item) => [item.id, priorityRank(item, fields)]));
   // Pushes each open task's rank down its dependency chain (a few rounds cover any real chain).
   for (let round = 0; round < 10; round++) {
@@ -47,7 +47,7 @@ export function effectivePriorityRanks(items: BoardItem[], fields: BoardField[])
     for (const item of items) {
       if (item.isClosed) continue;
       for (const ref of dependencyRefs(item.body)) {
-        const dependency = byRef.get(ref.toLowerCase());
+        const dependency = resolve(ref);
         if (dependency && rank.get(item.id)! < rank.get(dependency.id)!) {
           rank.set(dependency.id, rank.get(item.id)!);
           changed = true;
@@ -287,14 +287,14 @@ export function frontendTasksReady(
   input: { homologationColumnId: string; doneColumnId: string | null; repositories: string[] },
   fields: BoardField[] = [],
 ): ReadyFrontendTask[] {
-  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const resolve = refResolver(items);
   const accepts = (item: BoardItem) =>
     input.repositories.length === 0 || input.repositories.some((path) => path.toLowerCase() === (item.repository ?? '').toLowerCase());
   const done = (item: BoardItem) => item.isClosed || item.columnId === input.doneColumnId;
   const ready: ReadyFrontendTask[] = [];
   for (const task of items) {
     if (task.isClosed || task.columnId !== input.homologationColumnId || !accepts(task)) continue;
-    const dependencies = dependencyRefs(task.body).map((ref) => byRef.get(ref.toLowerCase()));
+    const dependencies = dependencyRefs(task.body).map((ref) => resolve(ref));
     const delivered = dependencies.every(
       (dependency) => dependency && (done(dependency) || (!accepts(dependency) && dependency.columnId === input.homologationColumnId)),
     );

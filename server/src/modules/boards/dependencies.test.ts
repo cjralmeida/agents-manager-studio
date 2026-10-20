@@ -65,4 +65,17 @@ describe('dependenciesDelivered', () => {
     assert.equal(delivered(items[1]!), false);
     assert.equal(delivered(items[2]!), false);
   });
+
+  it('understands a short ref ("repo#12") when one repository on the board ends with it', () => {
+    const items = [
+      item('group/globalfarm/globalfarm', 50, 'done'),
+      item('group/globalfarm/globalfarm', 97, 'todo', '- Depende de / relacionado a: globalfarm#50 (CRUD)'),
+      item('other/globalfarm', 7, 'inProgress'),
+      item('group/globalfarm/globalfarm', 98, 'todo', 'Depende de: globalfarm#7'),
+    ];
+    const delivered = dependenciesDelivered(items, statusMap);
+    assert.equal(delivered(items[1]!), true);
+    // Only other/globalfarm has a #7: the short ref resolves to it, and it is still open.
+    assert.equal(delivered(items[3]!), false);
+  });
 });

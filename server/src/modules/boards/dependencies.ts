@@ -16,6 +16,21 @@ export function dependencyRefs(body: string): string[] {
 export const itemRef = (item: Pick<BoardItem, 'repository' | 'number'>) => (item.repository && item.number ? `${item.repository}#${item.number}` : null);
 
 /**
+ * Finds the task a ref names: the full "group/sub/repo#12", or a short one ("repo#12", "sub/repo#12") that ends the
+ * path of exactly one task on the board (two repositories with that name: ambiguous, not found).
+ */
+export function refResolver<T extends Pick<BoardItem, 'repository' | 'number'>>(items: T[]) {
+  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  return (ref: string): T | undefined => {
+    const key = ref.toLowerCase();
+    const exact = byRef.get(key);
+    if (exact) return exact;
+    const matches = [...byRef].filter(([full]) => full.endsWith(`/${key}`));
+    return matches.length === 1 ? matches[0]![1] : undefined;
+  };
+}
+
+/**
  * Blocked tasks whose dependencies are all delivered: done, closed, or in homologation (merged and published, waiting
  * for the whole feature to be tested — which needs the dependent tasks too). A dependency that is not on the
  * board keeps the task blocked: it may be on another board, or the ref may be wrong.
@@ -50,10 +65,10 @@ export function decisionMark(fields: BoardField[]) {
  * may be wrong).
  */
 export function dependenciesDelivered(items: BoardItem[], statusMap: StatusMap) {
-  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const resolve = refResolver(items);
   return (item: BoardItem) =>
     dependencyRefs(item.body).every((ref) => {
-      const dependency = byRef.get(ref.toLowerCase());
+      const dependency = resolve(ref);
       if (!dependency) return false;
       return dependency.isClosed || dependency.columnId === statusMap.done || (Boolean(statusMap.homologation) && dependency.columnId === statusMap.homologation);
     });

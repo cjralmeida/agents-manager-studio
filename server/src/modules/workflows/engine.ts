@@ -13,7 +13,7 @@ import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-r
 import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
-import { dependenciesDelivered, dependencyRefs, itemRef } from '../boards/dependencies.js';
+import { dependenciesDelivered, dependencyRefs, refResolver } from '../boards/dependencies.js';
 import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
 import type { BoardField, BoardItem, StatusMap } from '../boards/types.js';
 import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
@@ -290,11 +290,11 @@ async function hasFreeAgent(run: RunWithSteps, step: WorkflowStep) {
 
 /** "#12 espera #6, #9" for the first few tasks waiting for their dependencies. */
 function waitingText(waiting: BoardItem[], items: BoardItem[], state: BoardTaskState) {
-  const byRef = new Map(items.flatMap((item) => (itemRef(item) ? [[itemRef(item)!.toLowerCase(), item] as const] : [])));
+  const resolve = refResolver(items);
   const short = (item: BoardItem) => (item.number ? `#${item.number}` : item.title);
   const parts = waiting.slice(0, 3).map((item) => {
     const missing = dependencyRefs(item.body)
-      .map((ref) => byRef.get(ref.toLowerCase()))
+      .map((ref) => resolve(ref))
       .filter((dependency): dependency is BoardItem => Boolean(dependency) && !isDelivered(dependency!, state));
     return `${short(item)} espera ${missing.map(short).join(', ') || 'dependência fora do quadro'}`;
   });
