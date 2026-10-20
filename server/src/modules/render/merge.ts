@@ -3,6 +3,7 @@ import type { Deployment } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
 import { mergeIntoBase } from '../agents/pull-requests.js';
+import { closeSupersededPullRequests } from '../agents/superseded.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { pullRequestNumber } from './status.js';
@@ -25,7 +26,7 @@ export async function mergeDeploymentPullRequest(deployment: Deployment): Promis
   const agent = deployment.agentId ? await prisma.agent.findUnique({ where: { id: deployment.agentId } }) : null;
   const expectedBase = agent?.baseBranch ?? project.baseBranch;
   if (!expectedBase) throw new HttpError(422, 'Não foi possível saber para qual branch o PR/MR pode ser mesclado.');
-  return mergeIntoBase({
+  const commit = await mergeIntoBase({
     provider: account.provider as 'GITHUB' | 'GITLAB',
     remote,
     token: secrets.decrypt(account.tokenEncrypted),
@@ -35,4 +36,6 @@ export async function mergeDeploymentPullRequest(deployment: Deployment): Promis
   }).catch((error: unknown) => {
     throw new Error(`${MERGE_REFUSED}: ${error instanceof Error ? error.message : String(error)}`);
   });
+  if (agent) await closeSupersededPullRequests(agent, deployment.prUrl).catch((error: unknown) => console.error('PR/MRs substituídos:', error));
+  return commit;
 }

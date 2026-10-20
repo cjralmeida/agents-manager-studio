@@ -208,25 +208,52 @@ async function gitLabRecheck(input: MergeInput) {
 export type PullRequestState = 'open' | 'merged' | 'closed';
 
 /** Whether a PR/MR is open, merged or closed, and the branch it merges into, as the provider says. */
-export async function pullRequestInfo(input: MergeInput): Promise<{ state: PullRequestState; target: string }> {
+export async function pullRequestInfo(input: MergeInput): Promise<{ state: PullRequestState; target: string; source: string }> {
   if (input.provider === 'GITHUB') {
     const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
     const [owner, repo] = input.remote.path.split('/');
-    const response = await api<{ state?: string; merged?: boolean; message?: string; base?: { ref?: string } }>(
+    const response = await api<{ state?: string; merged?: boolean; message?: string; base?: { ref?: string }; head?: { ref?: string } }>(
       `${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`,
       { headers: { Authorization: `Bearer ${input.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agents-manager-studio' } },
     );
     if (response.status !== 200) throw new HttpError(502, `GitHub: ${response.body.message ?? `erro ${response.status}`}`);
     const state = response.body.merged ? 'merged' : response.body.state === 'open' ? 'open' : 'closed';
-    return { state, target: response.body.base?.ref ?? '' };
+    return { state, target: response.body.base?.ref ?? '', source: response.body.head?.ref ?? '' };
   }
   const projectUrl = `https://${input.remote.host}/api/v4/projects/${encodeURIComponent(input.remote.path)}`;
-  const response = await api<{ state?: string; message?: unknown; target_branch?: string }>(`${projectUrl}/merge_requests/${input.number}`, {
+  const response = await api<{ state?: string; message?: unknown; target_branch?: string; source_branch?: string }>(`${projectUrl}/merge_requests/${input.number}`, {
     headers: { 'PRIVATE-TOKEN': input.token },
   });
   if (response.status !== 200) throw new HttpError(502, `GitLab: ${JSON.stringify(response.body.message ?? `erro ${response.status}`)}`);
   const state = response.body.state === 'merged' ? 'merged' : response.body.state === 'opened' ? 'open' : 'closed';
-  return { state, target: response.body.target_branch ?? '' };
+  return { state, target: response.body.target_branch ?? '', source: response.body.source_branch ?? '' };
+}
+
+/** Closes a PR/MR without merging it, leaving a comment that says why. */
+export async function closePullRequest(input: MergeInput, comment: string) {
+  if (input.provider === 'GITHUB') {
+    const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
+    const [owner, repo] = input.remote.path.split('/');
+    const headers = {
+      Authorization: `Bearer ${input.token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'agents-manager-studio',
+      'Content-Type': 'application/json',
+    };
+    await api(`${apiBase}/repos/${owner}/${repo}/issues/${input.number}/comments`, { method: 'POST', headers, body: JSON.stringify({ body: comment }) });
+    const closed = await api<{ message?: string }>(`${apiBase}/repos/${owner}/${repo}/pulls/${input.number}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ state: 'closed' }),
+    });
+    if (closed.status !== 200) throw new HttpError(502, `GitHub: ${closed.body.message ?? `erro ${closed.status}`}`);
+    return;
+  }
+  const headers = { 'PRIVATE-TOKEN': input.token, 'Content-Type': 'application/json' };
+  const url = `${gitLabMergeRequestUrl(input)}/${input.number}`;
+  await api(`${url}/notes`, { method: 'POST', headers, body: JSON.stringify({ body: comment }) });
+  const closed = await api<{ message?: unknown }>(url, { method: 'PUT', headers, body: JSON.stringify({ state_event: 'close' }) });
+  if (closed.status !== 200) throw new HttpError(502, `GitLab: ${JSON.stringify(closed.body.message ?? `erro ${closed.status}`)}`);
 }
 
 export async function pullRequestState(input: MergeInput): Promise<PullRequestState> {

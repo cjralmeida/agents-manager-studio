@@ -19,6 +19,7 @@ import { assertPushBranch, assertWorkBase } from './branch-guard.js';
 import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { removeBuildVolumes } from './build-dirs.js';
+import { closeSupersededPullRequests } from './superseded.js';
 import { isMirroring } from './mirror.js';
 import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
 import { learningsPrompt, phasesOfProfile } from '../quality/service.js';
@@ -883,6 +884,9 @@ async function mergeOwnPullRequest(
       data: { status: 'COMPLETED', prUrl: input.prUrl, finishedAt: new Date(), lastActivityAt: new Date() },
     });
     await addEvent(agent.id, 'status', { message: 'Merge do PR/MR feito.' });
+    for (const url of await closeSupersededPullRequests(agent, input.prUrl).catch(() => [])) {
+      await addEvent(agent.id, 'status', { message: `${url} fechado sem merge: era uma tentativa anterior desta tarefa.` });
+    }
     await addEvent(agent.id, 'completed', { prUrl: input.prUrl });
     await reportTaskMove(agent, 'done');
   } catch (error) {
