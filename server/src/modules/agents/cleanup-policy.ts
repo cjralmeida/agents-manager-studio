@@ -1,7 +1,10 @@
 const HOUR_MS = 60 * 60_000;
 export const FINISHED = ['COMPLETED', 'CANCELLED', 'FAILED'] as const;
 
-/** Whether a finished agent's copy may go: past its retention (none when the disk is short) and no running run needs it. */
+/**
+ * Whether a finished agent's copy may go: past its retention (none when the disk is short) and no running run needs it.
+ * A workflow run that completed already delivered its work (merged, published), so its copy goes right away.
+ */
 export function copyExpired(
   agent: { status: string; finishedAt: Date | null; lastActivityAt: Date; runStatus: string | null },
   now: Date,
@@ -9,6 +12,7 @@ export function copyExpired(
 ) {
   if (!(FINISHED as readonly string[]).includes(agent.status) || agent.runStatus === 'RUNNING') return false;
   if (retention.diskShort) return true;
+  if (agent.status === 'COMPLETED' && agent.runStatus === 'COMPLETED') return true;
   const finished = (agent.finishedAt ?? agent.lastActivityAt).getTime();
   const keepMs = agent.status === 'COMPLETED' ? retention.completedHours * HOUR_MS : retention.failedDays * 24 * HOUR_MS;
   return now.getTime() - finished >= keepMs;

@@ -174,7 +174,8 @@ export async function stopContainer(id: string, graceSeconds = 10) {
 }
 
 export async function removeContainer(id: string) {
-  await call('DELETE', `/containers/${id}?force=1`).catch(ignoreGone);
+  // v=1: the container's anonymous volumes go with it (an image with VOLUME, like postgres, leaves one per run).
+  await call('DELETE', `/containers/${id}?force=1&v=1`).catch(ignoreGone);
 }
 
 export interface ContainerState {
@@ -315,8 +316,9 @@ export function listAllContainers(filters?: string) {
   return call<ContainerSummary[]>('GET', `/containers/json?all=1${filters ? `&filters=${encodeURIComponent(filters)}` : ''}`);
 }
 
-export async function listVolumes() {
-  const data = await call<{ Volumes: { Name: string }[] | null }>('GET', '/volumes', undefined, 120_000);
+export async function listVolumes(filters?: string) {
+  const query = filters ? `?filters=${encodeURIComponent(filters)}` : '';
+  const data = await call<{ Volumes: { Name: string; CreatedAt?: string; Labels?: Record<string, string> | null }[] | null }>('GET', `/volumes${query}`, undefined, 120_000);
   return data.Volumes ?? [];
 }
 

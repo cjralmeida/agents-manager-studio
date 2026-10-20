@@ -15,6 +15,11 @@ describe('copyExpired', () => {
     assert.equal(copyExpired(agent('CANCELLED', 24 * 8), now, retention), true);
   });
 
+  it('frees the copy of a completed workflow run right away', () => {
+    assert.equal(copyExpired(agent('COMPLETED', 0, 'COMPLETED'), now, retention), true);
+    assert.equal(copyExpired(agent('FAILED', 0, 'FAILED'), now, retention), false);
+  });
+
   it('never deletes copies of active agents or of a workflow run still going', () => {
     assert.equal(copyExpired(agent('READY_FOR_REVIEW', 500), now, retention), false);
     assert.equal(copyExpired(agent('COMPLETED', 500, 'RUNNING'), now, retention), false);

@@ -11,10 +11,10 @@ import { isVolumeCopy, mirrorPath, workdirPath } from './workdir.js';
  * Copies of finished agents are deleted after a while: each copy holds the whole project (with node_modules), and
  * keeping every one filled the disk. A completed agent's work is already in its PR/MR; failed and cancelled ones are
  * kept longer in case the user wants to look at them. Copies a running workflow still needs (the next step continues
- * from it, or a send-back reopens it) are kept until the run ends.
+ * from it, or a send-back reopens it) are kept until the run ends; a run that completed frees its copy at the next tick.
  */
 
-const TICK_MS = 60 * 60_000;
+const TICK_MS = 10 * 60_000;
 
 export async function cleanFinishedCopies(log: FastifyBaseLogger) {
   const free = await freeAgentsDiskGb();
@@ -57,7 +57,7 @@ export function startCopyCleanup(log: FastifyBaseLogger) {
       .catch((err: unknown) => log.error({ err }, 'Copy cleanup failed'))
       .finally(() => (running = false));
   };
-  // Also checks the disk every 5 minutes: when it is short, the cleanup runs right away instead of waiting the hour.
+  // Also checks the disk every 5 minutes: when it is short, the cleanup runs right away instead of waiting the tick.
   const hourly = setInterval(tick, TICK_MS);
   const diskWatch = setInterval(() => {
     void freeAgentsDiskGb().then((free) => {

@@ -16,6 +16,7 @@ const ACTIVE: AgentStatus[] = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_F
 /** A finished agent keeps its volume (its Claude session) this long, in case someone sends it a message. */
 const VOLUME_KEEP_MS = 3 * 24 * 3600_000;
 const AGENT_VOLUME = /^ams-agent-([0-9a-f-]{36})$/;
+const ANONYMOUS_KEEP_MS = 24 * 3600_000;
 
 export async function sweepDocker(log?: FastifyBaseLogger) {
   // 1. Agent containers that are not running (exited, dead, created after a timeout) of agents that are not working.
@@ -43,8 +44,16 @@ export async function sweepDocker(log?: FastifyBaseLogger) {
     // In use (a container still mounts it) → Docker refuses; it goes in a later sweep.
     await removeVolume(volume.name).then(() => volumesRemoved++).catch(() => undefined);
   }
-  if (containersRemoved + volumesRemoved > 0) log?.info({ containersRemoved, volumesRemoved }, 'Docker sweep');
-  return { containersRemoved, volumesRemoved };
+  // 3. Anonymous volumes no container uses (left by containers removed without them), after a day: nothing can mount
+  // an anonymous volume again by name, so they are only garbage.
+  const orphans = await listVolumes('{"dangling":["true"],"label":["com.docker.volume.anonymous"]}');
+  let anonymousRemoved = 0;
+  for (const volume of orphans) {
+    if (volume.CreatedAt && Date.now() - Date.parse(volume.CreatedAt) < ANONYMOUS_KEEP_MS) continue;
+    await removeVolume(volume.Name).then(() => anonymousRemoved++).catch(() => undefined);
+  }
+  if (containersRemoved + volumesRemoved + anonymousRemoved > 0) log?.info({ containersRemoved, volumesRemoved, anonymousRemoved }, 'Docker sweep');
+  return { containersRemoved, volumesRemoved, anonymousRemoved };
 }
 
 export function startDockerSweep(log: FastifyBaseLogger) {
