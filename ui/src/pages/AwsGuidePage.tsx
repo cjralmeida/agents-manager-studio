@@ -88,12 +88,12 @@ export function AwsGuidePage() {
 
       <Step number={2} title="Criar a política do Studio">
         <p>
-          IAM → Policies → <b>Create policy</b> → JSON → cole a política abaixo → nome <code>StudioDeploy</code>. Ela vale só dentro da conta do workspace; o
+          IAM → Policies → <b>Create policy</b> → JSON → cole a política abaixo → nome <code>DeployerPermissions</code>. Ela vale só dentro da conta do workspace; o
           Studio só cria funções IAM com nome <code>studio-*</code> (a das instâncias).
         </p>
         <CopyBlock text={POLICY} />
         <p className="text-muted">
-          Uma conta ligada antes desta versão tem uma política menor: troque o conteúdo dela por este (IAM → Policies → StudioDeploy → Edit) para o Studio poder
+          Uma conta ligada antes desta versão tem uma política menor: troque o conteúdo dela por este (IAM → Policies → a política do usuário → Edit) para o Studio poder
           criar instâncias, apps e registros de DNS.
         </p>
       </Step>
@@ -101,7 +101,7 @@ export function AwsGuidePage() {
       <Step number={3} title="Criar o usuário e a chave">
         <ol className="list-decimal space-y-1 pl-5">
           <li>
-            IAM → Users → <b>Create user</b> <code>studio-deploy</code>, sem acesso ao console, com a política <code>StudioDeploy</code>.
+            IAM → Users → <b>Create user</b> <code>Deployer</code>, sem acesso ao console, com a política <code>DeployerPermissions</code>.
           </li>
           <li>
             No usuário → Security credentials → <b>Create access key</b> → "Application running outside AWS". Copie o <b>Access key ID</b> e o{' '}
