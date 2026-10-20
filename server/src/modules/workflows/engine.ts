@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
-import type { Prisma, Workflow, WorkflowRun, WorkflowStepRun } from '../../generated/prisma/client.js';
+import { Prisma, type Workflow, type WorkflowRun, type WorkflowStepRun } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
 import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensureContainer, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
@@ -846,8 +846,15 @@ async function reuseHomologationTester(run: RunWithSteps, profileId: string, pro
   if (!agent.lastActivityAt || Date.now() - agent.lastActivityAt.getTime() > TESTER_REUSE_IDLE_MS) return null;
   const handled = await prisma.workflowStepRun.count({ where: { agentId: agent.id, stepIndex: 0, run: { workflowId: run.workflowId } } });
   if (handled >= TESTER_REUSE_LIMIT) return null;
+  // The step of the task it just finished takes that task's result now: once the agent goes on, its result is the next
+  // task's, and a step still open would read it (a task the tester failed was closed with the next one's approval).
+  for (const open of await prisma.workflowStepRun.findMany({ where: { agentId: agent.id, status: 'RUNNING' } })) await syncStep(open);
+  if (await prisma.workflowStepRun.count({ where: { agentId: agent.id, status: 'RUNNING' } })) return null;
   try {
-    await prisma.agent.update({ where: { id: agent.id }, data: { workflowRunId: run.id, title: `Testar em HOM: ${run.title}`.slice(0, 120) } });
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: { workflowRunId: run.id, title: `Testar em HOM: ${run.title}`.slice(0, 120), result: Prisma.DbNull },
+    });
     await sendMessage(
       agent.id,
       [
