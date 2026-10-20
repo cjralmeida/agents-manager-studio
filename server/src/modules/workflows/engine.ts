@@ -9,6 +9,7 @@ import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensure
 import { cleanCopiesNow } from '../agents/cleanup.js';
 import { REVALIDATE_AFTER_MERGE, revalidationNote } from '../agents/revalidation.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
+import { mergeIntoBase } from '../agents/pull-requests.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
@@ -718,6 +719,28 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
       return fail(`O PR/MR da tarefa aponta para "${pullRequest.baseBranch}"; o projeto só aceita "${baseBranch}". A tarefa voltou para "A fazer" com o aviso.`);
     }
+    // No PR/MR of the task is left open after validation: the older ones are merged first (oldest first), and the
+    // newest goes with the deploy. One that cannot be merged sends the task back like the newest one would.
+    const others = [...(pullRequest.alsoOpen ?? [])].sort((a, b) => a.number - b.number);
+    for (const other of others) {
+      const problem =
+        baseBranch && other.baseBranch !== baseBranch
+          ? `aponta para \`${other.baseBranch}\`, e este projeto só publica a partir de \`${baseBranch}\``
+          : await mergeTaskPullRequest(run.workspaceId, projectId, other.number).then(
+              () => null,
+              (error: unknown) => `não pôde ser mesclado: ${errorText(error)}`,
+            );
+      if (!problem) continue;
+      const notice = [
+        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '',
+        `Esta tarefa tem mais de um PR/MR aberto, e todos são mesclados na validação. O ${other.url} ${problem}. Nada foi publicado.`,
+        `Resolva (ou feche o PR/MR que não vale mais) e mova a tarefa de novo para a coluna de validação.`,
+      ].join('\n');
+      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
+      return fail(`O PR/MR ${other.url} da tarefa ${problem}. A tarefa voltou para "A fazer" com o aviso.`);
+    }
   }
 
   let sourceAgentId: string | undefined;
@@ -851,6 +874,23 @@ async function pullRequestOfTask(workspaceId: string, projectId: string, task: B
     token: secrets.decrypt(account.tokenEncrypted),
     issueNumber: task.number,
     knownNumbers: task.pullRequests.map((pr) => pr.number),
+  });
+}
+
+/** Merges another open PR/MR of a task into the project's base branch (validation leaves none open). */
+async function mergeTaskPullRequest(workspaceId: string, projectId: string, number: number) {
+  const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+  const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+  if (!remote) throw new HttpError(422, 'O projeto não tem repositório remoto.');
+  const account = await findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
+  if (!project.baseBranch) throw new HttpError(422, 'O projeto não tem branch base definida.');
+  await mergeIntoBase({
+    provider: account.provider as 'GITHUB' | 'GITLAB',
+    remote,
+    token: secrets.decrypt(account.tokenEncrypted),
+    number,
+    project,
+    expectedBase: project.baseBranch,
   });
 }
 

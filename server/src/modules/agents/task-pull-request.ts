@@ -10,6 +10,8 @@ export interface TaskPullRequest {
   baseBranch: string;
   /** Already merged (no open one cites the task): its work is in the base branch, only the deploy is left. */
   merged?: boolean;
+  /** Other open PR/MRs that cite the task (older ones): they are merged too, so none is left open after validation. */
+  alsoOpen?: { url: string; number: number; baseBranch: string }[];
 }
 
 type Json = any; // Provider responses are narrowed where they are read.
@@ -35,6 +37,12 @@ export async function findTaskPullRequest(input: {
   return input.provider === 'GITHUB' ? findOnGitHub(input) : findOnGitLab(input);
 }
 
+/** The newest open one (first: they come newest first), with the others to merge too. */
+function withOthers(open: TaskPullRequest[]): TaskPullRequest {
+  const [newest, ...older] = open as [TaskPullRequest, ...TaskPullRequest[]];
+  return older.length > 0 ? { ...newest, alsoOpen: older.map(({ url, number, baseBranch }) => ({ url, number, baseBranch })) } : newest;
+}
+
 async function findOnGitHub(input: { remote: RemoteInfo; token: string; issueNumber: number; knownNumbers: number[] }) {
   const apiBase = input.remote.host === 'github.com' ? 'https://api.github.com' : `https://${input.remote.host}/api/v3`;
   const [owner, repo] = input.remote.path.split('/');
@@ -49,15 +57,18 @@ async function findOnGitHub(input: { remote: RemoteInfo; token: string; issueNum
     }
   }
 
-  // The most recent open one wins; without one, the most recent merged one (its work is already in the base).
+  // The most recent open one wins (the others open are merged with it); without one, the most recent merged one (its
+  // work is already in the base).
   let merged: TaskPullRequest | null = null;
+  const open: TaskPullRequest[] = [];
   for (const number of [...numbers].sort((a, b) => b - a)) {
     const pull = await get(`${apiBase}/repos/${owner}/${repo}/pulls/${number}`, headers);
     if (pull.status !== 200) continue;
     if (pull.body.head?.repo?.full_name?.toLowerCase() !== input.remote.path.toLowerCase()) continue; // forks are not supported
-    if (pull.body.state === 'open') return { url: pull.body.html_url, number, branch: pull.body.head.ref, baseBranch: pull.body.base.ref };
-    if (!merged && pull.body.merged_at) merged = { url: pull.body.html_url, number, branch: pull.body.head.ref, baseBranch: pull.body.base.ref, merged: true };
+    if (pull.body.state === 'open') open.push({ url: pull.body.html_url, number, branch: pull.body.head.ref, baseBranch: pull.body.base.ref });
+    else if (!merged && pull.body.merged_at) merged = { url: pull.body.html_url, number, branch: pull.body.head.ref, baseBranch: pull.body.base.ref, merged: true };
   }
+  if (open.length > 0) return withOthers(open);
   return merged;
 }
 
@@ -71,8 +82,10 @@ async function findOnGitLab(input: { remote: RemoteInfo; token: string; issueNum
   const own = related.body
     .filter((mr: Json) => mr.source_project_id === mr.target_project_id && String(mr.web_url ?? '').toLowerCase().includes(ownPath))
     .sort((a: Json, b: Json) => b.iid - a.iid);
-  const open = own.find((mr: Json) => mr.state === 'opened');
-  if (open) return { url: open.web_url, number: open.iid, branch: open.source_branch, baseBranch: open.target_branch };
+  const open = own.filter((mr: Json) => mr.state === 'opened');
+  if (open.length > 0) {
+    return withOthers(open.map((mr: Json) => ({ url: mr.web_url, number: mr.iid, branch: mr.source_branch, baseBranch: mr.target_branch })));
+  }
   // Without an open one, the most recent merged one: its work is already in the base, only the deploy is left.
   const merged = own.find((mr: Json) => mr.state === 'merged');
   return merged ? { url: merged.web_url, number: merged.iid, branch: merged.source_branch, baseBranch: merged.target_branch, merged: true } : null;
