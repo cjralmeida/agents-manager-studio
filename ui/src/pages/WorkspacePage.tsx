@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { AgentProfilesTab } from '../components/agent-profiles/AgentProfilesTab';
 import { BoardTab } from '../components/board/BoardTab';
 import { Dashboard } from '../components/dashboard/Dashboard';
+import { DeploysTab } from '../components/deploys/DeploysTab';
 import { QualityTab } from '../components/quality/QualityTab';
 import { RoadmapTab } from '../components/roadmap/RoadmapTab';
 import { WorkflowsTab } from '../components/workflows/WorkflowsTab';
@@ -25,6 +26,7 @@ const tabs = [
   { id: 'roadmap', label: 'Roadmap' },
   { id: 'quality', label: 'Defeitos' },
   { id: 'projects', label: 'Projetos' },
+  { id: 'deploys', label: 'Deploys' },
   { id: 'connectors', label: 'Conectores' },
   { id: 'settings', label: 'Configuração' },
 ] as const;
@@ -83,6 +85,7 @@ export function WorkspacePage() {
         {activeTab === 'quality' && <QualityTab workspace={data} />}
         {activeTab === 'dashboard' && <Dashboard workspace={data} />}
         {activeTab === 'projects' && <ProjectsTab workspace={data} />}
+        {activeTab === 'deploys' && <DeploysTab workspace={data} />}
         {activeTab === 'connectors' && <WorkspaceConnectorsTab workspace={data} />}
         {activeTab === 'settings' && <WorkspaceSettingsTab workspace={data} />}
       </div>

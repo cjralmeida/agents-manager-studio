@@ -24,6 +24,20 @@ const HEALTH_TIMEOUT_MS = 10 * 60_000;
 const POLL_MS = 10_000;
 const LOG_MAX = 60_000;
 
+/**
+ * What the Studio set up in the account for a service (instance, IP, DNS, Docker and Caddy; Amplify domain), kept
+ * in the service's config so the Deploys tab shows the progress and the DNS records to create by hand, if any.
+ */
+export interface SetupState {
+  status: 'running' | 'done' | 'failed';
+  step: string;
+  error: string | null;
+  dns: { name: string; type: string; value: string }[];
+  /** No hosted zone of the account holds the host: the records above are created by hand. */
+  dnsManual: boolean;
+  updatedAt: string;
+}
+
 export interface Ec2Config {
   instanceId: string;
   ecrRepository: string;
@@ -33,11 +47,50 @@ export interface Ec2Config {
   logGroup: string;
   parameterPath: string;
   dockerfile?: string;
+  setup?: SetupState;
 }
 
 export interface AmplifyConfig {
   appId: string;
   branchName: string;
+  /** The app was created by the Studio (connected to the repository). */
+  created?: boolean;
+  setup?: SetupState;
+}
+
+/** Instance types offered for a new backend instance (x86: the images are built for linux/amd64). */
+export const INSTANCE_TYPES = ['t3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge'] as const;
+const INSTANCE_PROFILE = 'studio-ec2';
+const SECURITY_GROUP = 'studio-web';
+const FIRST_PORT = 8080;
+
+/** React/Vite single-page apps: any path that is not a file is the index. */
+const SPA_RULES = [{ source: '</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>', target: '/index.html', status: '200' }];
+
+/**
+ * Build of a front connected by the Studio: the package manager comes from the lockfile (pnpm 9 for lockfile 9, as
+ * corepack may pull a pnpm that does not run on Amplify's Node), the output from the project (default dist).
+ */
+export function amplifyBuildSpec(outputDir: string) {
+  return [
+    'version: 1',
+    'frontend:',
+    '  phases:',
+    '    preBuild:',
+    '      commands:',
+    '        - if [ -f pnpm-lock.yaml ]; then (grep -Eq "^lockfileVersion.{1,3}9" pnpm-lock.yaml && npm install -g pnpm@9 || npm install -g pnpm@8) && pnpm install --frozen-lockfile; elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; else npm ci; fi',
+    '    build:',
+    '      commands:',
+    '        - if [ -f pnpm-lock.yaml ]; then pnpm run build; elif [ -f yarn.lock ]; then yarn build; else npm run build; fi',
+    '  artifacts:',
+    `    baseDirectory: ${outputDir}`,
+    '    files:',
+    "      - '**/*'",
+    '  cache:',
+    '    paths:',
+    '      - node_modules/**/*',
+    '',
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------- accounts
@@ -152,60 +205,297 @@ export async function getAwsSettings(workspaceId: string) {
 /** What the workspace's AWS key can see, to choose where each project runs. */
 export async function listAwsTargets(workspaceId: string) {
   const { client } = await awsClientFor(workspaceId);
-  const [instances, apps] = await Promise.all([client.managedInstances().catch((error: Error) => ({ error: error.message })), client.amplifyApps().catch((error: Error) => ({ error: error.message }))]);
-  return { instances, amplifyApps: apps };
+  const failed = (error: Error) => ({ error: permissionHint(error.message) });
+  const [instances, ec2Instances, apps] = await Promise.all([
+    client.managedInstances().catch(failed),
+    client.instances().catch(failed),
+    client.amplifyApps().catch(failed),
+  ]);
+  return { instances, ec2Instances, amplifyApps: apps, instanceTypes: INSTANCE_TYPES };
+}
+
+/** A key with the first (smaller) policy cannot create things: say what to change instead of the raw AWS error. */
+function permissionHint(message: string) {
+  return /UnauthorizedOperation|AccessDenied|not authorized/i.test(message)
+    ? `A chave da AWS do workspace não tem permissão para isso: atualize a política do usuário IAM com a do passo a passo (Conectores → AWS). Detalhe: ${message.slice(0, 200)}`
+    : message;
 }
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'app';
 
 export type AwsServiceInput =
-  | { projectId: string; environment: DeployEnvironment; kind: 'ec2'; url: string; branch: string; instanceId: string; port: number; healthPath?: string; dockerfile?: string }
-  | { projectId: string; environment: DeployEnvironment; kind: 'amplify'; url?: string; branch: string; appId: string }
+  | {
+      projectId: string;
+      environment: DeployEnvironment;
+      kind: 'ec2';
+      url: string;
+      branch: string;
+      /** An instance the account already has; without it, newInstanceType creates one. */
+      instanceId?: string;
+      newInstanceType?: string;
+      port?: number;
+      healthPath?: string;
+      dockerfile?: string;
+    }
+  | { projectId: string; environment: DeployEnvironment; kind: 'amplify'; url?: string; branch: string; appId?: string; outputDir?: string }
   | { projectId: string; environment: DeployEnvironment; kind: null };
 
-/** Sets (or clears, with kind null) where a project runs on AWS in an environment. */
+/**
+ * Sets (or clears, with kind null) where a project runs on AWS in an environment, creating what is missing: a new
+ * instance for a backend, an app connected to the repository for a frontend. The rest (IP, DNS, Docker, Caddy, the
+ * front's domain) is set up in the background. A project deploys to one place per environment: this replaces Render.
+ */
 export async function setAwsService(workspaceId: string, input: AwsServiceInput) {
   const project = await prisma.project.findFirst({ where: { id: input.projectId, workspaceId } });
   if (!project) throw notFound('Projeto não encontrado neste workspace.');
+  const where = { projectId: input.projectId, environment: input.environment };
   if (input.kind === null) {
-    await prisma.awsService.deleteMany({ where: { projectId: input.projectId, environment: input.environment } });
+    await prisma.awsService.deleteMany({ where });
     return getAwsSettings(workspaceId);
   }
   const { client } = await awsClientFor(workspaceId);
+  const current = await prisma.awsService.findUnique({ where: { projectId_environment: where } });
   const env = input.environment === 'HOMOLOGACAO' ? 'hom' : 'prod';
   const base = `ams-${slug(project.name)}-${env}`;
   let name: string;
   let url: string | null;
   let config: Ec2Config | AmplifyConfig;
-  if (input.kind === 'ec2') {
-    const instance = (await client.managedInstances()).find((entry) => entry.instanceId === input.instanceId);
-    if (!instance) throw new HttpError(422, 'Instância não encontrada no SSM desta conta/região: ela precisa do agente do SSM e do perfil de instância (veja o passo a passo).');
-    name = base;
-    url = input.url.replace(/\/+$/, '');
-    config = {
-      instanceId: input.instanceId,
-      ecrRepository: base,
-      containerName: base,
-      port: input.port,
-      healthPath: input.healthPath || '/health',
-      logGroup: `/ams/${base}`,
-      parameterPath: `/ams/${base}/`,
-      ...(input.dockerfile && { dockerfile: input.dockerfile }),
-    };
-  } else {
-    const branch = await client.amplifyBranch(input.appId, input.branch);
-    const app = (await client.amplifyApps()).find((entry) => entry.appId === input.appId);
-    name = `${app?.name ?? input.appId}/${branch.branchName}`;
-    url = (input.url || `https://${branch.branchName}.${app?.domain ?? ''}`).replace(/\/+$/, '');
-    config = { appId: input.appId, branchName: branch.branchName };
+  try {
+    if (input.kind === 'ec2') {
+      const instanceId = input.instanceId || (await launchInstance(client, `studio-${slug(project.name)}-${env}`, input.newInstanceType));
+      if (input.instanceId) await assertInstance(client, input.instanceId);
+      const previous = current?.kind === 'ec2' ? (current.config as unknown as Ec2Config) : null;
+      name = base;
+      url = input.url.replace(/\/+$/, '');
+      config = {
+        instanceId,
+        ecrRepository: base,
+        containerName: base,
+        port: input.port ?? (previous?.instanceId === instanceId ? previous.port : await freePort(instanceId, current?.id ?? null)),
+        healthPath: input.healthPath || '/health',
+        logGroup: `/ams/${base}`,
+        parameterPath: `/ams/${base}/`,
+        ...(input.dockerfile && { dockerfile: input.dockerfile }),
+      };
+    } else {
+      let appId = input.appId;
+      let created = current?.kind === 'amplify' && (current.config as unknown as AmplifyConfig).appId === appId && Boolean((current.config as unknown as AmplifyConfig).created);
+      if (!appId) {
+        appId = await createAmplifyApp(workspaceId, project, `${slug(project.name)}-${env}`, input.outputDir || 'dist');
+        created = true;
+      }
+      await client.ensureAmplifyBranch(appId, input.branch);
+      const app = (await client.amplifyApps()).find((entry) => entry.appId === appId);
+      name = `${app?.name ?? appId}/${input.branch}`;
+      url = (input.url || `https://${input.branch}.${app?.domain ?? ''}`).replace(/\/+$/, '');
+      config = { appId, branchName: input.branch, ...(created && { created: true }) };
+    }
+  } catch (error) {
+    throw new HttpError(error instanceof HttpError ? error.statusCode : 502, permissionHint(error instanceof Error ? error.message : String(error)));
   }
   const data = { workspaceId, kind: input.kind, name, url, branch: input.branch, config: config as unknown as Prisma.InputJsonValue };
-  await prisma.awsService.upsert({
-    where: { projectId_environment: { projectId: input.projectId, environment: input.environment } },
-    create: { projectId: input.projectId, environment: input.environment, ...data },
-    update: data,
-  });
+  const service = await prisma.awsService.upsert({ where: { projectId_environment: where }, create: { ...where, ...data }, update: data });
+  await prisma.renderService.deleteMany({ where });
+  void runAwsSetup(service.id);
   return getAwsSettings(workspaceId);
+}
+
+/** A new Studio instance: its role and instance profile, the web security group and Amazon Linux 2023, all created once. */
+async function launchInstance(client: AwsClient, name: string, type: string | undefined) {
+  if (!type || !(INSTANCE_TYPES as readonly string[]).includes(type)) throw new HttpError(422, 'Escolha uma instância ou o tipo de uma nova.');
+  const [profile, securityGroupId, imageId] = await Promise.all([client.ensureInstanceProfile(INSTANCE_PROFILE), client.ensureWebSecurityGroup(SECURITY_GROUP), client.latestAmazonLinux()]);
+  return client.runInstance({ imageId, type, securityGroupId, profile, name, diskGb: 30 });
+}
+
+async function assertInstance(client: AwsClient, instanceId: string) {
+  const ec2 = await client.instances([instanceId]).catch(() => []);
+  if (ec2.length > 0) return;
+  if ((await client.managedInstances()).some((entry) => entry.instanceId === instanceId)) return;
+  throw new HttpError(422, 'Instância não encontrada nesta conta/região.');
+}
+
+/** The first container port no other service uses on the instance (several backends can share one). */
+async function freePort(instanceId: string, serviceId: string | null) {
+  const services = await prisma.awsService.findMany({ where: { kind: 'ec2', ...(serviceId && { NOT: { id: serviceId } }) } });
+  const used = new Set(services.map((entry) => entry.config as unknown as Ec2Config).filter((config) => config.instanceId === instanceId).map((config) => config.port));
+  let port = FIRST_PORT;
+  while (used.has(port)) port++;
+  return port;
+}
+
+/** An Amplify app connected to the project's repository with the workspace's git token. */
+async function createAmplifyApp(workspaceId: string, project: { name: string; gitRemoteUrl: string | null }, name: string, outputDir: string) {
+  const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+  if (!remote) throw new HttpError(422, 'O projeto não tem remote para ligar ao Amplify.');
+  const git = await findWorkspaceGitAccount(workspaceId, [remoteHostname(remote), remote.host]);
+  const { client } = await awsClientFor(workspaceId);
+  try {
+    const app = await client.createAmplifyApp({
+      name,
+      repository: `https://${remote.host}/${remote.path}`,
+      provider: git.provider as 'GITHUB' | 'GITLAB',
+      token: secrets.decrypt(git.tokenEncrypted),
+      buildSpec: amplifyBuildSpec(outputDir),
+      customRules: SPA_RULES,
+    });
+    return app.appId;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new HttpError(
+      422,
+      `O Amplify não conseguiu se ligar ao repositório com o token do workspace (${message.slice(0, 200)}). O token precisa poder criar deploy key e webhook (no GitLab, papel Maintainer e escopo api). Se não der, crie o app no console do Amplify e escolha-o aqui.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------- setup
+
+const settingUp = new Set<string>();
+const SETUP_POLL_MS = 15_000;
+
+async function waitFor<T>(check: () => Promise<T | null | undefined | false>, timeoutMs: number, message: string): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    if (Date.now() > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, SETUP_POLL_MS));
+  }
+}
+
+/**
+ * Sets up what a service needs in the account, from where it stopped (every step can be repeated): for a backend, the
+ * running instance, its Elastic IP, the DNS record, Docker and Caddy; for a front, its custom domain and DNS records.
+ */
+export async function runAwsSetup(serviceId: string) {
+  if (settingUp.has(serviceId)) return;
+  settingUp.add(serviceId);
+  const record = async (patch: Partial<SetupState>) => {
+    const service = await prisma.awsService.findUnique({ where: { id: serviceId } });
+    if (!service) return;
+    const config = service.config as unknown as Ec2Config | AmplifyConfig;
+    const setup: SetupState = { status: 'running', step: '', error: null, dns: [], dnsManual: false, ...config.setup, ...patch, updatedAt: new Date().toISOString() };
+    await prisma.awsService.update({ where: { id: serviceId }, data: { config: { ...config, setup } as unknown as Prisma.InputJsonValue } });
+  };
+  try {
+    const service = await prisma.awsService.findUniqueOrThrow({ where: { id: serviceId } });
+    const { client } = await awsClientFor(service.workspaceId);
+    await record({ status: 'running', step: 'Começando', error: null });
+    if (service.kind === 'ec2') await setupEc2(service, client, record);
+    else await setupAmplify(service, client, record);
+    await record({ status: 'done', step: 'Pronto' });
+  } catch (error) {
+    await record({ status: 'failed', error: permissionHint(error instanceof Error ? error.message.slice(0, 500) : String(error)) }).catch(() => undefined);
+  } finally {
+    settingUp.delete(serviceId);
+  }
+}
+
+async function setupEc2(service: AwsService, client: AwsClient, record: (patch: Partial<SetupState>) => Promise<void>) {
+  const config = service.config as unknown as Ec2Config;
+  const host = new URL(service.url!).hostname;
+  await record({ step: 'Esperando a instância ligar' });
+  await waitFor(async () => (await client.instances([config.instanceId]))[0]?.state === 'running', 10 * 60_000, 'A instância não ligou em 10 minutos.');
+  await record({ step: 'IP fixo (Elastic IP)' });
+  const ip = await client.ensureElasticIp(config.instanceId);
+  await record({ step: 'DNS' });
+  const zone = await client.hostedZoneFor(host).catch(() => null);
+  if (zone) await client.upsertRecord(zone.id, { name: host, type: 'A', value: ip });
+  await record({ dns: [{ name: host, type: 'A', value: ip }], dnsManual: !zone });
+  await record({ step: 'Esperando o agente do SSM na instância' });
+  await waitFor(async () => (await client.managedInstances()).some((entry) => entry.instanceId === config.instanceId && entry.online), 15 * 60_000, 'A instância não apareceu no Systems Manager em 15 minutos.');
+  await record({ step: 'Instalando Docker e Caddy' });
+  const result = await runOnInstance(client, config.instanceId, [...BOOTSTRAP, ...caddySite(host, config.port, config.containerName), 'echo "INSTANCIA OK"'], `AMS setup ${config.containerName}`);
+  if (!result.stdout.includes('INSTANCIA OK')) throw new Error(`A configuração da instância falhou: ${`${result.stderr}\n${result.stdout}`.trim().slice(-400)}`);
+}
+
+async function setupAmplify(service: AwsService, client: AwsClient, record: (patch: Partial<SetupState>) => Promise<void>) {
+  const config = service.config as unknown as AmplifyConfig;
+  const host = service.url ? new URL(service.url).hostname : null;
+  if (!host || host.endsWith('.amplifyapp.com')) return;
+  await record({ step: 'Domínio no Amplify' });
+  await client.ensureAmplifyDomain(config.appId, host, config.branchName);
+  await record({ step: 'Registros de DNS' });
+  const domain = await waitFor(
+    async () => {
+      const current = await client.amplifyDomain(config.appId, host);
+      return current.records.some((entry) => entry.value.endsWith('.cloudfront.net')) || current.status === 'AVAILABLE' ? current : null;
+    },
+    10 * 60_000,
+    'O Amplify não informou os registros de DNS do domínio em 10 minutos.',
+  );
+  const zone = await client.hostedZoneFor(host).catch(() => null);
+  if (zone) {
+    for (const entry of domain.records) {
+      // The host itself points at CloudFront with an alias (it may be the zone's apex, where a CNAME is not allowed).
+      if (entry.name === host) await client.upsertRecord(zone.id, { name: host, type: 'A', value: entry.value, alias: true });
+      else await client.upsertRecord(zone.id, { name: entry.name, type: 'CNAME', value: entry.value });
+    }
+  }
+  await record({ dns: domain.records, dnsManual: !zone });
+  if (!zone) return;
+  await record({ step: 'Ativando o domínio (o Amplify leva até 30 minutos)' });
+  await waitFor(
+    async () => {
+      const current = await client.amplifyDomain(config.appId, host);
+      if (current.status === 'FAILED') throw new Error(`O Amplify não ativou o domínio: ${current.reason ?? 'sem motivo informado'}.`);
+      return current.status === 'AVAILABLE';
+    },
+    45 * 60_000,
+    'O domínio não ficou disponível no Amplify em 45 minutos.',
+  );
+}
+
+export async function retryAwsSetup(workspaceId: string, serviceId: string) {
+  const service = await prisma.awsService.findFirst({ where: { id: serviceId, workspaceId } });
+  if (!service) throw notFound('Deploy da AWS não encontrado neste workspace.');
+  void runAwsSetup(service.id);
+  return getAwsSettings(workspaceId);
+}
+
+/** At startup: setups cut by a restart go on from where they stopped. */
+export async function resumeAwsSetups() {
+  const services = await prisma.awsService.findMany();
+  for (const service of services) if ((service.config as unknown as Ec2Config | AmplifyConfig).setup?.status === 'running') void runAwsSetup(service.id);
+}
+
+/** Runs a script on an instance and waits for it to end; fails unless it ends well. */
+async function runOnInstance(client: AwsClient, instanceId: string, lines: string[], comment: string) {
+  const commandId = await client.runScript(instanceId, lines, comment);
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    const result = await client.commandResult(commandId, instanceId);
+    if (['Pending', 'InProgress', 'Delayed', 'Cancelling'].includes(result.status)) continue;
+    if (result.status !== 'Success') throw new Error(`O comando na instância terminou como ${result.status}: ${`${result.stderr}\n${result.stdout}`.trim().slice(-400)}`);
+    return { commandId, ...result };
+  }
+}
+
+/** Docker, Caddy (HTTPS by Let's Encrypt, one file per site) and the memory metric; each step skips what is there. */
+const BOOTSTRAP = [
+  'set -e',
+  'command -v docker >/dev/null || dnf install -y docker || yum install -y docker || (apt-get update && apt-get install -y docker.io)',
+  'systemctl enable --now docker',
+  'if ! command -v caddy >/dev/null; then ARCH=$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/"); curl -fsSL -o /usr/local/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=$ARCH"; chmod +x /usr/local/bin/caddy; fi',
+  'id caddy >/dev/null 2>&1 || useradd --system --home-dir /var/lib/caddy --create-home --shell /sbin/nologin caddy',
+  'mkdir -p /etc/caddy/sites && touch /etc/caddy/Caddyfile',
+  'if ! systemctl cat caddy >/dev/null 2>&1; then CADDY=$(command -v caddy); printf "%s\\n" "[Unit]" "Description=Caddy" "After=network-online.target" "Wants=network-online.target" "[Service]" "User=caddy" "Group=caddy" "ExecStart=$CADDY run --environ --config /etc/caddy/Caddyfile --adapter caddyfile" "ExecReload=$CADDY reload --config /etc/caddy/Caddyfile --adapter caddyfile --force" "AmbientCapabilities=CAP_NET_BIND_SERVICE" "Restart=on-failure" "[Install]" "WantedBy=multi-user.target" > /etc/systemd/system/caddy.service; systemctl daemon-reload; fi',
+  'systemctl enable --now caddy',
+  "(command -v /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl >/dev/null || dnf install -y amazon-cloudwatch-agent) >/dev/null 2>&1 && printf '%s' '{\"metrics\":{\"append_dimensions\":{\"InstanceId\":\"${aws:InstanceId}\"},\"metrics_collected\":{\"mem\":{\"measurement\":[\"mem_used_percent\"]}}}}' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json && /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json >/dev/null || true",
+];
+
+/**
+ * The service's Caddy site: the host to the container's port, in its own file (a host already in the main Caddyfile,
+ * from a manual setup, is left there). A Caddy that rejects the configuration does not stop the deploy.
+ */
+export function caddySite(host: string, port: number, name: string) {
+  const pattern = host.replace(/\./g, '\\.');
+  return [
+    'mkdir -p /etc/caddy/sites && touch /etc/caddy/Caddyfile',
+    "grep -q '^import /etc/caddy/sites/' /etc/caddy/Caddyfile || printf '\\nimport /etc/caddy/sites/*.caddy\\n' >> /etc/caddy/Caddyfile",
+    `if grep -qE '^[[:space:]]*${pattern}[[:space:]]*\\{' /etc/caddy/Caddyfile; then rm -f /etc/caddy/sites/${name}.caddy; else printf '%s {\\n  reverse_proxy 127.0.0.1:${port}\\n}\\n' '${host}' > /etc/caddy/sites/${name}.caddy; fi`,
+    '(caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 && (systemctl reload caddy || systemctl restart caddy)) || echo "AVISO: o Caddy não aceitou a configuração"',
+  ];
 }
 
 export function awsServiceOf(projectId: string, environment: DeployEnvironment) {
@@ -356,6 +646,7 @@ async function deployEc2(deployment: Deployment, service: AwsService, commit: st
     `docker run -d --name ${name} --restart unless-stopped --env-file /opt/ams/${name}.env -e PORT=${config.port} -p 127.0.0.1:${config.port}:${config.port} ` +
       `--log-driver awslogs --log-opt awslogs-region=${region} --log-opt awslogs-group=${config.logGroup} --log-opt awslogs-create-group=true ${image}:${tag}`,
     'docker image prune -af --filter "until=72h" >/dev/null 2>&1 || true',
+    ...(service.url ? caddySite(new URL(service.url).hostname, config.port, name) : []),
     `echo "CONTAINER OK"`,
   ];
   const commandId = await client.runScript(config.instanceId, script, `AMS deploy ${name} ${tag}`);

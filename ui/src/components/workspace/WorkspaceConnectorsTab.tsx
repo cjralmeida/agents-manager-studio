@@ -22,7 +22,6 @@ import { BoardConnection } from "../board/BoardLinkSection";
 import { type ConnectorId, ConnectorIcon } from "../connectors/ConnectorIcon";
 import { ErrorText, Select } from "../form";
 import { MultiSelect } from "../MultiSelect";
-import { RenderSection } from "../render/RenderSection";
 import { AwsSection } from "../aws/AwsSection";
 import { useAwsSettings } from "../../api/aws";
 
@@ -342,10 +341,9 @@ export function WorkspaceConnectorsTab({
                   </Select>
                 </div>
                 {current.renderAccountId && (
-                  <RenderSection
-                    key={current.renderAccountId}
-                    workspace={workspace}
-                  />
+                  <p className="text-xs text-muted">
+                    O serviço do Render de cada projeto é escolhido na aba Deploys.
+                  </p>
                 )}
               </div>
             )}
@@ -356,7 +354,7 @@ export function WorkspaceConnectorsTab({
           <ConnectorCard
             icon={<ConnectorIcon id="aws" />}
             name="AWS"
-            purpose="Deploy na AWS: backend num EC2 e frontend no Amplify. Um projeto configurado aqui publica na AWS em vez do Render."
+            purpose="Deploy na AWS: backend num EC2 e frontend no Amplify, configurados na aba Deploys."
             connected={Boolean(awsSettings.data?.connection)}
           >
             <AwsSection workspace={workspace} />

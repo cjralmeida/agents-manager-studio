@@ -4,7 +4,7 @@ import type { DeployEnvironment, Deployment, RenderAccount } from '../../generat
 import { secretHint } from '../../lib/crypto.js';
 import { HttpError, notFound } from '../../lib/errors.js';
 import { secrets } from '../../lib/secrets.js';
-import { AWS_SERVICE_PREFIX, awsServiceOf, resumeAwsDeploys, startAwsDeploy } from '../aws/service.js';
+import { AWS_SERVICE_PREFIX, awsServiceOf, resumeAwsDeploys, resumeAwsSetups, startAwsDeploy } from '../aws/service.js';
 import { createRenderClient } from './api.js';
 import { MERGE_REFUSED, mergeDeploymentPullRequest } from './merge.js';
 import { isFinished, isSuccess, statusLabel } from './status.js';
@@ -135,6 +135,8 @@ export async function setProjectService(workspaceId: string, input: { projectId:
   }
   const service = (await listAvailableServices(workspaceId)).find((entry) => entry.id === input.serviceId);
   if (!service) throw notFound('Serviço não encontrado no Render.');
+  // A project deploys to one place per environment: Render replaces AWS.
+  await prisma.awsService.deleteMany({ where: { projectId: input.projectId, environment: input.environment } });
   const data = {
     workspaceId,
     serviceId: service.id,
@@ -283,6 +285,7 @@ export function startDeploymentMonitor(log: FastifyBaseLogger) {
     })
     .catch((err: unknown) => log.error({ err }, 'Could not resume interrupted deploys'));
   void resumeAwsDeploys(log).catch((err: unknown) => log.error({ err }, 'Could not resume interrupted AWS deploys'));
+  void resumeAwsSetups().catch((err: unknown) => log.error({ err }, 'Could not resume interrupted AWS setups'));
   const timer = setInterval(() => void pollDeployments(log).catch((err: unknown) => log.error({ err }, 'Deployment monitor failed')), MONITOR_MS);
   return () => clearInterval(timer);
 }

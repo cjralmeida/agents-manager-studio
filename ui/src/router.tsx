@@ -3,6 +3,7 @@ import { AuthGate } from './components/auth/AuthGate';
 import { Layout } from './components/Layout';
 import { AgentPage } from './pages/AgentPage';
 import { AgentProfilePage } from './pages/AgentProfilePage';
+import { AwsGuidePage } from './pages/AwsGuidePage';
 import { BoardPage } from './pages/BoardPage';
 import { CompactionPage } from './pages/CompactionPage';
 import { ConnectorsPage } from './pages/ConnectorsPage';
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { path: 'orbi', element: <OrbiPage /> },
       { path: 'sistema/compressao', element: <CompactionPage /> },
       { path: 'connectors', element: <ConnectorsPage /> },
+      { path: 'guia/aws', element: <AwsGuidePage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
     ],

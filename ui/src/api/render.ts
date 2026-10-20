@@ -78,10 +78,15 @@ function useSetSettings(workspaceId: string) {
 
 export function useSetRenderService(workspaceId: string) {
   const setSettings = useSetSettings(workspaceId);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { projectId: string; environment: DeployEnvironment; serviceId: string | null }) =>
       api.put<RenderSettings>(`/workspaces/${workspaceId}/render/services`, input),
-    onSuccess: setSettings,
+    onSuccess: (settings) => {
+      setSettings(settings);
+      // Render replaces the AWS deploy of the project in that environment (cleared on the server).
+      void queryClient.invalidateQueries({ queryKey: ['aws', 'settings', workspaceId] });
+    },
   });
 }
 
