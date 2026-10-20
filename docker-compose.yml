@@ -120,15 +120,15 @@ services:
       - ui
       - n8n
 
-  # Cloudflare Tunnel: a public https address for the git webhooks, with no port opened on the router and no fixed IP.
-  # Its public hostname (in Cloudflare) points to http://server:3000 with the path ^/api/webhooks/; the server also
-  # refuses anything else that comes through it. Turned on with COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN in .env.
+  # ngrok: a public https address for the git webhooks (the account's free static domain), with no port opened on the
+  # router and no fixed IP. The server refuses anything that comes through it other than the webhooks.
+  # Turned on with COMPOSE_PROFILES=tunnel, NGROK_AUTHTOKEN and NGROK_DOMAIN (e.g. xxx.ngrok-free.app) in .env.
   tunnel:
-    image: cloudflare/cloudflared:2026.9.2
+    image: ngrok/ngrok:3.36.0-alpine
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
+    command: ["http", "http://server:3000", "--url=https://${NGROK_DOMAIN:-}", "--log=stdout"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
     profiles: ["tunnel"]
     depends_on:
       - server

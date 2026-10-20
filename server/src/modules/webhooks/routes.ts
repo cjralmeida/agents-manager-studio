@@ -14,7 +14,7 @@ const publicUrlBody = z
       .string()
       .trim()
       .max(300)
-      .regex(/^https:\/\/[^\s/]+\/?$/, 'Informe só o endereço https, como https://webhooks.seudominio.com.')
+      .regex(/^https:\/\/[^\s/]+\/?$/, 'Informe só o endereço https, como https://xxx.ngrok-free.app.')
       .nullable(),
   })
   .strict();

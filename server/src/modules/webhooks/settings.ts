@@ -5,7 +5,7 @@ import { secrets } from '../../lib/secrets.js';
 
 /**
  * Webhooks of the git providers: the boards are read again as soon as a task changes, instead of waiting for the next
- * periodic read. They reach the Studio through a public address (the Cloudflare Tunnel), saved here with the secret the
+ * periodic read. They reach the Studio through a public address (the ngrok tunnel), saved here with the secret the
  * providers sign every delivery with.
  */
 const CONFIG_KEY = 'webhooks';

@@ -12,7 +12,7 @@ const scopeLabel: Record<NonNullable<NonNullable<BoardWebhook['webhook']>['scope
 };
 
 /**
- * Git webhooks through the Cloudflare Tunnel: with the public address saved, the Studio sets up the hook of every
+ * Git webhooks through the tunnel (ngrok): with the public address saved, the Studio sets up the hook of every
  * linked board (and of each board linked later), and boards are read again as soon as a task changes.
  */
 export function WebhooksSection() {
@@ -35,15 +35,15 @@ export function WebhooksSection() {
     <section>
       <h2 className="text-base font-semibold">Webhooks dos quadros</h2>
       <p className="mt-1 max-w-3xl text-sm text-muted">
-        Com o endereço público do túnel (Cloudflare Tunnel), o GitLab e o GitHub avisam o Studio quando uma tarefa muda, e o quadro é lido na hora em
+        Com o endereço público do túnel (ngrok), o GitLab e o GitHub avisam o Studio quando uma tarefa muda, e o quadro é lido na hora em
         vez de esperar a próxima leitura. O Studio cadastra o webhook de cada quadro sozinho, também nos quadros vinculados depois. Pelo túnel só
         passam os webhooks.
       </p>
       <ErrorText error={webhooks.error} />
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-3 rounded-lg border border-border bg-panel p-4 text-sm">
-        <Field label="Endereço público do túnel" hint="O hostname público configurado no Cloudflare, como https://webhooks.seudominio.com.">
-          <TextInput value={publicUrl} onChange={(event) => setPublicUrl(event.target.value)} placeholder="https://webhooks.seudominio.com" spellCheck={false} />
+        <Field label="Endereço público do túnel" hint="O domínio fixo do ngrok, como https://xxx.ngrok-free.app.">
+          <TextInput value={publicUrl} onChange={(event) => setPublicUrl(event.target.value)} placeholder="https://xxx.ngrok-free.app" spellCheck={false} />
         </Field>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="primary" disabled={save.isPending || (publicUrl.trim() || null) === (data?.publicUrl ?? null)}>

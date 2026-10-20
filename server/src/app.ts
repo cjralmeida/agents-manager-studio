@@ -64,10 +64,12 @@ export async function buildApp() {
     await prisma.$disconnect();
   });
 
-  // The Cloudflare Tunnel only carries the git webhooks: anything else that comes through it (Cloudflare adds cf-ray) is
-  // refused, even if the public hostname in Cloudflare was set without the path filter.
+  // The tunnel (ngrok) only carries the git webhooks: anything else that comes through it (addressed to the public
+  // ngrok domain, or carrying Cloudflare's cf-ray) is refused, so the Studio itself is never exposed.
   app.addHook('onRequest', async (request, reply) => {
-    if (request.headers['cf-ray'] && !request.url.startsWith('/api/webhooks/git')) {
+    const host = String(request.headers['x-forwarded-host'] ?? request.headers.host ?? '').toLowerCase();
+    const viaTunnel = Boolean(request.headers['cf-ray']) || /\.ngrok(-free)?\.(app|dev|io)(:\d+)?$/.test(host);
+    if (viaTunnel && !request.url.startsWith('/api/webhooks/git')) {
       await reply.code(404).send({ message: 'Rota não encontrada.' });
     }
   });
