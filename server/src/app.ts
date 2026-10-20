@@ -19,6 +19,7 @@ import { awsRoutes } from './modules/aws/routes.js';
 import { skillRoutes } from './modules/skills/routes.js';
 import { studioSettingsRoutes } from './modules/studio-settings/routes.js';
 import { webhookRoutes } from './modules/webhooks/routes.js';
+import { liveRoutes } from './modules/live/routes.js';
 import { systemRoutes } from './modules/system/routes.js';
 import { usageRoutes } from './modules/usage/routes.js';
 import { userRoutes } from './modules/users/routes.js';
@@ -94,6 +95,7 @@ export async function buildApp() {
       await api.register(skillRoutes);
       await api.register(studioSettingsRoutes);
       await api.register(webhookRoutes);
+      await api.register(liveRoutes);
       await api.register(boardRoutes);
       await api.register(qualityRoutes);
       await api.register(testEnvRoutes);

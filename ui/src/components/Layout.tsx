@@ -5,6 +5,7 @@ import { useMe } from '../api/auth';
 import { useCapacitySuggestions } from '../api/capacity';
 import { useOrbiPending } from '../api/orbi';
 import { useWorkspaces } from '../api/workspaces';
+import { useLiveUpdates } from '../lib/live';
 import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
 import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
@@ -25,6 +26,8 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
 
 export function Layout() {
   const me = useMe();
+  // Boards (and what depends on them) refresh as soon as the server sees a change.
+  useLiveUpdates(Boolean(me.data));
   const workspaces = useWorkspaces();
   const agents = useAgents();
   /** Workspaces with an agent working / waiting for the user, to light up their menu entries. */

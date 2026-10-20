@@ -145,13 +145,16 @@ export function useBoardSources(workspaceId: string) {
   });
 }
 
-/** Board contents as last read by the server (it refreshes them on its own), so polling stays cheap. */
+/**
+ * Board contents as last read by the server (it refreshes them on its own). Changes arrive at once through the live
+ * events (lib/live.ts); the slow refetch only covers a dropped connection.
+ */
 export function useBoard(workspaceId: string, enabled: boolean) {
   return useQuery({
     queryKey: boardKeys.contents(workspaceId),
     queryFn: () => api.get<Board>(base(workspaceId)),
     enabled,
-    refetchInterval: 30_000,
+    refetchInterval: 120_000,
   });
 }
 

@@ -19,6 +19,8 @@ import { BOARD_TEMPLATE, GITHUB_COLORS, TASK_BODY_TEMPLATE } from './template.js
 import type { BoardCandidate, BoardItem, BoardRef, BoardSnapshot, NewTask, StatusMap, StatusRole } from './types.js';
 import { type SourceMapping, joinedItemId, modelLayout, splitItemId, toJoinedItem, toSourceColumn, toSourceField, toSourceFields } from './unified.js';
 import { ensureBoardWebhook, removeBoardWebhook } from '../webhooks/hooks.js';
+import { boardChanged } from '../live/bus.js';
+import { createHash } from 'node:crypto';
 
 /**
  * A workspace board joins one or more sources: GitHub Projects, GitLab group boards and the Studio's own tasks. Each
@@ -33,6 +35,8 @@ type BoardProvider = 'GITHUB' | 'GITLAB';
 
 /** Last read of each source; refreshed by the board sync, and Studio changes update it directly. */
 const cache = new Map<string, { at: number; snapshot: BoardSnapshot }>();
+/** What each source's last read had, to tell the screens only about reads that changed something. */
+const signatures = new Map<string, string>();
 /** GitHub listings take a few seconds to include new items; items created here are kept until they show up. */
 const RECENT_TTL_MS = 60_000;
 const recentItems = new Map<string, { at: number; item: BoardItem }[]>();
@@ -350,6 +354,7 @@ export async function unlinkSource(workspaceId: string, sourceId: string) {
 
 export function forgetSnapshot(sourceId: string) {
   cache.delete(sourceId);
+  signatures.delete(sourceId);
 }
 
 // ---------------------------------------------------------------- reading sources
@@ -373,6 +378,10 @@ export async function loadSnapshot(source: TaskBoard, force: boolean) {
   for (const { item } of recent) {
     if (!snapshot.items.some((entry) => entry.id === item.id)) snapshot.items.push(item);
   }
+  // The open screens reload the board only when the read brought something new.
+  const signature = createHash('sha1').update(JSON.stringify(snapshot)).digest('hex');
+  if (cached && signatures.get(source.id) !== signature) boardChanged(source.workspaceId);
+  signatures.set(source.id, signature);
   cache.set(source.id, { at: Date.now(), snapshot });
   return snapshot;
 }
@@ -553,6 +562,7 @@ export async function moveItem(workspaceId: string, joinedId: string, modelColum
   await (await adapterFor(source)).moveItem(refOf(source), snapshot, item.id, column);
   item.columnId = column;
   if (source.provider === 'GITLAB') item.isClosed = column === GITLAB_FIXED_COLUMNS.last;
+  boardChanged(workspaceId);
   const statusMap = modelLayout(model).statusMap;
   if (modelColumnId === statusMap.done || modelColumnId === statusMap.homologation) await releaseDependents(workspaceId);
 }
@@ -562,6 +572,7 @@ export async function editItem(workspaceId: string, joinedId: string, changes: {
   const { source, snapshot, item } = await withItem(workspaceId, joinedId);
   await (await adapterFor(source)).editItem(refOf(source), snapshot, item.id, changes);
   Object.assign(item, changes);
+  boardChanged(workspaceId);
 }
 
 /** Replaces who is assigned to the task on its provider (usernames; empty removes everyone). */
@@ -569,6 +580,7 @@ export async function setItemAssignees(workspaceId: string, joinedId: string, us
   const { source, item } = await withItem(workspaceId, joinedId);
   await (await adapterFor(source)).setAssignees(refOf(source), item.id, usernames);
   item.assignees = usernames;
+  boardChanged(workspaceId);
 }
 
 /** Closes or reopens the task's issue on its provider. */
@@ -576,6 +588,7 @@ export async function setItemClosed(workspaceId: string, joinedId: string, close
   const { source, item } = await withItem(workspaceId, joinedId);
   await (await adapterFor(source)).setClosed(refOf(source), item.id, closed);
   item.isClosed = closed;
+  boardChanged(workspaceId);
 }
 
 /** Sets (or clears) a model field of a task. */
@@ -589,6 +602,7 @@ export async function setItemField(workspaceId: string, joinedId: string, modelF
   await (await adapterFor(source)).setItemField(refOf(source), snapshot, item.id, target.fieldId, target.optionId);
   if (target.optionId) item.fields[target.fieldId] = target.optionId;
   else delete item.fields[target.fieldId];
+  boardChanged(workspaceId);
 }
 
 /**
@@ -617,6 +631,7 @@ export async function createTask(workspaceId: string, task: NewTask) {
   });
   snapshot.items.push(item);
   recentItems.set(source!.id, [...(recentItems.get(source!.id) ?? []), { at: Date.now(), item }]);
+  boardChanged(workspaceId);
   return { id: joinedItemId(source!.id, item.id) };
 }
 
