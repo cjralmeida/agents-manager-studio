@@ -8,7 +8,7 @@ const asText = (value) => ({ content: [{ type: 'text', text: JSON.stringify(valu
 
 /**
  * @param {(name: string, args: object) => Promise<{ ok: boolean, data?: unknown, error?: string }>} call
- * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "render" (homologation), "render_read" (homologation URLs and logs), "clickup_read", "studio" (Órbi)
+ * @param {string[]} groups enabled groups: "board" (read and write), "board_read", "result", "hom" (homologation: variables, publishing, logs), "hom_read" (homologation URLs and logs), "clickup_read", "studio" (Órbi)
  */
 export function createStudioTools(call, groups) {
   const run = (name) => async (args) => {
@@ -174,57 +174,57 @@ export function createStudioTools(call, groups) {
     );
   }
 
-  const renderRead = groups.includes('render') || groups.includes('render_read');
-  if (renderRead) {
+  const homRead = groups.includes('hom') || groups.includes('hom_read');
+  if (homRead) {
     tools.push(
       tool(
-        'render_environments',
+        'hom_environments',
         'Lista os serviços de HOMOLOGAÇÃO de todos os projetos do workspace no Render, com a URL de cada um.',
         {},
-        run('render_environments'),
+        run('hom_environments'),
       ),
       tool(
-        'render_logs',
+        'hom_logs',
         'Últimas linhas de log de um serviço de homologação: "build" (compilação e pré-deploy), "app" (aplicação rodando) ou "request" (requisições HTTP).',
         {
           type: z.enum(['build', 'app', 'request']),
-          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          project: z.string().optional().describe('Nome do projeto (veja hom_environments); vazio usa o seu projeto.'),
           limit: z.number().int().optional().describe('Quantidade de linhas (padrão 100, até 300).'),
           text: z.string().optional().describe('Filtra as linhas que contêm este texto.'),
         },
-        run('render_logs'),
+        run('hom_logs'),
       ),
       tool(
-        'render_metrics',
+        'hom_metrics',
         'Memória (MB, com o limite e o pico) e CPU de um serviço de homologação numa janela recente — para medir consumo e estabilidade (ex.: "fica abaixo de 512 MB por 30 min").',
         {
-          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          project: z.string().optional().describe('Nome do projeto (veja hom_environments); vazio usa o seu projeto.'),
           minutes: z.number().int().optional().describe('Janela até agora, em minutos (padrão 60, de 5 a 1440).'),
         },
-        run('render_metrics'),
+        run('hom_metrics'),
       ),
       tool(
-        'render_events',
+        'hom_events',
         'Eventos de um serviço de homologação, do mais novo ao mais antigo: deploys, instância que caiu (com o motivo, ex.: falta de memória) e reinícios.',
         {
-          project: z.string().optional().describe('Nome do projeto (veja render_environments); vazio usa o seu projeto.'),
+          project: z.string().optional().describe('Nome do projeto (veja hom_environments); vazio usa o seu projeto.'),
           minutes: z.number().int().optional().describe('Só os eventos dos últimos N minutos (vazio: os mais recentes).'),
           limit: z.number().int().optional().describe('Quantidade (padrão 30, até 100).'),
         },
-        run('render_events'),
+        run('hom_events'),
       ),
     );
   }
-  if (groups.includes('render')) {
+  if (groups.includes('hom')) {
     tools.push(
       tool(
-        'render_service',
+        'hom_service',
         'Mostra o serviço do Render de HOMOLOGAÇÃO do seu projeto: URL, branch publicada, comandos de build/start/pré-deploy, health check, nomes das variáveis de ambiente (sem valores) e os últimos deploys.',
         {},
-        run('render_service'),
+        run('hom_service'),
       ),
       tool(
-        'render_set_env_vars',
+        'hom_set_env_vars',
         'Cria ou altera variáveis de ambiente do serviço de homologação. Use "generate": true para segredos próprios de HOM (o Render gera um valor aleatório que ninguém vê). Nunca invente credenciais de terceiros: pergunte ao usuário. Valem a partir do próximo deploy.',
         {
           vars: z
@@ -237,7 +237,7 @@ export function createStudioTools(call, groups) {
             )
             .describe('Variáveis a gravar.'),
         },
-        run('render_set_env_vars'),
+        run('hom_set_env_vars'),
       ),
       tool(
         'hom_publish',

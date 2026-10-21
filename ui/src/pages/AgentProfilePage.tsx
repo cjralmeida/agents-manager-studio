@@ -82,8 +82,8 @@ export function AgentProfilePage() {
                 {projectNames.length === 0 ? <Badge>sem repositório</Badge> : projectNames.map((name) => <Badge key={name}>{name}</Badge>)}
                 <Badge>{outputLabels[profile.output]}</Badge>
                 {profile.tools.includes('board') && <Badge>quadro</Badge>}
-                {profile.tools.includes('render') && <Badge>Render</Badge>}
-                {profile.tools.includes('render_read') && <Badge>HOM leitura</Badge>}
+                {profile.tools.includes('hom') && <Badge>HOM</Badge>}
+                {profile.tools.includes('hom_read') && <Badge>HOM leitura</Badge>}
                 {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
               </div>
             )}

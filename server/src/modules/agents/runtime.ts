@@ -100,12 +100,12 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   if (tools.includes('pixellab')) {
     lines.push('- Você tem as ferramentas do PixelLab (servidor MCP "pixellab") para gerar e animar pixel art. Elas custam créditos do usuário: use-as só como a sua skill indica.');
   }
-  if (tools.includes('render_read') && !tools.includes('render')) {
-    lines.push('- Use studio_render_environments para as URLs de homologação dos projetos e studio_render_logs para os logs deles (só leitura).');
+  if (tools.includes('hom_read') && !tools.includes('hom')) {
+    lines.push('- Use studio_hom_environments para as URLs de homologação dos projetos e studio_hom_logs para os logs deles (só leitura).');
   }
-  if (tools.includes('render')) {
+  if (tools.includes('hom')) {
     lines.push(
-      '- Use as ferramentas studio_render_* para o serviço de HOMOLOGAÇÃO do projeto no Render. Alterações que você fizer na cópia são publicadas por studio_hom_publish (o Studio faz commit, PR/MR, merge e deploy no Render ou na AWS); depois do último deploy, não deixe alterações sem publicar.',
+      '- Use as ferramentas studio_hom_* para o serviço de HOMOLOGAÇÃO do projeto (no Render ou na AWS). Alterações que você fizer na cópia são publicadas por studio_hom_publish (o Studio faz commit, PR/MR, merge e deploy no Render ou na AWS); depois do último deploy, não deixe alterações sem publicar.',
     );
   }
   lines.push(

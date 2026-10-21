@@ -3,7 +3,7 @@ import type { AgentModel } from './agents';
 import { api } from './client';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
-export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects' | 'pixellab' | 'test_env' | 'roadmap';
+export type ProfileTool = 'board' | 'hom' | 'hom_read' | 'clickup_read' | 'projects' | 'pixellab' | 'test_env' | 'roadmap';
 
 /** A fixed agent of the workspace; each run of it is an Agent (execution). */
 export interface AgentProfile {
@@ -43,8 +43,8 @@ export const outputLabels: Record<AgentOutput, string> = {
 
 export const toolLabels: Record<ProfileTool, string> = {
   board: 'Quadro de tarefas (consultar, criar e mover tarefas)',
-  render: 'Render em homologação (variáveis, deploy e logs)',
-  render_read: 'Homologação, só leitura (URLs e logs dos projetos)',
+  hom: 'Homologação (variáveis, publicação e logs, no Render ou na AWS)',
+  hom_read: 'Homologação, só leitura (URLs e logs dos projetos)',
   clickup_read: 'ClickUp, só leitura (tarefas da conta do workspace)',
   pixellab: 'PixelLab (gerar e animar pixel art; gasta créditos da conta do workspace)',
   test_env: 'Ambiente de teste local (subir uma cópia do projeto em Docker quando a homologação não estiver utilizável)',

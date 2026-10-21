@@ -16,20 +16,26 @@ import { awsServiceOf } from '../aws/service.js';
  * the server; variable values are written but never read back.
  */
 export const RENDER_TOOL_NAMES = [
-  'render_service',
-  'render_set_env_vars',
+  'hom_service',
+  'hom_set_env_vars',
   'hom_publish',
   'hom_publish_status',
-  // Old names of hom_publish and hom_publish_status (agents started before the rename).
+  // Old names (agents started before the rename).
+  'render_service',
+  'render_set_env_vars',
   'render_deploy',
   'render_deploy_status',
   'render_logs',
   'render_environments',
   'render_metrics',
   'render_events',
+  'hom_logs',
+  'hom_environments',
+  'hom_metrics',
+  'hom_events',
 ] as const;
 /** Tools of the read-only group. */
-export const RENDER_READ_TOOLS: readonly string[] = ['render_logs', 'render_environments', 'render_metrics', 'render_events'];
+export const RENDER_READ_TOOLS: readonly string[] = ['hom_logs', 'hom_environments', 'hom_metrics', 'hom_events', 'render_logs', 'render_environments', 'render_metrics', 'render_events'];
 export type RenderToolName = (typeof RENDER_TOOL_NAMES)[number];
 
 type Args = Record<string, unknown>;
@@ -73,7 +79,7 @@ async function projectIdFor(agent: Agent, projectName: unknown) {
     if (!project) throw new HttpError(404, `Projeto "${projectName}" não encontrado. Projetos: ${projects.map((entry) => entry.name).join(', ')}.`);
     return project.id;
   }
-  if (!agent.projectId) throw new HttpError(422, 'Informe o projeto (veja render_environments).');
+  if (!agent.projectId) throw new HttpError(422, 'Informe o projeto (veja hom_environments).');
   return agent.projectId;
 }
 
@@ -121,15 +127,24 @@ function deploymentView(deployment: Awaited<ReturnType<typeof getDeployment>>) {
     commitId: deployment.commitId,
     prUrl: deployment.prUrl,
     error: deployment.error,
-    ...(deployment.isFinished && !deployment.isSuccess && { hint: 'Leia os logs com render_logs (type "build", ou "app" se a aplicação não subiu).' }),
+    ...(deployment.isFinished && !deployment.isSuccess && { hint: 'Leia os logs com hom_logs (type "build", ou "app" se a aplicação não subiu).' }),
   };
 }
 
-const RENAMED: Partial<Record<RenderToolName, RenderToolName>> = { render_deploy: 'hom_publish', render_deploy_status: 'hom_publish_status' };
+const RENAMED: Partial<Record<RenderToolName, RenderToolName>> = {
+  render_service: 'hom_service',
+  render_set_env_vars: 'hom_set_env_vars',
+  render_deploy: 'hom_publish',
+  render_deploy_status: 'hom_publish_status',
+  render_logs: 'hom_logs',
+  render_environments: 'hom_environments',
+  render_metrics: 'hom_metrics',
+  render_events: 'hom_events',
+};
 
 export async function runRenderTool(agent: Agent, requested: RenderToolName, args: Args) {
   const name = RENAMED[requested] ?? requested;
-  if (name === 'render_environments') {
+  if (name === 'hom_environments') {
     const [services, awsServices] = await Promise.all([
       prisma.renderService.findMany({
         where: { workspaceId: agent.workspaceId, environment: ENVIRONMENT },
@@ -155,20 +170,20 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
     };
   }
 
-  const readsAnyProject = name === 'render_logs' || name === 'render_metrics' || name === 'render_events';
+  const readsAnyProject = name === 'hom_logs' || name === 'hom_metrics' || name === 'hom_events';
   // Projects that run on AWS answer the same tools from the AWS connector.
   const aws = await awsServiceOf(await projectIdFor(agent, readsAnyProject ? args.project : undefined), ENVIRONMENT);
   if (aws) {
     switch (name) {
-      case 'render_service':
+      case 'hom_service':
         return awsServiceView(agent, aws);
-      case 'render_set_env_vars':
+      case 'hom_set_env_vars':
         return setAwsVarsTool(agent, aws, args);
-      case 'render_logs':
+      case 'hom_logs':
         return awsLogs(agent, aws, args);
-      case 'render_metrics':
+      case 'hom_metrics':
         return awsMetrics(agent, aws, args);
-      case 'render_events':
+      case 'hom_events':
         return awsEvents(agent, aws, args);
       case 'hom_publish': {
         requireAwsBranch(agent, aws);
@@ -199,7 +214,7 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
   const { service, client } = await homologation(agent, readsAnyProject ? args.project : undefined);
 
   switch (name) {
-    case 'render_service': {
+    case 'hom_service': {
       const [details, envVarKeys, deploys] = await Promise.all([
         client.serviceDetails(service.serviceId),
         client.envVarKeys(service.serviceId),
@@ -219,7 +234,7 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
       };
     }
 
-    case 'render_set_env_vars': {
+    case 'hom_set_env_vars': {
       const vars = parseEnvVars(args.vars);
       const existing = new Set(await client.envVarKeys(service.serviceId));
       for (const entry of vars) {
@@ -264,7 +279,7 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
       return { ...deploymentView(deployment), serviceUrl: service.url };
     }
 
-    case 'render_logs': {
+    case 'hom_logs': {
       const type = args.type === 'app' || args.type === 'request' ? args.type : 'build';
       const limit = Math.min(Math.max(Number(args.limit) || 100, 1), 300);
       const details = await client.serviceDetails(service.serviceId);
@@ -278,7 +293,7 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
       return { type, lines };
     }
 
-    case 'render_metrics': {
+    case 'hom_metrics': {
       // Up to 24 h back; about 60 points whatever the window, so the answer stays small.
       const minutes = Math.min(Math.max(Number(args.minutes) || 60, 5), 24 * 60);
       const end = new Date();
@@ -302,11 +317,11 @@ export async function runRenderTool(agent: Agent, requested: RenderToolName, arg
         memoryLastMb: memoryPoints.length > 0 ? mb(memoryPoints[memoryPoints.length - 1]!.value) : null,
         memoryMb: memoryPoints.map((point) => ({ at: point.timestamp, mb: mb(point.value) })),
         cpu: cpu.flatMap((series) => series.values).map((point) => ({ at: point.timestamp, cores: Math.round(point.value * 1000) / 1000 })),
-        hint: 'A memória é a do contêiner (RSS), não só o heap da JVM. Compare o pico com o limite: perto do limite, o Render mata a instância por falta de memória (veja render_events).',
+        hint: 'A memória é a do contêiner (RSS), não só o heap da JVM. Compare o pico com o limite: perto do limite, o Render mata a instância por falta de memória (veja hom_events).',
       };
     }
 
-    case 'render_events': {
+    case 'hom_events': {
       const limit = Math.min(Math.max(Number(args.limit) || 30, 1), 100);
       const minutes = Number(args.minutes) || 0;
       const startTime = minutes > 0 ? new Date(Date.now() - Math.min(minutes, 7 * 24 * 60) * 60_000).toISOString() : undefined;

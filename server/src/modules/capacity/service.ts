@@ -59,7 +59,7 @@ async function singleResourceSteps(workflow: Workflow, steps: WorkflowStep[]) {
   const trigger = parseTrigger(workflow);
   if (trigger.type === 'feature_in_homologation' || trigger.type === 'frontend_in_homologation') return new Set(steps.map((step) => step.id));
   const profileIds = steps.flatMap((step) => (step.kind === 'agent' ? [step.profileId] : []));
-  const publishers = await prisma.agentProfile.findMany({ where: { id: { in: profileIds }, tools: { has: 'render' } }, select: { id: true } });
+  const publishers = await prisma.agentProfile.findMany({ where: { id: { in: profileIds }, tools: { has: 'hom' } }, select: { id: true } });
   return new Set(steps.filter((step) => step.kind === 'deploy' || publishers.some((profile) => profile.id === step.profileId)).map((step) => step.id));
 }
 

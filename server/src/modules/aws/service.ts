@@ -585,7 +585,7 @@ async function deployAmplify(deployment: Deployment, service: AwsService, commit
       const failed = job.steps.find((step) => step.status === 'FAILED');
       await update(deployment.id, {
         status: job.status === 'CANCELLED' ? 'canceled' : 'build_failed',
-        error: `Amplify: job ${jobId} ${job.status}${failed ? ` na etapa ${failed.name}` : ''}. Leia os logs com render_logs (type "build").`,
+        error: `Amplify: job ${jobId} ${job.status}${failed ? ` na etapa ${failed.name}` : ''}. Leia os logs com hom_logs (type "build").`,
         finishedAt: new Date(),
       });
       return;
@@ -629,7 +629,7 @@ async function deployEc2(deployment: Deployment, service: AwsService, commit: st
   const buildLog = redact(`${build.stdout}\n${build.stderr}`, [token, login.password]).trim();
   await appendLog(deployment.id, buildLog.slice(-40_000));
   if (build.timedOut || build.exitCode !== 0 || !build.stdout.includes('IMAGEM OK')) {
-    throw new Error(build.timedOut ? 'A geração da imagem passou de 30 minutos.' : 'Falha ao gerar ou enviar a imagem (veja render_logs type "build").');
+    throw new Error(build.timedOut ? 'A geração da imagem passou de 30 minutos.' : 'Falha ao gerar ou enviar a imagem (veja hom_logs type "build").');
   }
 
   // 2. Publish: the instance pulls the image and replaces the container, with the variables from Parameter Store.
@@ -656,7 +656,7 @@ async function deployEc2(deployment: Deployment, service: AwsService, commit: st
     const result = await client.commandResult(commandId, config.instanceId);
     if (['Pending', 'InProgress', 'Delayed', 'Cancelling'].includes(result.status)) continue;
     await appendLog(deployment.id, `--- instância ${config.instanceId} (${result.status})\n${result.stdout}\n${result.stderr}`.trim());
-    if (result.status !== 'Success' || !result.stdout.includes('CONTAINER OK')) throw new Error(`A instância não conseguiu trocar o container (${result.status}). Veja render_logs type "build".`);
+    if (result.status !== 'Success' || !result.stdout.includes('CONTAINER OK')) throw new Error(`A instância não conseguiu trocar o container (${result.status}). Veja hom_logs type "build".`);
     break;
   }
 
@@ -672,7 +672,7 @@ async function deployEc2(deployment: Deployment, service: AwsService, commit: st
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
-  throw new Error(`O container subiu, mas ${health} não respondeu 200 em ${HEALTH_TIMEOUT_MS / 60_000} minutos (veja render_logs type "app").`);
+  throw new Error(`O container subiu, mas ${health} não respondeu 200 em ${HEALTH_TIMEOUT_MS / 60_000} minutos (veja hom_logs type "app").`);
 }
 
 /** At startup: AWS deploys cut by a restart are run again (merge, image and container steps can be repeated). */

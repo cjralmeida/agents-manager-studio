@@ -56,7 +56,7 @@ function Preview({ proposal, profileName }: { proposal: Proposal; profileName: (
       Array.isArray(payload.projectIds) ? (payload.projectIds.length === 0 ? 'sem repositório' : `${payload.projectIds.length} projeto(s)`) : null,
       payload.output === 'RESULT' ? 'entrega resultado' : payload.output === 'PULL_REQUEST' ? 'entrega PR/MR' : null,
       Array.isArray(payload.tools) && payload.tools.includes('board') ? 'quadro' : null,
-      Array.isArray(payload.tools) && payload.tools.includes('render') ? 'Render' : null,
+      Array.isArray(payload.tools) && payload.tools.includes('hom') ? 'HOM' : null,
       payload.autoConclude ? 'conclui sozinho' : null,
     ].filter(Boolean);
     return (
