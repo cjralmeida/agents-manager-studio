@@ -244,3 +244,38 @@ export function useDeleteAgent() {
     onSuccess: invalidate,
   });
 }
+
+export interface AgentBrowser {
+  /** A browser of the agent has pages open right now. */
+  live: boolean;
+  pages: { id: string; url: string; title: string; frameAt: number | null }[];
+}
+
+/** "Navegador ao vivo": polling it is what makes the runner send frames, so it only runs while the panel is shown. */
+export function useAgentBrowser(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['agent-browser', id],
+    queryFn: () => api.get<AgentBrowser>(`/agents/${id}/browser`),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.live ? 700 : 3_000),
+  });
+}
+
+export interface TestFailure {
+  name: string;
+  at: string;
+  screenshots: string[];
+  trace: string | null;
+  video: string | null;
+}
+
+export function useAgentTestFailures(id: string, isLive: boolean) {
+  return useQuery({
+    queryKey: ['agent-test-failures', id],
+    queryFn: () => api.get<TestFailure[]>(`/agents/${id}/test-failures`),
+    refetchInterval: isLive ? 15_000 : false,
+  });
+}
+
+/** URL of a file in the agent's copy (images, traces), served by the Studio. */
+export const agentFileUrl = (agentId: string, relativePath: string) => `/api/agents/${agentId}/files/${relativePath.split('/').map(encodeURIComponent).join('/')}`;

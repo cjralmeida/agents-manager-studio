@@ -3,6 +3,7 @@
 // - Streams progress (text, tool calls, questions, turn ends) back as events.
 // - Exits with code 0 after IDLE_TIMEOUT_MS without work; the server resumes the session later.
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { startBrowserView } from './browser-view.mjs';
 import { createStudioTools } from './studio-tools.mjs';
 
 const env = (name, fallback) => {
@@ -256,6 +257,7 @@ function pickUsage(modelUsage = {}) {
 async function main() {
   log('Runner started', { model: MODEL, resume: Boolean(RESUME_SESSION_ID) });
   void pollInbox();
+  startBrowserView(api, log);
 
   const studio = createStudioTools(
     (name, args) => api(`/tools/${name}`, { method: 'POST', body: JSON.stringify(args ?? {}) }),

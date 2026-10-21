@@ -47,6 +47,16 @@ RUN mkdir -p /opt/playwright && cd /opt/playwright \
   && npm cache clean --force && rm -rf /var/lib/apt/lists/* \
   && chmod -R a+rX /opt/playwright
 
+# Each Chromium binary is wrapped to also open a local DevTools port (it writes the port in DevToolsActivePort, in its
+# profile folder): the runner reads it to show the agent's browser live in the Studio ("Navegador ao vivo"). The tests
+# see no difference.
+RUN for bin in /opt/playwright/browsers/chromium-*/chrome-linux/chrome /opt/playwright/browsers/chromium_headless_shell-*/chrome-linux/headless_shell; do \
+    [ -f "$bin" ] || continue; \
+    mv "$bin" "$bin.real"; \
+    printf '#!/bin/sh\nexec "$0.real" --remote-debugging-port=0 "$@"\n' > "$bin"; \
+    chmod 755 "$bin"; \
+  done
+
 # Versions are pinned by the image; agents must not update themselves.
 ENV DISABLE_AUTOUPDATER=1
 

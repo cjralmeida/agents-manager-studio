@@ -24,6 +24,7 @@ import { isMirroring } from './mirror.js';
 import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
 import { learningsPrompt, phasesOfProfile } from '../quality/service.js';
 import { systemOfProject } from '../roadmaps/systems.js';
+import { testFailures } from './browser-view.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
@@ -167,6 +168,8 @@ const MEDIA_TYPES: Record<string, string> = {
   // Voice notes recorded in the browser (Chrome/Firefox record webm, Safari mp4).
   '.webm': 'audio/webm',
   '.m4a': 'audio/mp4',
+  // Playwright's trace of a failed test, opened in trace.playwright.dev.
+  '.zip': 'application/zip',
 };
 
 /** An image or a sound from the agent's copy, by path relative to it (only media, never outside the copy). */
@@ -179,6 +182,13 @@ export async function agentMedia(id: string, relativePath: string) {
   const content = await readFile(file).catch(() => null);
   if (!content) throw new HttpError(404, 'Arquivo não encontrado (a cópia do agente pode já ter sido removida).');
   return { contentType, content };
+}
+
+/** Screenshots, traces and videos of the failed tests of the agent's last Playwright runs (browser-view.ts). */
+export async function agentTestFailures(id: string) {
+  const agent = await findOrThrow(id);
+  if (agent.workdirRemovedAt) return [];
+  return testFailures(workdirPath(agent.workdir));
 }
 
 // ---------------------------------------------------------------- launch

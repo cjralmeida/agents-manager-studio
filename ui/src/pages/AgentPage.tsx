@@ -3,6 +3,7 @@ import { useAgent, useAgentAction, useDeleteAgent, useMirrorAgent } from '../api
 import { formatTokens, formatUsd, totalTokens } from '../api/usage';
 import { AgentStatusBadge } from '../components/agents/AgentStatusBadge';
 import { AgentResultPanel } from '../components/agents/AgentResultPanel';
+import { BrowserPanel } from '../components/agents/BrowserPanel';
 import { Conversation } from '../components/agents/Conversation';
 import { DiffView } from '../components/agents/DiffView';
 import { Button } from '../components/Button';
@@ -150,6 +151,7 @@ export function AgentPage() {
       </div>
 
       <AgentResultPanel agent={data} />
+      {!data.workdirRemovedAt && <BrowserPanel agent={data} />}
 
       <div className="mt-6">
         <Tabs tabs={data.hasRepository ? tabs : tabs.slice(0, 1)} active={activeTab} onChange={setActiveTab} />

@@ -7,6 +7,7 @@ import { assertOwnsProfile, assertOwnsProject } from '../auth/ownership.js';
 import { copyArchive, requestMirror } from './mirror.js';
 import { ATTACHMENTS_BODY_LIMIT, attachmentsSchema } from '../assistant/attachments.js';
 import { saveUserAttachments } from './user-attachments.js';
+import { browserFrame, browserReport, reportBrowser, watchBrowser } from './browser-view.js';
 import { applyRunnerEvents, authenticateRunner, type RunnerEvent, takeInbox } from './runner-api.js';
 import {
   AGENT_MODELS,
@@ -17,6 +18,7 @@ import {
   getAgent,
   getAgentRecord,
   agentMedia,
+  agentTestFailures,
   getAgentDiff,
   launchAgent,
   listAgentEvents,
@@ -25,6 +27,7 @@ import {
 } from './service.js';
 
 const idParams = z.object({ id: z.uuid() });
+const frameParams = z.object({ id: z.uuid(), pageId: z.string().regex(/^[\w-]{1,100}$/) });
 
 const listQuery = z
   .object({
@@ -100,6 +103,23 @@ export async function agentRoutes(app: FastifyInstance) {
     const name = `${agent.workdir.split('/').at(-1) ?? 'copia'}.tar.gz`;
     return reply.header('Content-Type', 'application/gzip').header('Content-Disposition', `attachment; filename="${name}"`).send(copyArchive(agent.workdir));
   });
+
+  /** "Navegador ao vivo": the pages the agent's browsers have open (asking marks the agent as watched). */
+  app.get('/agents/:id/browser', async (request) => {
+    const agent = await getAgentRecord(parseInput(idParams, request.params).id);
+    return watchBrowser(agent.id);
+  });
+
+  app.get('/agents/:id/browser/:pageId', async (request, reply) => {
+    const { id, pageId } = parseInput(frameParams, request.params);
+    const agent = await getAgentRecord(id);
+    const frame = browserFrame(agent.id, pageId);
+    if (!frame) throw new HttpError(404, 'Sem imagem desta página ainda.');
+    return reply.header('Content-Type', 'image/jpeg').header('Cache-Control', 'no-store').send(frame);
+  });
+
+  /** Screenshots, traces and videos of the failed tests of the agent's last Playwright runs. */
+  app.get('/agents/:id/test-failures', async (request) => agentTestFailures(parseInput(idParams, request.params).id));
 
   app.get('/agents/:id/files/*', async (request, reply) => {
     const { id } = parseInput(idParams, { id: (request.params as { id: string }).id });
@@ -190,6 +210,12 @@ export async function agentRunnerRoutes(app: FastifyInstance) {
     const { id } = parseInput(idParams, request.params);
     await applyRunnerEvents(id, parseInput(runnerEvents, request.body).events as RunnerEvent[]);
     return reply.code(204).send();
+  });
+
+  /** The browsers the agent has open and, while someone watches, a frame of each page. */
+  app.post('/internal/agents/:id/browser', { bodyLimit: 12 * 1024 * 1024 }, async (request) => {
+    const { id } = parseInput(idParams, request.params);
+    return reportBrowser(id, parseInput(browserReport, request.body));
   });
 
   /** Studio tools (board, result) called by the agent; errors go back as text the agent can act on. */
