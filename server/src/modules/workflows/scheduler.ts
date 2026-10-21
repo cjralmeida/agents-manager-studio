@@ -2,11 +2,14 @@ import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
 import { syncWorkspaceBoard } from '../boards/service.js';
 import { advanceAllRuns, runBoardTriggers } from './engine.js';
+import { runSchedules } from './schedule.js';
 
 /** How often boards due for a refresh are looked for (each board has its own interval). */
 const BOARD_TICK_MS = 15_000;
 /** How often running workflow runs are moved forward. */
 const RUNS_TICK_MS = 10_000;
+/** How often scheduled workflows are checked. */
+const SCHEDULE_TICK_MS = 60_000;
 const syncing = new Set<string>();
 /** When the board triggers last ran per workspace (a board refreshed from the UI is not synced here again). */
 const lastTriggers = new Map<string, number>();
@@ -83,14 +86,16 @@ function loop(name: string, intervalMs: number, work: () => Promise<void>, log: 
 }
 
 /**
- * Keeps the boards fresh, starts workflows from board tasks and moves running workflows forward.
+ * Keeps the boards fresh, starts workflows from board tasks and on their schedules, and moves running workflows forward.
  * Started with the server, and everything lives in the database, so it all resumes after a restart.
  */
 export function startWorkflowScheduler(log: FastifyBaseLogger) {
   const stopBoards = loop('Board scheduler', BOARD_TICK_MS, () => boardTick(log), log);
   const stopRuns = loop('Workflow runs', RUNS_TICK_MS, () => advanceAllRuns(log), log);
+  const stopSchedules = loop('Workflow schedules', SCHEDULE_TICK_MS, () => runSchedules(log), log);
   return () => {
     stopBoards();
     stopRuns();
+    stopSchedules();
   };
 }

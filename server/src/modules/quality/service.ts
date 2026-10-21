@@ -33,6 +33,7 @@ const SKILL_PHASES: Record<string, LearningPhase[]> = {
   'game-designer': ['especificacao'],
   'game-planner': ['especificacao'],
   'game-advisor': ['especificacao'],
+  'roadmap-planner': ['especificacao'],
   'backend-builder': ['codificacao'],
   'game-builder': ['codificacao'],
   'pixel-forge': ['assets'],

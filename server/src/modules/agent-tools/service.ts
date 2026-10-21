@@ -9,6 +9,7 @@ import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderToo
 import { CLICKUP_TOOL_NAMES, type ClickupToolName, runClickupTool } from '../clickup/service.js';
 import { createProject, listRepositoryOwners } from '../workspaces/create-project.js';
 import { runStudioTool } from './studio.js';
+import { roadmapForAgent, writeRoadmap } from '../roadmaps/agent.js';
 import { ORBI_OPS_TOOLS, runOrbiOp } from '../orbi/ops.js';
 import { logActivity } from '../orbi/activity.js';
 import { getTestEnv, listTestEnvs, startTestEnv, stopTestEnv } from '../test-envs/service.js';
@@ -22,6 +23,8 @@ export const AGENT_TOOL_NAMES = [
   'board_get_task',
   'board_create_task',
   'board_update_task',
+  'roadmap_get',
+  'roadmap_write',
   'quality_list',
   'quality_log',
   'quality_update',
@@ -253,6 +256,11 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
 
   if (!agent.tools.includes('board') && !agent.tools.includes('board_read')) {
     throw new HttpError(403, 'Este agente não tem acesso ao quadro de tarefas.');
+  }
+  if (name === 'roadmap_get') return roadmapForAgent(agent.workspaceId, text(args.project, 200) ?? null);
+  if (name === 'roadmap_write') {
+    if (!agent.tools.includes('roadmap')) throw new HttpError(403, 'Este agente não pode gravar roadmaps.');
+    return writeRoadmap(agent.workspaceId, text(args.project, 200) ?? '', typeof args.content === 'string' ? args.content : '', text(args.summary, 200) ?? null);
   }
   const { snapshot, repos } = await boardContext(agent.workspaceId);
   const findItem = (id: unknown) => {

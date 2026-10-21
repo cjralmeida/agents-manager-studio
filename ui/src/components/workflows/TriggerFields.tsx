@@ -1,7 +1,7 @@
 import type { Board } from '../../api/boards';
 import type { WorkflowTrigger } from '../../api/workflows';
 import { MultiSelect } from '../MultiSelect';
-import { Field, Select } from '../form';
+import { Field, Select, TextInput } from '../form';
 import { boardTrigger, decisionTrigger, featureTrigger, frontendTrigger } from './workflowModel';
 
 interface TriggerFieldsProps {
@@ -57,6 +57,8 @@ export function TriggerFields({ trigger, board, onChange }: TriggerFieldsProps) 
           </option>
         </Select>
       </Field>
+
+      {trigger.type === 'manual' && <ScheduleFields trigger={trigger} onChange={onChange} />}
 
       {trigger.type === 'feature_in_homologation' && board && (
         <>
@@ -122,6 +124,65 @@ export function TriggerFields({ trigger, board, onChange }: TriggerFieldsProps) 
               <option value="done">Concluído</option>
               <option value="homologation">Em homologação</option>
             </Select>
+          </Field>
+        </>
+      )}
+    </div>
+  );
+}
+
+const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+/** A manual workflow can also start by itself every week (e.g. the roadmap review), with a fixed message. */
+function ScheduleFields({ trigger, onChange }: { trigger: Extract<WorkflowTrigger, { type: 'manual' }>; onChange: (trigger: WorkflowTrigger) => void }) {
+  const schedule = trigger.schedule;
+  return (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={Boolean(schedule)}
+          onChange={(event) =>
+            onChange(event.target.checked ? { type: 'manual', schedule: { weekdays: [1], at: '08:00', message: '' } } : { type: 'manual' })
+          }
+        />
+        Também rodar sozinho toda semana
+      </label>
+      {schedule && (
+        <>
+          <Field label="Dias">
+            <div className="flex flex-wrap gap-1">
+              {weekdays.map((label, day) => {
+                const active = schedule.weekdays.includes(day);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      onChange({
+                        type: 'manual',
+                        schedule: { ...schedule, weekdays: active ? schedule.weekdays.filter((entry) => entry !== day) : [...schedule.weekdays, day].sort() },
+                      })
+                    }
+                    className={`rounded border px-2 py-1 text-xs ${active ? 'border-accent bg-accent/15' : 'border-border text-muted'}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field label="Horário (Brasília)">
+            <TextInput type="time" value={schedule.at} onChange={(event) => onChange({ type: 'manual', schedule: { ...schedule, at: event.target.value } })} />
+          </Field>
+          <Field label="Mensagem" hint="O que o primeiro passo recebe a cada vez.">
+            <textarea
+              className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+              rows={3}
+              value={schedule.message}
+              onChange={(event) => onChange({ type: 'manual', schedule: { ...schedule, message: event.target.value } })}
+            />
           </Field>
         </>
       )}

@@ -3,7 +3,7 @@ import type { AgentModel } from './agents';
 import { api } from './client';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
-export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects' | 'pixellab' | 'test_env';
+export type ProfileTool = 'board' | 'render' | 'render_read' | 'clickup_read' | 'projects' | 'pixellab' | 'test_env' | 'roadmap';
 
 /** A fixed agent of the workspace; each run of it is an Agent (execution). */
 export interface AgentProfile {
@@ -49,6 +49,7 @@ export const toolLabels: Record<ProfileTool, string> = {
   pixellab: 'PixelLab (gerar e animar pixel art; gasta créditos da conta do workspace)',
   test_env: 'Ambiente de teste local (subir uma cópia do projeto em Docker quando a homologação não estiver utilizável)',
   projects: 'Projetos (criar repositório novo, com sua confirmação)',
+  roadmap: 'Roadmap (ler o ritmo e gravar docs/roadmap.md dos projetos na branch base)',
 };
 
 const key = (workspaceId: string) => ['agent-profiles', workspaceId] as const;

@@ -133,6 +133,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         {profile.tools.includes('render_read') && <Badge>HOM leitura</Badge>}
         {profile.tools.includes('clickup_read') && <Badge>ClickUp leitura</Badge>}
         {profile.tools.includes('pixellab') && <Badge>PixelLab</Badge>}
+        {profile.tools.includes('roadmap') && <Badge>roadmap</Badge>}
         {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
         {profile.autoMerge && <Badge tone="success">merge automático</Badge>}
         {contextNames.length > 0 && <Badge>lê: {contextNames.join(', ')}</Badge>}

@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 /**
  * How a workflow starts:
- * - "manual": a conversation started in the Studio (the message goes to the first step);
+ * - "manual": a conversation started in the Studio (the message goes to the first step); with a schedule, the Studio
+ *   also starts it by itself on the chosen weekdays and time, with the schedule's message (see schedule.ts);
  * - "board_task": a task appears on the board matching the filters;
  * - "feature_in_homologation": every open task of a feature ("[FUNC-NNN]" in the title) reached the homologation
  *   column, so the whole feature can be tested there;
@@ -13,7 +14,21 @@ import { z } from 'zod';
  *   an agent can study it and decide it with the user. The run never moves the card; the agent does, after deciding.
  */
 export const triggerSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('manual') }).strict(),
+  z
+    .object({
+      type: z.literal('manual'),
+      schedule: z
+        .object({
+          /** 0 = Sunday ... 6 = Saturday. */
+          weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+          /** Local time (America/Sao_Paulo), "HH:MM". */
+          at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+          message: z.string().trim().min(1).max(4000),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal('board_task'),

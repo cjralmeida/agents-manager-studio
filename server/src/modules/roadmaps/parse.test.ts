@@ -46,6 +46,31 @@ describe('parseRoadmap', () => {
       ],
     );
   });
+
+  it('reads the plan: dates, estimated tasks and the goal of each day with its tasks', () => {
+    const [delivery] = parseRoadmap(
+      [
+        '## Entrega 1 — Compras',
+        '**Início:** 22/10',
+        '**Prazo:** 2026-10-28',
+        '**Tarefas previstas:** 12 tarefas',
+        '**Dias:**',
+        '- 2026-10-22 — Compras no ar: globalfarm#101, gf-novo-oficial#27',
+        '',
+        '- **23/10** (sex): tela de Vendas (#40)',
+        'Observação depois dos dias.',
+      ].join('\n'),
+      2026,
+    );
+    assert.equal(delivery!.start, '2026-10-22');
+    assert.equal(delivery!.deadline, '2026-10-28');
+    assert.equal(delivery!.estimatedTasks, 12);
+    assert.deepEqual(delivery!.days, [
+      { date: '2026-10-22', goal: 'Compras no ar: globalfarm#101, gf-novo-oficial#27', refs: ['globalfarm#101', 'gf-novo-oficial#27'] },
+      { date: '2026-10-23', goal: 'tela de Vendas (#40)', refs: ['#40'] },
+    ]);
+    assert.equal(delivery!.notes, 'Observação depois dos dias.');
+  });
 });
 
 describe('deliveryOfTask', () => {

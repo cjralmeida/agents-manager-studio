@@ -250,3 +250,8 @@ body {
     animation: none;
   }
 }
+
+/* Roadmap: the forecast part of a delivery bar. */
+.forecast-stripes {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-panel) 55%, transparent) 5px 8px);
+}

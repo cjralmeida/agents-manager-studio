@@ -4,7 +4,7 @@ import { api } from './client';
 import type { DeployEnvironment } from './render';
 
 export type WorkflowTrigger =
-  | { type: 'manual' }
+  | { type: 'manual'; schedule?: WorkflowSchedule }
   | {
       type: 'board_task';
       columnId: string | null;
@@ -16,6 +16,13 @@ export type WorkflowTrigger =
   | { type: 'feature_in_homologation'; repositories: string[] }
   | { type: 'frontend_in_homologation'; repositories: string[] }
   | { type: 'task_awaiting_decision'; repositories: string[] };
+
+/** A manual workflow the Studio also starts by itself on these weekdays and time (America/Sao_Paulo). */
+export interface WorkflowSchedule {
+  weekdays: number[];
+  at: string;
+  message: string;
+}
 
 export interface AgentStep {
   id: string;
