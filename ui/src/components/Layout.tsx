@@ -6,7 +6,7 @@ import { useCapacitySuggestions } from '../api/capacity';
 import { useOrbiPending } from '../api/orbi';
 import { useWorkspaces } from '../api/workspaces';
 import { useLiveUpdates } from '../lib/live';
-import { useAgentNotifications, useNotificationSettings } from '../lib/notifications';
+import { previewNotification, useAgentNotifications, useNotificationSettings } from '../lib/notifications';
 import { UserMenu } from './auth/UserMenu';
 import { Logo } from './Logo';
 import { OrbiPanel } from './orbi/OrbiPanel';
@@ -167,9 +167,14 @@ function NotificationControl({
     );
   }
   return (
-    <label className="flex items-center gap-2 text-muted">
-      <input type="checkbox" checked={!muted} onChange={(event) => setMuted(!event.target.checked)} />
-      Notificações do navegador
-    </label>
+    <div className="flex items-center gap-2 text-muted">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={!muted} onChange={(event) => setMuted(!event.target.checked)} />
+        Notificações do navegador
+      </label>
+      <button type="button" onClick={previewNotification} className="ml-auto text-accent hover:underline" title="Mostra uma notificação de exemplo">
+        Testar
+      </button>
+    </div>
   );
 }
