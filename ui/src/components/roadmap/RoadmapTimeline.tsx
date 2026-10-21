@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ProjectRoadmap } from '../../api/roadmaps';
+import type { SystemRoadmap } from '../../api/roadmaps';
 import { type DeliverySpan, dayMs, dayOf, daysBetween, deliverySpans, localDay, longDay, maxDay, minDay, scheduleLabels, shortDay, statusLabels, usd } from './format';
 
 const DAY = 86_400_000;
@@ -15,7 +15,7 @@ const barTone = {
  * The deliveries on the calendar, one row each: finished ones end when their last task closed, open ones at the
  * forecast (striped). A tick marks the planned deadline and a vertical line marks today.
  */
-export function RoadmapTimeline({ project, onSelect }: { project: ProjectRoadmap; onSelect: (number: number) => void }) {
+export function RoadmapTimeline({ project, onSelect }: { project: SystemRoadmap; onSelect: (number: number) => void }) {
   const [hovered, setHovered] = useState<{ span: DeliverySpan; x: number; y: number } | null>(null);
   const spans = deliverySpans(project);
   if (spans.length === 0) return null;

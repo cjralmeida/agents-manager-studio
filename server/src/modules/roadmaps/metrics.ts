@@ -178,8 +178,58 @@ export async function projectHistory(project: Project, areaOf: (ref: string) => 
   return value;
 }
 
+/**
+ * A system's metrics from its projects': they are worked on side by side, so the paces add up; costs and hours per task
+ * are averaged by the tasks each project finished. The calendar and the pauses are the workspace's, the same for all.
+ */
+export function combineMetrics(name: string, list: ProjectMetrics[]): ProjectMetrics | null {
+  if (list.length <= 1) return list[0] ?? null;
+  const first = list[0]!;
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  const weighted = (pick: (metrics: ProjectMetrics) => number | null) => {
+    const known = list.filter((metrics) => pick(metrics) !== null && metrics.tasksDone > 0);
+    const tasks = sum(known.map((metrics) => metrics.tasksDone));
+    return tasks > 0 ? round(sum(known.map((metrics) => pick(metrics)! * metrics.tasksDone)) / tasks) : null;
+  };
+  const areas = new Map<string, AreaMetrics>();
+  for (const area of list.flatMap((metrics) => metrics.byArea)) {
+    const entry = areas.get(area.area);
+    if (!entry) {
+      areas.set(area.area, { ...area });
+      continue;
+    }
+    const tasks = entry.tasks + area.tasks;
+    entry.costPerTask = round((entry.costPerTask * entry.tasks + area.costPerTask * area.tasks) / tasks);
+    entry.agentHoursPerTask = round((entry.agentHoursPerTask * entry.tasks + area.agentHoursPerTask * area.tasks) / tasks);
+    entry.tasks = tasks;
+  }
+  const daily = new Map<string, { done: number; cost: number }>();
+  for (const day of list.flatMap((metrics) => metrics.daily)) {
+    const entry = daily.get(day.day) ?? { done: 0, cost: 0 };
+    entry.done += day.done;
+    entry.cost = round(entry.cost + day.cost);
+    daily.set(day.day, entry);
+  }
+  const paces = list.flatMap((metrics) => (metrics.tasksPerDay === null ? [] : [metrics.tasksPerDay]));
+  const errors = list.filter((metrics) => metrics.error).map((metrics) => `${metrics.projectName}: ${metrics.error}`);
+  return {
+    ...first,
+    projectName: name,
+    window: { from: list.map((metrics) => metrics.window.from).sort()[0]!, to: list.map((metrics) => metrics.window.to).sort().at(-1)! },
+    productiveHours: Math.max(...list.map((metrics) => metrics.productiveHours)),
+    tasksDone: sum(list.map((metrics) => metrics.tasksDone)),
+    tasksPerDay: paces.length > 0 ? round(sum(paces)) : null,
+    costPerTask: weighted((metrics) => metrics.costPerTask),
+    agentHoursPerTask: weighted((metrics) => metrics.agentHoursPerTask),
+    totalCost: round(sum(list.map((metrics) => metrics.totalCost))),
+    byArea: [...areas.values()].sort((a, b) => b.tasks - a.tasks),
+    daily: [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([day, entry]) => ({ day, ...entry })),
+    error: errors.length > 0 ? errors.join(' · ') : null,
+  };
+}
+
 const round = (value: number) => Math.round(value * 100) / 100;
-const iso = (interval: Interval) => ({ from: new Date(interval.from).toISOString(), to: new Date(interval.to).toISOString() });
+const iso =(interval: Interval) => ({ from: new Date(interval.from).toISOString(), to: new Date(interval.to).toISOString() });
 
 export function workingDayHours(calendar: WorkCalendar) {
   const [startHours, startMinutes] = calendar.start.split(':').map(Number);

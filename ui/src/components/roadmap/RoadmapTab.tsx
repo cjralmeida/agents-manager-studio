@@ -1,58 +1,69 @@
 import { useRef, useState } from 'react';
 import type { WorkspaceDetail } from '../../api/workspaces';
-import { type ProjectRoadmap, useRefreshRoadmaps, useRoadmaps } from '../../api/roadmaps';
+import { type SystemRoadmap, useRefreshRoadmaps, useRoadmaps } from '../../api/roadmaps';
 import { Button } from '../Button';
 import { BurnupChart } from './BurnupChart';
 import { DeliveryCard, TaskList } from './DeliveryCard';
 import { RoadmapSettingsPanel } from './RoadmapSettingsPanel';
 import { RoadmapTimeline } from './RoadmapTimeline';
+import { SystemsPanel } from './SystemsPanel';
 import { daysBetween, localDay, longDay, number, usd } from './format';
 
 /**
- * Roadmap of each project: the deliveries of its docs/roadmap.md on a timeline, the plan day by day, how far each one
- * is (board tasks with "Entrega: N"), and the forecast from the pace the project's history shows (pauses cut out).
- * Everything is read live; the roadmap itself is written by the roadmap planner agent in the repository.
+ * Roadmap of each system (a product made of one or more projects): the deliveries of its roadmap.md, in the system's
+ * docs home, on a timeline, the plan day by day, how far each one is (board tasks with "Entrega: N", by project), and
+ * the forecast from the pace each project's history shows (pauses cut out). Everything is read live; the roadmap itself
+ * is written by the roadmap planner agent.
  */
 export function RoadmapTab({ workspace }: { workspace: WorkspaceDetail }) {
   const roadmaps = useRoadmaps(workspace.id);
   const refresh = useRefreshRoadmaps(workspace.id);
   const [selected, setSelected] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [systemsOpen, setSystemsOpen] = useState(false);
 
   if (roadmaps.isPending) return <p className="text-sm text-muted">Carregando...</p>;
   if (roadmaps.error) return <p className="text-sm text-red-300">{roadmaps.error.message}</p>;
 
-  const projects = roadmaps.data;
-  if (projects.length === 0) return <p className="text-sm text-muted">Este workspace não tem projetos.</p>;
-  // Projects with a roadmap first; the others stay reachable, dimmed.
-  const ordered = [...projects.filter((project) => project.roadmap), ...projects.filter((project) => !project.roadmap)];
-  const current = projects.find((project) => project.projectId === selected) ?? ordered[0]!;
+  const systems = roadmaps.data;
+  if (systems.length === 0) return <p className="text-sm text-muted">Este workspace não tem projetos.</p>;
+  // Systems with a roadmap first, then the configured ones (dimmed); a lone project without a roadmap only shows when
+  // there is nothing else.
+  const withRoadmap = systems.filter((system) => system.roadmap);
+  const configured = systems.filter((system) => !system.roadmap && !system.implicit);
+  const shown = withRoadmap.length + configured.length > 0 ? [...withRoadmap, ...configured] : systems;
+  const hidden = systems.length - shown.length;
+  const current = shown.find((system) => system.systemId === selected) ?? shown[0]!;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Projetos">
-          {ordered.map((project) => {
-            const active = project.projectId === current.projectId;
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Sistemas">
+          {shown.map((system) => {
+            const active = system.systemId === current.systemId;
             return (
               <button
-                key={project.projectId}
+                key={system.systemId}
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setSelected(project.projectId)}
+                onClick={() => setSelected(system.systemId)}
                 className={`rounded-full border px-3 py-1 text-xs ${
                   active ? 'border-accent bg-accent/15 text-white' : 'border-border text-muted hover:text-white'
-                } ${project.roadmap ? '' : 'opacity-60'}`}
-                title={project.roadmap ? undefined : 'Sem roadmap'}
+                } ${system.roadmap ? '' : 'opacity-60'}`}
+                title={[system.projects.map((project) => project.projectName).join(' + '), system.roadmap ? null : 'sem roadmap'].filter(Boolean).join(' · ')}
               >
-                {project.projectName}
-                {project.roadmap && <span className="ml-1.5 text-muted">{project.roadmap.length}</span>}
+                {system.systemName}
+                {system.roadmap && <span className="ml-1.5 text-muted">{system.roadmap.length}</span>}
               </button>
             );
           })}
+          {hidden > 0 && <span className="text-[11px] text-muted">+{hidden} projeto(s) sem roadmap</span>}
         </div>
         <div className="ml-auto flex gap-2">
+          <Button size="sm" onClick={() => setSystemsOpen((open) => !open)} aria-expanded={systemsOpen}>
+            Sistemas
+          </Button>
           <Button size="sm" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>
             Calendário e pausas
           </Button>
@@ -61,13 +72,14 @@ export function RoadmapTab({ workspace }: { workspace: WorkspaceDetail }) {
           </Button>
         </div>
       </div>
+      {systemsOpen && <SystemsPanel workspace={workspace} onClose={() => setSystemsOpen(false)} />}
       {settingsOpen && <RoadmapSettingsPanel workspaceId={workspace.id} onClose={() => setSettingsOpen(false)} />}
-      <ProjectRoadmapView key={current.projectId} project={current} />
+      <SystemRoadmapView key={current.systemId} project={current} />
     </div>
   );
 }
 
-function ProjectRoadmapView({ project }: { project: ProjectRoadmap }) {
+function SystemRoadmapView({ project }: { project: SystemRoadmap }) {
   const [focused, setFocused] = useState<number | null>(null);
   const cards = useRef(new Map<number, HTMLLIElement>());
   if (!project.roadmap) return <EmptyRoadmap project={project} />;
@@ -107,6 +119,7 @@ function ProjectRoadmapView({ project }: { project: ProjectRoadmap }) {
                   highlighted={delivery.number === current?.number}
                   forceOpen={focused === delivery.number}
                   timeZoneEnd={end ? localDay(end, timeZone) : null}
+                  timeZone={timeZone}
                 />
               );
             })}
@@ -120,15 +133,20 @@ function ProjectRoadmapView({ project }: { project: ProjectRoadmap }) {
         </section>
       )}
       <p className="text-[11px] text-muted">
-        Lido de <span className="font-mono">{project.file}</span> ({project.source === 'remote' ? 'branch base no remoto' : 'pasta local'}). Custos estimados a preço
-        de API.
+        Lido de{' '}
+        <span className="font-mono">
+          {project.docsProjectName}/{project.file}
+        </span>{' '}
+        ({project.source === 'remote' ? 'branch principal no remoto' : 'pasta local'})
+        {project.projects.length > 1 ? `, com as tarefas de ${project.projects.map((entry) => entry.projectName).join(' e ')}` : ''}. Custos estimados a preço de
+        API.
       </p>
     </div>
   );
 }
 
 /** The headline numbers: when it ends, how fast it goes, what is left to spend. */
-function Summary({ project }: { project: ProjectRoadmap }) {
+function Summary({ project }: { project: SystemRoadmap }) {
   const deliveries = project.roadmap ?? [];
   const done = deliveries.filter((delivery) => delivery.status === 'done').length;
   const metrics = project.metrics;
@@ -175,7 +193,7 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /** Where the pace comes from: effort by area and the time cut out as pauses. */
-function PacePanel({ project }: { project: ProjectRoadmap }) {
+function PacePanel({ project }: { project: SystemRoadmap }) {
   const metrics = project.metrics;
   if (!metrics) return null;
   const unit = metrics.hoursPerWorkingDay < 24 ? 'dias úteis' : 'dias';
@@ -188,6 +206,29 @@ function PacePanel({ project }: { project: ProjectRoadmap }) {
         {metrics.pauses.manual.length > 0 ? `, ${metrics.pauses.manual.length} marcadas` : ''}).
       </p>
       {metrics.error && <p className="text-xs text-amber-300">{metrics.error}</p>}
+      {project.projects.length > 1 && (
+        <table className="w-full text-xs">
+          <caption className="sr-only">Ritmo por projeto</caption>
+          <thead className="text-muted">
+            <tr>
+              <th className="py-1 text-left font-normal">Projeto</th>
+              <th className="py-1 text-right font-normal">Tarefas</th>
+              <th className="py-1 text-right font-normal">Ritmo</th>
+              <th className="py-1 text-right font-normal">Custo/tarefa</th>
+            </tr>
+          </thead>
+          <tbody>
+            {project.projects.map(({ projectId, projectName, metrics: own }) => (
+              <tr key={projectId} className="border-t border-border">
+                <td className="py-1">{projectName}</td>
+                <td className="py-1 text-right tabular-nums">{own?.tasksDone ?? '—'}</td>
+                <td className="py-1 text-right tabular-nums">{own?.tasksPerDay ? `${number(own.tasksPerDay)}/${unit === 'dias' ? 'dia' : 'dia útil'}` : '—'}</td>
+                <td className="py-1 text-right tabular-nums">{own?.costPerTask ? usd(own.costPerTask) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       {metrics.byArea.length > 0 && (
         <table className="w-full text-xs">
           <caption className="sr-only">Esforço por área</caption>
@@ -215,16 +256,19 @@ function PacePanel({ project }: { project: ProjectRoadmap }) {
   );
 }
 
-function EmptyRoadmap({ project }: { project: ProjectRoadmap }) {
+function EmptyRoadmap({ project }: { project: SystemRoadmap }) {
   return (
     <div className="space-y-2 rounded-lg border border-dashed border-border p-4 text-sm">
       <p>
-        <span className="font-medium">{project.projectName}</span> ainda não tem roadmap.
+        <span className="font-medium">{project.systemName}</span> ainda não tem roadmap.
       </p>
       {project.error && <p className="text-xs text-amber-300">Não foi possível ler o remoto: {project.error}</p>}
       <p className="text-xs text-muted">
-        Peça ao Órbi para montar o roadmap deste projeto (o agente planejador de roadmap escreve <span className="font-mono">{project.file}</span> com as entregas
-        semanais e as metas de cada dia), ou crie o arquivo na branch base. Nas tarefas do quadro, a linha <span className="font-mono">Entrega: N</span> liga cada
+        Peça ao Órbi para montar o roadmap deste sistema (o agente planejador de roadmap escreve{' '}
+        <span className="font-mono">
+          {project.docsProjectName}/{project.file}
+        </span>{' '}
+        com as entregas semanais e as metas de cada dia), ou crie o arquivo na branch principal. Nas tarefas do quadro, a linha <span className="font-mono">Entrega: N</span> liga cada
         tarefa à sua entrega.
       </p>
       <pre className="overflow-x-auto rounded bg-surface p-3 text-[11px] text-gray-300">

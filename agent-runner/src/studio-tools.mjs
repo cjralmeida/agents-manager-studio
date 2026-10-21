@@ -52,8 +52,8 @@ export function createStudioTools(call, groups) {
       tool('board_get_task', 'Mostra uma tarefa do quadro com a descrição completa.', { id: z.string() }, run('board_get_task')),
       tool(
         'roadmap_get',
-        'Roadmap de um projeto (docs/roadmap.md) com a previsão de cada entrega, o ritmo medido no histórico (tarefas por dia de trabalho, custo e horas de agente por tarefa, por área), o calendário de trabalho e as pausas. Sem "project", lista os projetos e quais têm roadmap.',
-        { project: z.string().optional().describe('Nome do projeto no Studio (ex.: "globalfarm").') },
+        'Roadmap de um sistema (o roadmap.md na casa da documentação dele) com a previsão de cada entrega e o andamento por projeto, o ritmo medido no histórico do sistema e de cada projeto (tarefas por dia de trabalho, custo e horas de agente por tarefa, por área), o calendário de trabalho e as pausas. Sem "project", lista os sistemas, os projetos de cada um e quais têm roadmap.',
+        { project: z.string().optional().describe('Nome do sistema ou de um projeto dele (ex.: "Plataforma web" ou "globalfarm").') },
         run('roadmap_get'),
       ),
     );
@@ -62,10 +62,10 @@ export function createStudioTools(call, groups) {
     tools.push(
       tool(
         'roadmap_write',
-        'Grava o docs/roadmap.md de um projeto direto na branch base (sem CI nem deploy), onde o Studio lê. Mande o arquivo INTEIRO: entregas já concluídas ficam como estão.',
+        'Grava o roadmap.md de um sistema na casa da documentação dele, direto na branch principal (sem CI nem deploy), onde o Studio lê. Um roadmap por sistema, com as tarefas de todos os projetos dele. Mande o arquivo INTEIRO: entregas já concluídas ficam como estão.',
         {
-          project: z.string().describe('Nome do projeto no Studio.'),
-          content: z.string().describe('O arquivo docs/roadmap.md inteiro, em Markdown.'),
+          project: z.string().describe('Nome do sistema ou de um projeto dele.'),
+          content: z.string().describe('O roadmap.md inteiro, em Markdown.'),
           summary: z.string().optional().describe('Resumo curto da mudança, para a mensagem do commit.'),
         },
         run('roadmap_write'),

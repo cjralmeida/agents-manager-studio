@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ProjectRoadmap } from '../../api/roadmaps';
+import type { SystemRoadmap } from '../../api/roadmaps';
 import { dayMs, dayOf, daysBetween, localDay, longDay, number, shortDay } from './format';
 
 const DAY = 86_400_000;
@@ -18,7 +18,7 @@ interface Point {
  * Tasks finished over time (cumulative, from the project's history) and, from today, the forecast line up to the
  * whole remaining roadmap at the measured pace. One axis: tasks.
  */
-export function BurnupChart({ project }: { project: ProjectRoadmap }) {
+export function BurnupChart({ project }: { project: SystemRoadmap }) {
   const [hover, setHover] = useState<number | null>(null);
   const metrics = project.metrics;
   const remaining = (project.roadmap ?? []).filter((delivery) => delivery.status !== 'done').reduce((sum, delivery) => sum + delivery.forecast.remainingTasks, 0);

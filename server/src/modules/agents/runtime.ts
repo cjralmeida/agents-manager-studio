@@ -42,7 +42,16 @@ export function runnerTools(agent: Pick<RuntimeAgent, 'tools' | 'output' | 'kind
 
 export const TIME_NOTE = '- Horários: o usuário está no fuso America/Sao_Paulo (UTC−3), e este container também (TZ). As ferramentas e as APIs do Studio devolvem horários em UTC (ISO terminando em Z): converta para o horário de Brasília antes de mostrar ao usuário ou de escrever em tarefas e relatórios (ex.: 17:44Z → 14:44).';
 
-function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = [], learnings: string | null = null) {
+/** Where the documentation of the agent's system lives (see roadmaps/systems.ts). */
+export interface DocsHome {
+  system: string;
+  project: string;
+  path: string;
+  /** The docs home is the agent's own project (its copy in /workspace). */
+  own: boolean;
+}
+
+function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null, contextProjects: ContextProject[] = [], learnings: string | null = null, docs: DocsHome | null = null) {
   // Órbi has its own guide (always the current version, also for resumed conversations).
   if (agent.kind === 'ASSISTANT') return ORBI_GUIDE;
   const tools = runnerTools(agent);
@@ -124,6 +133,14 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
         '. Leia à vontade (git log/show/diff funcionam); não tente gravar nelas.',
     );
   }
+  if (docs) {
+    const folder = docs.own ? `/workspace/${docs.path}` : `${contextMount(docs.project)}/${docs.path}`;
+    lines.push(
+      `- A documentação do sistema "${docs.system}" (funcionalidades FUNC com as regras e os critérios, pacotes de mudança MUD, decisões e o roadmap.md) fica em ${folder}` +
+        (docs.own ? ' (quando a pasta existir).' : ` (somente leitura; o que vale para todos os sistemas, como glossário e decisões gerais, fica na raiz ${contextMount(docs.project)}).`) +
+        ' Consulte o que a sua tarefa citar quando precisar de contexto; não leia tudo.',
+    );
+  }
   if (variableNames) {
     lines.push(
       `- Variáveis do workspace (ex.: credenciais de teste) ficam em ${AGENT_VARIABLES_FILE}: no shell, carregue com \`set -a; . ${AGENT_VARIABLES_FILE}; set +a\` no mesmo comando que as usa; em código (Node, Python, testes), leia /run/studio/variables.json (objeto nome → valor). Nunca leia o .env como texto: os valores dele estão entre aspas de shell. Nomes atuais: ${variableNames.join(', ') || 'nenhuma'}. Se faltar alguma, peça ao usuário (AskUserQuestion) para cadastrá-la no Studio (workspace → Configuração → Variáveis dos agentes) e carregue o arquivo de novo depois da resposta. Nunca imprima os valores.`,
@@ -157,6 +174,8 @@ export interface StartAgentInput {
   contextProjects?: ContextProject[];
   /** Lessons of the workspace for the agent's stage (Aprendizado tab). */
   learnings?: string | null;
+  /** Where its system's documentation is. */
+  docs?: DocsHome | null;
 }
 
 export interface ContextProject {
@@ -174,7 +193,7 @@ export interface ContextProject {
 const contextMount = (name: string) => `/context/${name.replace(/[^\w.-]/g, '_')}`;
 
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [], learnings = null }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [], learnings = null, docs = null }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
   const buildBinds = await buildDirBinds(agent).catch(() => []);
@@ -209,7 +228,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       SERVER_URL: config.serverInternalUrl,
       MODEL: agent.model,
       IDLE_TIMEOUT_MS: String(config.agentIdleTimeoutMs),
-      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects, learnings),
+      SYSTEM_PROMPT_APPEND: systemPromptAppend(agent, variableNames, contextProjects, learnings, docs),
       STUDIO_TOOLS: runnerTools(agent).join(','),
       // An agent's work ends with its turn (the Studio concludes it then): nothing may keep running in the
       // background, or it would be killed with the container (e.g. subagents creating tasks).

@@ -1,4 +1,4 @@
-import type { DeliveryStatus, ProjectRoadmap, RoadmapDelivery, RoadmapTask, Schedule } from '../../api/roadmaps';
+import type { DeliveryStatus, SystemRoadmap, RoadmapDelivery, RoadmapTask, Schedule } from '../../api/roadmaps';
 
 const DAY = 86_400_000;
 const weekdays = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -48,7 +48,7 @@ export interface DeliverySpan {
  * at the start of the history); it ends when it finished, at its forecast, or at its deadline. Deliveries with no
  * dates and no pace to forecast are left out of the timeline.
  */
-export function deliverySpans(project: ProjectRoadmap): DeliverySpan[] {
+export function deliverySpans(project: SystemRoadmap): DeliverySpan[] {
   const timeZone = project.metrics?.calendar.timeZone ?? 'America/Sao_Paulo';
   const today = localDay(new Date().toISOString(), timeZone);
   let cursor = project.metrics ? localDay(project.metrics.window.from, timeZone) : today;

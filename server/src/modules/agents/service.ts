@@ -23,6 +23,7 @@ import { closeSupersededPullRequests } from './superseded.js';
 import { isMirroring } from './mirror.js';
 import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.js';
 import { learningsPrompt, phasesOfProfile } from '../quality/service.js';
+import { systemOfProject } from '../roadmaps/systems.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
@@ -512,9 +513,12 @@ export async function ensureContainer(agentId: string) {
       throw new HttpError(422, 'O workspace está sem conta de agente (Claude) configurada.');
     }
 
+    const system = agent.kind === 'TASK' && agent.projectId ? await systemOfProject(agent.workspaceId, agent.projectId).catch(() => null) : null;
+    const docsElsewhere = system && system.docsProject.id !== agent.projectId ? system.docsProject : null;
     const { containerId, secretHash } = await startAgentContainer({
       agent,
-      contextProjects: await contextProjectsOf(agent),
+      contextProjects: await contextProjectsOf(agent, docsElsewhere?.id),
+      docs: system && { system: system.name, project: system.docsProject.name, path: system.docsPath, own: !docsElsewhere },
       claudeToken: secrets.decrypt(settings.agentAccount.tokenEncrypted),
       skillIds: settings.enabledSkillIds,
       env: { ...(await testServicesEnv(agent, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
@@ -540,10 +544,12 @@ async function learningsOf(agent: Agent) {
  * checkout in the Docker volume, refreshed from the remote (always current, nothing read through Windows); without a
  * remote or an account, from the user's folder as it is.
  */
-async function contextProjectsOf(agent: Agent) {
-  if (agent.contextProjectIds.length === 0) return [];
+async function contextProjectsOf(agent: Agent, docsProjectId?: string) {
+  // The docs home of the agent's system is always there to read, besides the reference projects of its profile.
+  const ids = [...new Set([...agent.contextProjectIds, ...(docsProjectId ? [docsProjectId] : [])])];
+  if (ids.length === 0) return [];
   const projects = await prisma.project.findMany({
-    where: { id: { in: agent.contextProjectIds }, workspaceId: agent.workspaceId, missingAt: null },
+    where: { id: { in: ids }, workspaceId: agent.workspaceId, missingAt: null },
     include: { workspace: { select: { name: true } } },
     orderBy: { name: 'asc' },
   });
