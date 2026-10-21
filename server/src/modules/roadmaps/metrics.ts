@@ -43,6 +43,8 @@ export interface ProjectMetrics {
   productiveHours: number;
   pauses: { auto: { from: string; to: string }[]; manual: { from: string; to: string; reason: string }[]; pausedHours: number };
   tasksDone: number;
+  /** Closed issues left out of the pace as a bulk close (a cleanup, not delivered work). */
+  bulkClosed: number;
   /** Tasks finished per productive working day; null without history. */
   tasksPerDay: number | null;
   costPerTask: number | null;
@@ -121,7 +123,9 @@ export async function projectHistory(project: Project, areaOf: (ref: string) => 
     entry.ms += Math.max(0, (agent.finishedAt ?? agent.lastActivityAt).getTime() - agent.createdAt.getTime());
     effort.set(ref, entry);
   }
-  const done = closed.filter((task) => task.closedAt >= start);
+  // A bulk close (a backlog cleanup: many issues at once, none worked on by an agent) is not delivered work.
+  const bulk = bulkClosed(closed, effort);
+  const done = closed.filter((task) => task.closedAt >= start && !bulk.has(task.ref));
   const finishedEffort = done.map((task) => ({ task, effort: effort.get(shortRef(task.ref)) ?? null, area: areaOf(task.ref) ?? 'Sem área' }));
   const measured = finishedEffort.filter((entry) => entry.effort);
   const average = (values: number[]) => (values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null);
@@ -165,6 +169,7 @@ export async function projectHistory(project: Project, areaOf: (ref: string) => 
       pausedHours: round(pausedHours),
     },
     tasksDone: done.length,
+    bulkClosed: closed.filter((task) => task.closedAt >= start && bulk.has(task.ref)).length,
     tasksPerDay: done.length > 0 && productiveDays > 0 ? round(done.length / productiveDays) : null,
     costPerTask: average(measured.map((entry) => entry.effort!.cost)) === null ? null : round(average(measured.map((entry) => entry.effort!.cost))!),
     agentHoursPerTask: measured.length > 0 ? round(average(measured.map((entry) => entry.effort!.ms / HOUR))!) : null,
@@ -218,6 +223,7 @@ export function combineMetrics(name: string, list: ProjectMetrics[]): ProjectMet
     window: { from: list.map((metrics) => metrics.window.from).sort()[0]!, to: list.map((metrics) => metrics.window.to).sort().at(-1)! },
     productiveHours: Math.max(...list.map((metrics) => metrics.productiveHours)),
     tasksDone: sum(list.map((metrics) => metrics.tasksDone)),
+    bulkClosed: sum(list.map((metrics) => metrics.bulkClosed)),
     tasksPerDay: paces.length > 0 ? round(sum(paces)) : null,
     costPerTask: weighted((metrics) => metrics.costPerTask),
     agentHoursPerTask: weighted((metrics) => metrics.agentHoursPerTask),
@@ -228,8 +234,28 @@ export function combineMetrics(name: string, list: ProjectMetrics[]): ProjectMet
   };
 }
 
+const BULK_GAP_MS = 10 * 60_000;
+const BULK_SIZE = 10;
+
+/**
+ * Refs of the issues closed in bulk: runs of at least BULK_SIZE closings less than BULK_GAP_MS apart, none of them
+ * worked on by an agent. Merges at validation close a few issues together too, but those were worked on.
+ */
+export function bulkClosed(closed: ClosedTask[], effort: Map<string, unknown>) {
+  const sorted = [...closed].sort((a, b) => a.closedAt - b.closedAt);
+  const runs: ClosedTask[][] = [];
+  for (const task of sorted) {
+    const run = runs.at(-1);
+    if (run && task.closedAt - run.at(-1)!.closedAt < BULK_GAP_MS) run.push(task);
+    else runs.push([task]);
+  }
+  return new Set(
+    runs.filter((run) => run.length >= BULK_SIZE && run.every((task) => !effort.has(shortRef(task.ref)))).flatMap((run) => run.map((task) => task.ref)),
+  );
+}
+
 const round = (value: number) => Math.round(value * 100) / 100;
-const iso =(interval: Interval) => ({ from: new Date(interval.from).toISOString(), to: new Date(interval.to).toISOString() });
+const iso = (interval: Interval) => ({ from: new Date(interval.from).toISOString(), to: new Date(interval.to).toISOString() });
 
 export function workingDayHours(calendar: WorkCalendar) {
   const [startHours, startMinutes] = calendar.start.split(':').map(Number);

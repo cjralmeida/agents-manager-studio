@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BUSINESS_HOURS } from './calendar.js';
-import { type ProjectMetrics, combineMetrics } from './metrics.js';
+import { type ProjectMetrics, bulkClosed, combineMetrics } from './metrics.js';
 
 const metrics = (name: string, overrides: Partial<ProjectMetrics>): ProjectMetrics => ({
   projectId: name,
@@ -12,6 +12,7 @@ const metrics = (name: string, overrides: Partial<ProjectMetrics>): ProjectMetri
   productiveHours: 100,
   pauses: { auto: [], manual: [], pausedHours: 20 },
   tasksDone: 0,
+  bulkClosed: 0,
   tasksPerDay: null,
   costPerTask: null,
   agentHoursPerTask: null,
@@ -65,5 +66,22 @@ describe('system metrics', () => {
     const only = metrics('the-golden-mug', { tasksDone: 5, tasksPerDay: 2 });
     assert.equal(combineMetrics('The Golden Mug', [only]), only);
     assert.equal(combineMetrics('Vazio', []), null);
+  });
+});
+
+describe('bulk closes', () => {
+  const at = (minute: number) => Date.parse('2026-10-09T18:00:00Z') + minute * 60_000;
+  const task = (number: number, minute: number) => ({ ref: `group/globalfarm#${number}`, title: `#${number}`, closedAt: at(minute) });
+
+  it('leaves out a run of ten or more closings nobody worked on', () => {
+    const cleanup = Array.from({ length: 12 }, (_, index) => task(index + 1, index));
+    const worked = [task(50, 120), task(51, 121), task(52, 122)];
+    assert.deepEqual([...bulkClosed([...worked, ...cleanup], new Map([['globalfarm#50', {}]]))].sort(), cleanup.map((entry) => entry.ref).sort());
+  });
+
+  it('keeps a run in which some task had an agent, and short runs', () => {
+    const run = Array.from({ length: 12 }, (_, index) => task(index + 1, index));
+    assert.equal(bulkClosed(run, new Map([['globalfarm#3', {}]])).size, 0);
+    assert.equal(bulkClosed(run.slice(0, 9), new Map()).size, 0);
   });
 });

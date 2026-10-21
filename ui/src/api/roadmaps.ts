@@ -66,6 +66,8 @@ export interface ProjectMetrics {
   productiveHours: number;
   pauses: { auto: { from: string; to: string }[]; manual: { from: string; to: string; reason: string }[]; pausedHours: number };
   tasksDone: number;
+  /** Closed issues left out of the pace as a bulk close (a cleanup, not delivered work). */
+  bulkClosed: number;
   tasksPerDay: number | null;
   costPerTask: number | null;
   agentHoursPerTask: number | null;

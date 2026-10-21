@@ -10,7 +10,7 @@ import { refResolver } from '../boards/dependencies.js';
 import { boardContext } from '../boards/service.js';
 import type { BoardItem, StatusRole } from '../boards/types.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
-import { addWorkingMs, localDay } from './calendar.js';
+import { addWorkingMs, dayStart, localDay } from './calendar.js';
 import { type ProjectHistory, type ProjectMetrics, combineMetrics, projectHistory, shortRef } from './metrics.js';
 import { type RoadmapDelivery, deliveryOfTask, isPlanningTask, parseRoadmap } from './parse.js';
 import { type ResolvedSystem, workspaceSystems } from './systems.js';
@@ -198,7 +198,8 @@ function deliveryView(delivery: RoadmapDelivery, tasks: TaskOfDelivery[], lanes:
 
 /**
  * Walks the open deliveries in order on the working calendar. Each project of the system advances at its own measured
- * pace, starting its part of a delivery when it finished its part of the previous one (the first, now); the delivery
+ * pace, starting its part of a delivery when it finished its part of the previous one (the first, now), and never before
+ * the delivery's planned start; the delivery
  * ends with its slowest project. A delivery not broken into tasks yet (only "Tarefas previstas") goes at the system's
  * combined pace once every project is done with the previous ones. Cost: the remaining tasks at each project's cost
  * per task.
@@ -213,10 +214,11 @@ function forecast(views: ReturnType<typeof deliveryView>[], history: ProjectHist
       if (view.deadline && view.actual.finishedAt) view.forecast.schedule = scheduleOf(view.actual.finishedAt, view.deadline, metrics.calendar.timeZone);
       continue;
     }
+    const notBefore = view.start ? dayStart(metrics.calendar.timeZone, view.start) : 0;
     if (view.progress.total === 0) {
       const remaining = view.forecast.remainingTasks;
       if (metrics.tasksPerDay && remaining > 0) {
-        const end = addWorkingMs(metrics.calendar, Math.max(...cursors.values()), (remaining / metrics.tasksPerDay) * workingDay);
+        const end = addWorkingMs(metrics.calendar, Math.max(notBefore, ...cursors.values()), (remaining / metrics.tasksPerDay) * workingDay);
         for (const id of cursors.keys()) cursors.set(id, end);
         view.forecast.end = new Date(end).toISOString();
       }
@@ -230,7 +232,7 @@ function forecast(views: ReturnType<typeof deliveryView>[], history: ProjectHist
         const pace = lanes.find((entry) => entry.projectId === lane.projectId)?.metrics;
         const perDay = pace?.tasksPerDay ?? metrics.tasksPerDay;
         if (perDay && end !== null) {
-          const laneEnd = addWorkingMs(metrics.calendar, cursors.get(lane.projectId) ?? Date.now(), (remaining / perDay) * workingDay);
+          const laneEnd = addWorkingMs(metrics.calendar, Math.max(notBefore, cursors.get(lane.projectId) ?? Date.now()), (remaining / perDay) * workingDay);
           cursors.set(lane.projectId, laneEnd);
           lane.end = new Date(laneEnd).toISOString();
           end = Math.max(end, laneEnd);

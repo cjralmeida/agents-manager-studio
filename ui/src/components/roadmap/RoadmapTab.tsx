@@ -204,6 +204,7 @@ function PacePanel({ project }: { project: SystemRoadmap }) {
         Histórico desde {longDay(localDay(metrics.window.from, metrics.calendar.timeZone))}: {number(metrics.productiveHours / metrics.hoursPerWorkingDay)} {unit} de
         trabalho efetivo. Foram cortadas {number(metrics.pauses.pausedHours, 0)} h de pausa ({metrics.pauses.auto.length} sem nada rodando
         {metrics.pauses.manual.length > 0 ? `, ${metrics.pauses.manual.length} marcadas` : ''}).
+        {metrics.bulkClosed > 0 && ` ${metrics.bulkClosed} tarefa(s) fechada(s) em lote, sem agente, ficaram fora do ritmo.`}
       </p>
       {metrics.error && <p className="text-xs text-amber-300">{metrics.error}</p>}
       {project.projects.length > 1 && (

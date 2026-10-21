@@ -46,6 +46,9 @@ export function localDay(timeZone: string, at: number) {
   return new Date(at + offsetAt(timeZone, at)).toISOString().slice(0, 10);
 }
 
+/** UTC instant a local day starts (00:00 in the time zone). */
+export const dayStart = (timeZone: string, day: string) => instant(timeZone, day, 0);
+
 /** UTC instant of a local wall time on a local day. */
 function instant(timeZone: string, day: string, minutes: number) {
   const wall = Date.parse(`${day}T00:00:00Z`) + minutes * 60_000;
