@@ -240,19 +240,19 @@ export function createStudioTools(call, groups) {
         run('render_set_env_vars'),
       ),
       tool(
-        'render_deploy',
-        'Publica em homologação: o Studio faz o commit das suas alterações, envia a branch, faz o merge do PR/MR na branch do serviço e pede o deploy ao Render. Devolve o deploymentId.',
+        'hom_publish',
+        'Publica em homologação: o Studio faz o commit das suas alterações, envia a branch, traz a branch de destino e resolve o que der (conflito que sobrar volta para você), faz o merge do PR/MR na branch do serviço e o deploy (Render ou AWS). Devolve o deploymentId.',
         {},
-        run('render_deploy'),
+        run('hom_publish'),
       ),
       tool(
-        'render_deploy_status',
-        'Estado de um deploy de homologação; espera até ele terminar (no máximo waitSeconds, padrão 180, até 240). Chame de novo enquanto finished for false.',
+        'hom_publish_status',
+        'Estado de uma publicação em homologação (o deploy); espera até ele terminar (no máximo waitSeconds, padrão 180, até 240). Chame de novo enquanto finished for false.',
         {
           deploymentId: z.string(),
           waitSeconds: z.number().int().optional(),
         },
-        run('render_deploy_status'),
+        run('hom_publish_status'),
       ),
     );
   }

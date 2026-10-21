@@ -105,7 +105,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
   }
   if (tools.includes('render')) {
     lines.push(
-      '- Use as ferramentas studio_render_* para o serviço de HOMOLOGAÇÃO do projeto no Render. Alterações que você fizer na cópia são publicadas por studio_render_deploy (o Studio faz commit, PR/MR e merge); depois do último deploy, não deixe alterações sem publicar.',
+      '- Use as ferramentas studio_render_* para o serviço de HOMOLOGAÇÃO do projeto no Render. Alterações que você fizer na cópia são publicadas por studio_hom_publish (o Studio faz commit, PR/MR, merge e deploy no Render ou na AWS); depois do último deploy, não deixe alterações sem publicar.',
     );
   }
   lines.push(

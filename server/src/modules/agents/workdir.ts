@@ -309,7 +309,7 @@ export async function commitAndPush(input: {
         throw new HttpError(
           409,
           `A branch ${input.branch} recebeu commits novos enquanto o deploy era preparado, e eles conflitam com esta cópia em: ${conflicts.join(', ')}. ` +
-            'A junção ficou em andamento na cópia: resolva os conflitos simples mantendo as duas mudanças, sem merge --abort nem commit, e chame render_deploy de novo.',
+            'A junção ficou em andamento na cópia: resolva os conflitos simples mantendo as duas mudanças, sem merge --abort nem commit, e chame hom_publish de novo.',
         );
       }
       await push();

@@ -7,7 +7,7 @@ import { type AmplifyConfig, type Ec2Config, awsClientFor, awsEnvVarKeys, setAws
 
 /**
  * The render_* agent tools for a project that runs on AWS: same names and answers, so the skills and workflows do
- * not change (render_deploy and render_deploy_status go through the shared deploy flow).
+ * not change (hom_publish and hom_publish_status go through the shared deploy flow).
  */
 
 type Args = Record<string, unknown>;
@@ -50,7 +50,7 @@ export async function setAwsVarsTool(agent: Agent, service: AwsService, args: Ar
   await addEvent(agent.id, 'status', {
     message: `Variáveis da AWS (${service.name}) — ${[created.length && `criadas: ${created.join(', ')}`, updated.length && `alteradas: ${updated.join(', ')}`].filter(Boolean).join('; ')}.`,
   });
-  return { created, updated, message: 'Variáveis gravadas. Elas valem a partir do próximo deploy (render_deploy).' };
+  return { created, updated, message: 'Variáveis gravadas. Elas valem a partir do próximo deploy (hom_publish).' };
 }
 
 export async function awsLogs(agent: Agent, service: AwsService, args: Args) {

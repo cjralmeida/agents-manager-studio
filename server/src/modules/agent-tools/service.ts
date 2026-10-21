@@ -191,7 +191,7 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
     return runClickupTool(agent, name as ClickupToolName, args);
   }
 
-  if (name.startsWith('render_')) {
+  if (name.startsWith('render_') || name.startsWith('hom_publish')) {
     const allowed = agent.tools.includes('render') || (agent.tools.includes('render_read') && RENDER_READ_TOOLS.includes(name));
     if (!allowed) throw new HttpError(403, 'Este agente não tem acesso a esta ferramenta do Render.');
     return runRenderTool(agent, name as RenderToolName, args);

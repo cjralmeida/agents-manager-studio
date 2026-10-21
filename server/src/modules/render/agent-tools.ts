@@ -18,6 +18,9 @@ import { awsServiceOf } from '../aws/service.js';
 export const RENDER_TOOL_NAMES = [
   'render_service',
   'render_set_env_vars',
+  'hom_publish',
+  'hom_publish_status',
+  // Old names of hom_publish and hom_publish_status (agents started before the rename).
   'render_deploy',
   'render_deploy_status',
   'render_logs',
@@ -55,7 +58,7 @@ async function conflictsBeforeDeploy(agent: Agent) {
       '',
       REVALIDATE_AFTER_MERGE,
       '',
-      'Depois chame render_deploy de novo: o Studio envia a junção para a branch do PR/MR e faz o merge.',
+      'Depois chame hom_publish de novo: o Studio envia a junção para a branch do PR/MR e faz o merge.',
       '',
       'Só NÃO resolva quando as duas versões tomam decisões diferentes sobre a mesma regra (ex.: o mesmo cálculo ou validação mudou de dois jeitos) ou quando juntar exige reescrever a funcionalidade: aí reporte failure com os arquivos e o motivo, e a tarefa volta para quem fez.',
     ].join('\n'),
@@ -103,7 +106,7 @@ function checkBranch(agent: Agent, branch: string | null) {
 async function ownDeployment(agent: Agent, id: unknown) {
   const deployment = typeof id === 'string' ? await getDeployment(id).catch(() => null) : null;
   if (!deployment || deployment.workspaceId !== agent.workspaceId || deployment.projectId !== agent.projectId) {
-    throw new HttpError(404, 'Deploy não encontrado para este projeto. Use o deploymentId que render_deploy devolveu.');
+    throw new HttpError(404, 'Deploy não encontrado para este projeto. Use o deploymentId que hom_publish devolveu.');
   }
   return deployment;
 }
@@ -122,7 +125,10 @@ function deploymentView(deployment: Awaited<ReturnType<typeof getDeployment>>) {
   };
 }
 
-export async function runRenderTool(agent: Agent, name: RenderToolName, args: Args) {
+const RENAMED: Partial<Record<RenderToolName, RenderToolName>> = { render_deploy: 'hom_publish', render_deploy_status: 'hom_publish_status' };
+
+export async function runRenderTool(agent: Agent, requested: RenderToolName, args: Args) {
+  const name = RENAMED[requested] ?? requested;
   if (name === 'render_environments') {
     const [services, awsServices] = await Promise.all([
       prisma.renderService.findMany({
@@ -164,7 +170,7 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
         return awsMetrics(agent, aws, args);
       case 'render_events':
         return awsEvents(agent, aws, args);
-      case 'render_deploy': {
+      case 'hom_publish': {
         requireAwsBranch(agent, aws);
         const conflict = await conflictsBeforeDeploy(agent);
         if (conflict) return conflict;
@@ -175,10 +181,10 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
           ...deploymentView(deployment),
           merged: published.toMerge ? 'o Studio faz o merge do PR/MR antes do deploy' : 'nada novo para mesclar: a branch base já tem tudo',
           serviceUrl: aws.url,
-          next: 'Acompanhe com render_deploy_status até finished = true (na AWS o Studio gera a imagem, publica e espera o health check).',
+          next: 'Acompanhe com hom_publish_status até finished = true (na AWS o Studio gera a imagem, publica e espera o health check).',
         };
       }
-      case 'render_deploy_status': {
+      case 'hom_publish_status': {
         const wait = Math.min(Math.max(Number(args.waitSeconds ?? 180) || 0, 0), MAX_WAIT_SECONDS);
         const deadline = Date.now() + wait * 1000;
         let deployment = await ownDeployment(agent, args.deploymentId);
@@ -224,10 +230,10 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
       await addEvent(agent.id, 'status', {
         message: `Variáveis do Render (homologação) — ${[created.length && `criadas: ${created.join(', ')}`, updated.length && `alteradas: ${updated.join(', ')}`].filter(Boolean).join('; ')}.`,
       });
-      return { created, updated, message: 'Variáveis gravadas. Elas valem a partir do próximo deploy (render_deploy).' };
+      return { created, updated, message: 'Variáveis gravadas. Elas valem a partir do próximo deploy (hom_publish).' };
     }
 
-    case 'render_deploy': {
+    case 'hom_publish': {
       checkBranch(agent, (await client.serviceDetails(service.serviceId)).branch);
       const conflict = await conflictsBeforeDeploy(agent);
       if (conflict) return conflict;
@@ -243,11 +249,11 @@ export async function runRenderTool(agent: Agent, name: RenderToolName, args: Ar
         ...deploymentView(deployment),
         merged: published.toMerge ? 'o Studio faz o merge do PR/MR antes do deploy' : 'nada novo para mesclar: a branch base já tem tudo',
         serviceUrl: service.url,
-        next: 'Acompanhe com render_deploy_status até finished = true.',
+        next: 'Acompanhe com hom_publish_status até finished = true.',
       };
     }
 
-    case 'render_deploy_status': {
+    case 'hom_publish_status': {
       const wait = Math.min(Math.max(Number(args.waitSeconds ?? 180) || 0, 0), MAX_WAIT_SECONDS);
       const deadline = Date.now() + wait * 1000;
       let deployment = await ownDeployment(agent, args.deploymentId);
