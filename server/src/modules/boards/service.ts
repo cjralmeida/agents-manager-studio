@@ -40,6 +40,9 @@ const signatures = new Map<string, string>();
 /** GitHub listings take a few seconds to include new items; items created here are kept until they show up. */
 const RECENT_TTL_MS = 60_000;
 const recentItems = new Map<string, { at: number; item: BoardItem }[]>();
+/** The model column the Studio last moved each task to (joined id), to put back a status someone removed outside it. */
+const studioMoves = new Map<string, string>();
+const WORKING = ['PREPARING', 'RUNNING', 'WAITING_INPUT', 'READY_FOR_REVIEW', 'FINALIZING'] as const;
 
 // ---------------------------------------------------------------- workspace repositories
 
@@ -412,8 +415,34 @@ export async function syncWorkspaceBoard(workspaceId: string, onlyDue = false) {
   for (const source of sources) {
     await syncSource(source).catch((error: unknown) => errors.push(`${source.title}: ${error instanceof Error ? error.message : String(error)}`));
   }
-  if (sources.length > 0) await releaseDependents(workspaceId).catch(() => undefined);
+  if (sources.length > 0) {
+    await releaseDependents(workspaceId).catch(() => undefined);
+    await keepAgentTasksInPlace(workspaceId).catch(() => undefined);
+  }
   return { synced: sources.length, errors };
+}
+
+/**
+ * A task an agent is working on that lost its status outside the Studio (e.g. someone saving the issue's labels right
+ * after the Studio set "Em andamento") falls back to "A fazer" while the agent keeps working, and could be picked
+ * again. It goes back to the column the Studio last put it in. Moves to other columns made outside are respected.
+ */
+async function keepAgentTasksInPlace(workspaceId: string) {
+  if (studioMoves.size === 0) return;
+  const agents = await prisma.agent.findMany({
+    where: { workspaceId, status: { in: [...WORKING] }, taskItemId: { not: null } },
+    select: { taskItemId: true },
+  });
+  const ids = new Set(agents.map((agent) => agent.taskItemId!).filter((id) => studioMoves.has(id)));
+  if (ids.size === 0) return;
+  const { snapshot, statusMap } = await boardContext(workspaceId);
+  for (const item of snapshot.items) {
+    const expected = studioMoves.get(item.id);
+    if (!ids.has(item.id) || !expected || item.isClosed || item.columnId === expected) continue;
+    if (expected === statusMap.todo || expected === statusMap.blocked || expected === statusMap.done) continue;
+    if (item.columnId !== null && item.columnId !== statusMap.todo) continue;
+    await moveItem(workspaceId, item.id, expected);
+  }
 }
 
 /** A converted source is "drift" when someone changed it on the provider; it is never reverted on its own. */
@@ -560,6 +589,7 @@ export async function moveItem(workspaceId: string, joinedId: string, modelColum
   const column = toSourceColumn(mappingOf(source), model, modelColumnId);
   if (!column) throw new HttpError(422, `O quadro "${source.title}" não tem essa coluna. Sincronize-o com o modelo.`);
   await (await adapterFor(source)).moveItem(refOf(source), snapshot, item.id, column);
+  studioMoves.set(joinedId, modelColumnId);
   item.columnId = column;
   if (source.provider === 'GITLAB') item.isClosed = column === GITLAB_FIXED_COLUMNS.last;
   boardChanged(workspaceId);
