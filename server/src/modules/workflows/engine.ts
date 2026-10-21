@@ -1166,9 +1166,16 @@ async function reopenRecoveredRuns(log: FastifyBaseLogger) {
     // The failed step must be the last thing that happened in its lane (nothing after it was started).
     const last = failed.find((step) => !run.steps.some((other) => other.lane === step.lane && other.startedAt > step.startedAt));
     if (!last) continue;
-    const agent = await prisma.agent.findUnique({ where: { id: last.agentId! }, select: { status: true, errorMessage: true, result: true, finishedAt: true } });
+    // A failure the agent reported (e.g. a test that rejected the task) is an outcome, not a stop.
+    if ((last.output as { status?: string } | null)?.status === 'failure') continue;
+    const agent = await prisma.agent.findUnique({
+      where: { id: last.agentId! },
+      select: { status: true, errorMessage: true, result: true, finishedAt: true, workflowRunId: true },
+    });
     const result = (agent?.result ?? {}) as { status?: string };
     if (agent?.status !== 'COMPLETED' || agent.errorMessage || result.status === 'failure') continue;
+    // An agent sent on to another run (a reused tester) finished that run's task: its result is not this one's.
+    if (agent.workflowRunId && agent.workflowRunId !== run.id) continue;
     if (!agent.finishedAt || !run.finishedAt || agent.finishedAt <= run.finishedAt) continue;
     await prisma.workflowStepRun.update({ where: { id: last.id }, data: { status: 'RUNNING', error: null, finishedAt: null } });
     await prisma.workflowRun.update({ where: { id: run.id }, data: { status: 'RUNNING', error: null, finishedAt: null } });
