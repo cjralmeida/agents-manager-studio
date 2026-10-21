@@ -198,6 +198,23 @@ export function createGitHubClient(host: string, token: string) {
       );
     },
 
+    async addComment(_board, itemId, body) {
+      const data = await gql(`query($i: ID!) { node(id: $i) { ... on ProjectV2Item { content { ... on Issue { id } ... on PullRequest { id } } } } }`, { i: itemId });
+      const subjectId = data.node?.content?.id as string | undefined;
+      if (!subjectId) throw new HttpError(422, 'Rascunhos do quadro não têm comentários: escreva na descrição (board_update_task).');
+      await gql(`mutation($s: ID!, $b: String!) { addComment(input: { subjectId: $s, body: $b }) { clientMutationId } }`, { s: subjectId, b: body });
+    },
+
+    async listComments(_board, itemId, limit) {
+      const comments = `comments(last: ${Math.min(limit, 50)}) { nodes { author { login } createdAt body } }`;
+      const data = await gql(
+        `query($i: ID!) { node(id: $i) { ... on ProjectV2Item { content { ... on Issue { ${comments} } ... on PullRequest { ${comments} } } } } }`,
+        { i: itemId },
+      );
+      const nodes = (data.node?.content?.comments?.nodes ?? []) as { author: { login: string } | null; createdAt: string; body: string }[];
+      return nodes.map((node) => ({ author: node.author?.login ?? '?', at: node.createdAt, body: node.body }));
+    },
+
     async applyStructure(board, current, desired) {
       await applyProjectStructure(gql, board.externalId, current, desired);
     },

@@ -82,6 +82,7 @@ function systemPromptAppend(agent: RuntimeAgent, variableNames: string[] | null,
     lines.push(
       '- Use as ferramentas studio_board_* para consultar, criar e atualizar tarefas no quadro de tarefas do workspace.',
       '- A coluna Backlog é só para o que ainda não foi decidido: uma tarefa que espera uma decisão entre um agente e o usuário (uma dúvida que você não pode resolver sozinho) vai para lá com o campo Decisão = "Aguardando decisão" — um agente é chamado para decidir com o usuário; quem decide limpa o campo (fields {"Decisão": ""}). Uma tarefa decidida que espera outras fica em "A fazer" com a linha "Depende de: repo#N": os agentes só a pegam quando as dependências forem entregues.',
+      '- O que você apontar sobre uma tarefa — revisão ou teste aprovado ou reprovado (com o relatório), correções feitas ou pedidas, decisões, publicação, observações — vai como comentário assinado: studio_board_comment_task com o selo (kind). O Studio põe o seu nome de agente, a etapa, a data e a hora. A descrição da tarefa fica só com a especificação (objetivo, RN, CA, dependências, Entrega): mude-a só para corrigir ou completar a especificação. Antes de trabalhar numa tarefa que já voltou, leia os comentários (studio_board_get_task).',
     );
   }
   if (tools.includes('projects')) {

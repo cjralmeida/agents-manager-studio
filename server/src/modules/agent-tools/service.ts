@@ -2,7 +2,9 @@ import { prisma } from '../../db.js';
 import { parseRemote } from '../agents/remote.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
-import { boardContext, createTask, editItem, moveItem, setItemAssignees, setItemClosed, setItemField } from '../boards/service.js';
+import { boardContext, commentItem, createTask, editItem, itemComments, moveItem, setItemAssignees, setItemClosed, setItemField } from '../boards/service.js';
+import { COMMENT_KINDS, type CommentKind, formatComment, stepOfTitle } from './comment-format.js';
+import { REWORK_MARK } from '../workflows/match.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
 import { findByName, resolveColumn, resolveFields } from './resolve.js';
 import { RENDER_READ_TOOLS, RENDER_TOOL_NAMES, type RenderToolName, runRenderTool } from '../render/agent-tools.js';
@@ -23,6 +25,7 @@ export const AGENT_TOOL_NAMES = [
   'board_get_task',
   'board_create_task',
   'board_update_task',
+  'board_comment_task',
   'roadmap_get',
   'roadmap_write',
   'quality_list',
@@ -286,8 +289,34 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       };
     }
 
-    case 'board_get_task':
-      return describeItem(snapshot, findItem(args.id), true);
+    case 'board_get_task': {
+      const item = findItem(args.id);
+      const comments = await itemComments(agent.workspaceId, item.id, 15);
+      return { ...describeItem(snapshot, item, true), comments };
+    }
+
+    case 'board_comment_task': {
+      if (!agent.tools.includes('board') && agent.kind !== 'ASSISTANT') throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      const item = findItem(args.id);
+      const kind = text(args.kind) as CommentKind | undefined;
+      if (!kind || !COMMENT_KINDS.includes(kind)) throw new HttpError(400, `kind deve ser um de: ${COMMENT_KINDS.join(', ')}.`);
+      const body = text(args.text, 50_000)?.trim();
+      if (!body) throw new HttpError(400, 'Escreva o texto do comentário.');
+      const profile = agent.profileId ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true } }) : null;
+      const author = {
+        agentName: agent.kind === 'ASSISTANT' ? 'Órbi' : (profile?.name ?? agent.title.slice(0, 60)),
+        step: agent.kind === 'ASSISTANT' ? null : stepOfTitle(agent.title),
+        executionId: agent.id,
+      };
+      const ref = item.repository && item.number ? `${item.repository}#${item.number}` : null;
+      await commentItem(agent.workspaceId, item.id, formatComment({ kind, text: body, author, taskRef: ref }));
+      // A rejected task comes back as a fix: the mark (invisible on GitHub/GitLab) puts it first and tells its agent so.
+      if (kind === 'reprovado' && !item.body.includes(REWORK_MARK)) {
+        await editItem(agent.workspaceId, item.id, { body: `${item.body.trimEnd()}\n\n${REWORK_MARK}` });
+      }
+      if (agent.kind === 'ASSISTANT') await logOrbiTask(agent, `Comentou na tarefa "${item.title}"`, item.url);
+      return { ok: true, task: ref ?? item.id, url: item.url };
+    }
 
     case 'board_create_task': {
       if (!agent.tools.includes('board') && agent.kind !== 'ASSISTANT') throw new HttpError(403, 'Este agente só pode consultar o quadro.');

@@ -15,7 +15,8 @@ import { fastForwardFrom } from '../agents/workdir.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
 import { dependenciesDelivered, dependencyRefs, refResolver } from '../boards/dependencies.js';
-import { boardContext, editItem, moveAgentTask } from '../boards/service.js';
+import { boardContext, commentItem, editItem, itemComments, moveAgentTask } from '../boards/service.js';
+import { formatComment } from '../agent-tools/comment-format.js';
 import type { BoardField, BoardItem, StatusMap } from '../boards/types.js';
 import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
 import { getResourceUsage } from '../system/service.js';
@@ -698,11 +699,11 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     if (!pullRequest) {
       // Nothing to publish: the task goes back to whoever makes it, instead of waiting in validation forever.
       const notice = [
-        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '### Aviso de publicação',
         '',
         `Nenhum PR/MR cita esta tarefa, então não há o que publicar. Abra o PR/MR para a branch base citando a tarefa na descrição (ex.: "Closes #${task.number}") e mova a tarefa de novo para a coluna de validação.`,
       ].join('\n');
-      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await noticeOnTask(run, task, notice);
       await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
       return fail(`Nenhum PR/MR cita a tarefa "${task.title}". A tarefa voltou para "A fazer" com o aviso.`);
     }
@@ -710,12 +711,12 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     const { baseBranch } = await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { baseBranch: true } });
     if (baseBranch && pullRequest.baseBranch !== baseBranch) {
       const notice = [
-        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '### Aviso de publicação',
         '',
         `O PR/MR ${pullRequest.url} aponta para \`${pullRequest.baseBranch}\`, mas este projeto só publica a partir de \`${baseBranch}\`. Nada foi mesclado.`,
         `Abra (ou redirecione) o PR/MR para \`${baseBranch}\` e mova a tarefa de novo para a coluna de validação.`,
       ].join('\n');
-      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await noticeOnTask(run, task, notice);
       await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
       return fail(`O PR/MR da tarefa aponta para "${pullRequest.baseBranch}"; o projeto só aceita "${baseBranch}". A tarefa voltou para "A fazer" com o aviso.`);
     }
@@ -732,12 +733,12 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
             );
       if (!problem) continue;
       const notice = [
-        `## Aviso de publicação — ${new Date().toISOString().slice(0, 10)}`,
+        '### Aviso de publicação',
         '',
         `Esta tarefa tem mais de um PR/MR aberto, e todos são mesclados na validação. O ${other.url} ${problem}. Nada foi publicado.`,
         `Resolva (ou feche o PR/MR que não vale mais) e mova a tarefa de novo para a coluna de validação.`,
       ].join('\n');
-      await editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }).catch(() => undefined);
+      await noticeOnTask(run, task, notice);
       await moveAgentTask({ workspaceId: run.workspaceId, taskItemId: task.id }, 'todo');
       return fail(`O PR/MR ${other.url} da tarefa ${problem}. A tarefa voltou para "A fazer" com o aviso.`);
     }
@@ -766,7 +767,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     task && !homologation
       ? decision
         ? decisionPrompt(task, decisionFields)
-        : taskPrompt(task, '')
+        : taskPrompt(task, '', await itemComments(run.workspaceId, task.id, 8))
       : index === 0
         ? (trigger.message ?? run.title)
         : `Pedido original: ${trigger.message ?? run.title}`,
@@ -867,6 +868,15 @@ async function reuseHomologationTester(run: RunWithSteps, profileId: string, pro
   } catch {
     return null;
   }
+}
+
+/** A notice of the Studio on a task: a signed comment, or a section of the description when comments fail. */
+async function noticeOnTask(run: { id: string; workspaceId: string }, task: BoardItem, notice: string) {
+  const ref = task.repository && task.number ? `${task.repository}#${task.number}` : null;
+  const body = formatComment({ kind: 'observacao', text: notice, author: { agentName: 'Studio', step: 'Publicação', executionId: run.id }, taskRef: ref });
+  await commentItem(run.workspaceId, task.id, body)
+    .catch(() => editItem(run.workspaceId, task.id, { body: `${task.body.trimEnd()}\n\n${notice}` }))
+    .catch(() => undefined);
 }
 
 /** The open PR/MR made outside the Studio for a task, found with the workspace account of the project's host. */

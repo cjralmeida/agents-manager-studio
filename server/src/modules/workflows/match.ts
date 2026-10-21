@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { closedOffBoard, decisionMark, dependencyRefs, itemRef, refResolver } from '../boards/dependencies.js';
-import type { BoardField, BoardItem } from '../boards/types.js';
+import type { BoardField, BoardItem, ItemComment } from '../boards/types.js';
 
 /** What a board-triggered workflow looks for on the board. */
 export interface TaskRule {
@@ -59,12 +59,16 @@ export function effectivePriorityRanks(items: BoardItem[], fields: BoardField[])
   return rank;
 }
 
-/** A test report written in the task when it was sent back (homologation, play test): the task is a fix, not new work. */
+/**
+ * A test report written in the task when it was sent back (homologation, play test): the task is a fix, not new work.
+ * Reports are comments now; a "reprovado" comment leaves REWORK_MARK in the description (invisible when rendered).
+ */
 const REWORK_REPORT = /^#{2,3}\s*Relatório de (HOM|teste)\b/im;
+export const REWORK_MARK = '<!-- studio:retrabalho -->';
 
 /** Whether an open task is a fix of work already delivered (it came back with a test report). */
 export function isRework(item: BoardItem) {
-  return !item.isClosed && REWORK_REPORT.test(item.body);
+  return !item.isClosed && (REWORK_REPORT.test(item.body) || item.body.includes(REWORK_MARK));
 }
 
 /**
@@ -95,18 +99,25 @@ export function pickTasks(items: BoardItem[], fields: BoardField[], rule: TaskRu
 }
 
 const REWORK_NOTE = [
-  '**Esta tarefa é uma CORREÇÃO.** Ela já foi entregue e testada; o relatório de teste no fim da descrição (Relatório de HOM/de teste) diz o que falhou.',
+  '**Esta tarefa é uma CORREÇÃO.** Ela já foi entregue e testada; o relatório de teste (o comentário "Reprovado" mais recente, abaixo, ou o Relatório de HOM/de teste no fim da descrição, nas tarefas antigas) diz o que falhou.',
   'O trabalho anterior já está na branch de destino: corrija só o que o relatório aponta (e o que for preciso para isso), com um teste para cada falha (HOM-NN). Não refaça a tarefa.',
   'Ao revisar ou testar uma correção, confira as falhas do relatório e as áreas que a correção mexeu (regra de revalidar só o que pode mudar comportamento).',
 ].join('\n');
 
 /** Message describing a task for an agent; the server appends the board README after it. */
-export function taskPrompt(item: BoardItem, instructions: string) {
+export function taskPrompt(item: BoardItem, instructions: string, comments: ItemComment[] = []) {
   const ref = item.repository && item.number ? `${item.repository}#${item.number}` : 'do quadro';
   const link = [item.url, `id no quadro: ${item.id}`].filter(Boolean).join(' — ');
   const parts = [`Resolva a tarefa ${ref}: ${item.title}`, link];
   if (isRework(item)) parts.push('', REWORK_NOTE);
-  parts.push('', item.body.trim());
+  parts.push('', item.body.replace(REWORK_MARK, '').trim());
+  if (comments.length > 0) {
+    parts.push('', '---', `Comentários da tarefa (os ${comments.length} mais recentes, do mais antigo ao mais novo):`);
+    for (const comment of comments) {
+      const body = comment.body.length > 6000 ? `${comment.body.slice(0, 6000)}\n[…cortado: leia inteiro com board_get_task]` : comment.body;
+      parts.push('', `> ${comment.author}, ${comment.at}`, body.trim());
+    }
+  }
   if (instructions.trim()) parts.push('', '---', 'Instruções extras:', instructions.trim());
   return parts.join('\n').trim();
 }
@@ -263,7 +274,7 @@ export function featurePrompt(feature: ReadyFeature, items: BoardItem[] = [], do
       : []),
     [
       '## Ao terminar',
-      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato (API fora do contrato → tarefa de backend; API certa e tela errada → tarefa da tela; o próprio contrato errado ou incompleto → decisão). Escreva o "Relatório de HOM" em cada tarefa com falha e devolva-a para "A fazer", inclusive uma tela que estava em "Concluído". Contrato errado: crie uma tarefa no "Backlog" com o campo Decisão "Aguardando decisão" explicando o que falta decidir. As sem falha seguem as regras de aprovado.',
+      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato (API fora do contrato → tarefa de backend; API certa e tela errada → tarefa da tela; o próprio contrato errado ou incompleto → decisão). Comente o "Relatório de HOM" em cada tarefa com falha (board_comment_task, kind "reprovado") e devolva-a para "A fazer", inclusive uma tela que estava em "Concluído". Contrato errado: crie uma tarefa no "Backlog" com o campo Decisão "Aguardando decisão" explicando o que falta decidir. As sem falha seguem as regras de aprovado.',
       `- Aprovado: mova para "Concluído" todas as tarefas testadas aqui${inHomologation.length > 0 ? `, inclusive as telas em homologação (${inHomologation.join(', ')})` : ''}. As telas que ainda vão usar estas rotas são testadas depois; se uma delas achar a API fora do contrato, abre uma tarefa de bug (não reabre esta).`,
     ].join('\n'),
   ].join('\n\n');
@@ -324,9 +335,9 @@ export function frontendPrompt(ready: ReadyFrontendTask, items: BoardItem[], don
     [
       '## Ao terminar',
       `- Aprovado: o Studio move ${ref} para "Concluído" quando você terminar com sucesso. Não mova as tarefas de backend: o teste da API conclui cada uma.`,
-      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato, e escreva o "Relatório de HOM" onde couber:',
-      `  - Tela errada (a API segue o contrato): devolva ${ref} para "A fazer" com o relatório.`,
-      `  - API fora do contrato (campo, tipo, status ou erro diferente do openapi): se a tarefa de backend ainda está em homologação, escreva o relatório nela e devolva-a para "A fazer". Se ela já está em "Concluído", não a reabra: crie uma tarefa de bug no repositório da API com o título "[FUNC-NNN] Bug API — <o que está errado>", Área Backend, Tipo Bug, a mesma prioridade da tela, o relatório (o que a tela pediu, o que a API respondeu, o que o contrato diz) e a linha "Relacionada: <tarefa de backend original>". Nos dois casos, ${ref} fica em homologação e ganha (ou mantém) na linha "Depende de:" a tarefa de backend devolvida ou o bug criado: o Studio testa a tela de novo sozinho quando a correção chegar em homologação.`,
+      '- Reprovado: decida de quem é cada falha pela rede, contra o contrato, e comente o "Relatório de HOM" onde couber (board_comment_task, kind "reprovado"):',
+      `  - Tela errada (a API segue o contrato): devolva ${ref} para "A fazer" com o relatório comentado nela.`,
+      `  - API fora do contrato (campo, tipo, status ou erro diferente do openapi): se a tarefa de backend ainda está em homologação, comente o relatório nela e devolva-a para "A fazer". Se ela já está em "Concluído", não a reabra: crie uma tarefa de bug no repositório da API com o título "[FUNC-NNN] Bug API — <o que está errado>", Área Backend, Tipo Bug, a mesma prioridade da tela, o relatório (o que a tela pediu, o que a API respondeu, o que o contrato diz) e a linha "Relacionada: <tarefa de backend original>". Nos dois casos, ${ref} fica em homologação e ganha (ou mantém) na linha "Depende de:" a tarefa de backend devolvida ou o bug criado: o Studio testa a tela de novo sozinho quando a correção chegar em homologação.`,
       `  - O próprio contrato está errado ou incompleto: crie uma tarefa no "Backlog" com o campo Decisão "Aguardando decisão" explicando o que falta decidir, e ponha-a na linha "Depende de:" de ${ref}, que fica em homologação.`,
       '  - Uma falha da tela e outra da API: as duas coisas (a tela vai para "A fazer" com a parte dela; a API segue a regra acima).',
     ].join('\n'),

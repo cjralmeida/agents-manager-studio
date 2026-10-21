@@ -170,6 +170,7 @@ const STUDIO_TOOL_LABELS = {
   board_get_task: () => 'Quadro: ler tarefa',
   board_create_task: (input) => `Quadro: criar tarefa "${input.title ?? ''}"`,
   board_update_task: (input) => `Quadro: atualizar tarefa${input.column ? ` → "${input.column}"` : ''}`,
+  board_comment_task: (input) => `Quadro: comentar (${input.kind})`,
   hom_service: () => 'Lendo o serviço de homologação',
   hom_set_env_vars: (input) => `Homologação: variáveis ${(input.vars ?? []).map((entry) => entry.key).join(', ')}`,
   hom_publish: () => 'Publicando em homologação (commit, merge e deploy)',

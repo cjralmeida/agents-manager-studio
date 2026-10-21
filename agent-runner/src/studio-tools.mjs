@@ -49,7 +49,12 @@ export function createStudioTools(call, groups) {
         },
         run('board_list_tasks'),
       ),
-      tool('board_get_task', 'Mostra uma tarefa do quadro com a descrição completa.', { id: z.string() }, run('board_get_task')),
+      tool(
+        'board_get_task',
+        'Mostra uma tarefa do quadro com a descrição completa e os últimos comentários (relatórios, reprovações, correções e decisões de outros agentes e de pessoas). Leia os comentários antes de trabalhar numa tarefa que já voltou.',
+        { id: z.string() },
+        run('board_get_task'),
+      ),
       tool(
         'roadmap_get',
         'Roadmap de um sistema (o roadmap.md na casa da documentação dele) com a previsão de cada entrega e o andamento por projeto, o ritmo medido no histórico do sistema e de cada projeto (tarefas por dia de trabalho, custo e horas de agente por tarefa, por área), o calendário de trabalho e as pausas. Sem "project", lista os sistemas, os projetos de cada um e quais têm roadmap.',
@@ -99,6 +104,18 @@ export function createStudioTools(call, groups) {
           closed: z.boolean().optional().describe('Só o Órbi: true fecha a issue, false reabre.'),
         },
         run('board_update_task'),
+      ),
+      tool(
+        'board_comment_task',
+        'Comenta na tarefa (issue) com a sua assinatura: o Studio põe o cabeçalho com o selo, o seu nome de agente, a etapa, a data e a hora de Brasília. Use para tudo o que você aponta sobre a tarefa — relatório de HOM, aprovação, reprovação, correções feitas ou pedidas, decisões, observações — em vez de acrescentar seções na descrição. A descrição fica só com a especificação (objetivo, RN, CA, dependências).',
+        {
+          id: z.string(),
+          kind: z
+            .enum(['aprovado', 'reprovado', 'correcao', 'decisao', 'publicado', 'observacao'])
+            .describe('Selo: "aprovado"/"reprovado" (revisão ou teste), "correcao" (o que foi corrigido ou precisa corrigir), "decisao", "publicado" (em homologação) ou "observacao".'),
+          text: z.string().describe('O comentário em Markdown, sem cabeçalho de autor nem data (o Studio põe).'),
+        },
+        run('board_comment_task'),
       ),
       tool(
         'quality_list',

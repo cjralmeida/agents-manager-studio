@@ -236,6 +236,21 @@ export function createGitLabClient(host: string, token: string) {
       await updateIssue(id, { state_event: closed ? 'close' : 'reopen' });
     },
 
+    async addComment(_board, id, body) {
+      const { projectId, iid } = parseItemId(id);
+      await request('POST', `/projects/${projectId}/issues/${iid}/notes`, { body });
+    },
+
+    async listComments(_board, id, limit) {
+      const { projectId, iid } = parseItemId(id);
+      const notes = await request<Json[]>('GET', `/projects/${projectId}/issues/${iid}/notes?sort=desc&order_by=created_at&per_page=${Math.min(limit * 3, 100)}`);
+      return notes
+        .filter((note) => !note.system)
+        .slice(0, limit)
+        .reverse()
+        .map((note) => ({ author: String(note.author?.username ?? '?'), at: String(note.created_at), body: String(note.body ?? '') }));
+    },
+
     async applyStructure(board, current, desired) {
       const { groupId, boardId } = parseExternalId(board.externalId);
       await applyGroupStructure(groupId, boardId, current, desired);

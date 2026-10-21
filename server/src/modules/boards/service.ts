@@ -597,6 +597,19 @@ export async function moveItem(workspaceId: string, joinedId: string, modelColum
   if (modelColumnId === statusMap.done || modelColumnId === statusMap.homologation) await releaseDependents(workspaceId);
 }
 
+/** Comments on a task (on its issue; a Studio task keeps it in its description). */
+export async function commentItem(workspaceId: string, joinedId: string, body: string) {
+  const { source, item } = await withItem(workspaceId, joinedId);
+  await (await adapterFor(source)).addComment(refOf(source), item.id, body);
+  boardChanged(workspaceId);
+}
+
+/** The task's latest comments, oldest first; empty when the provider cannot read them. */
+export async function itemComments(workspaceId: string, joinedId: string, limit = 10) {
+  const { source, item } = await withItem(workspaceId, joinedId);
+  return (await adapterFor(source)).listComments(refOf(source), item.id, limit).catch(() => []);
+}
+
 /** New title and/or description of a task (the task agent keeps tasks that did not start up to date). */
 export async function editItem(workspaceId: string, joinedId: string, changes: { title?: string; body?: string }) {
   const { source, snapshot, item } = await withItem(workspaceId, joinedId);

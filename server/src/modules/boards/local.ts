@@ -131,6 +131,16 @@ export function createLocalAdapter(workspaceId: string, model: BoardModel): Boar
     async applyStructure() {
       // The structure is the model; tasks are remapped by applyModelToLocalTasks.
     },
+
+    async addComment(_board, itemId, body) {
+      const task = await findTask(itemId);
+      await prisma.localTask.update({ where: { id: itemId }, data: { body: `${task.body.trimEnd()}\n\n---\n\n${body}` } });
+    },
+
+    async listComments() {
+      // Comments of Studio tasks are part of their description.
+      return [];
+    },
   };
 }
 

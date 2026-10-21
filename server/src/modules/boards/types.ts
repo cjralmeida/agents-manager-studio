@@ -91,6 +91,13 @@ export interface NewTask {
   fields: Record<string, string>;
 }
 
+export interface ItemComment {
+  author: string;
+  /** ISO date. */
+  at: string;
+  body: string;
+}
+
 export interface BoardAdapter {
   load(board: BoardRef & { readme: string | null; fieldOrder: FieldOrder | null }): Promise<BoardSnapshot>;
   moveItem(board: BoardRef, snapshot: BoardSnapshot, itemId: string, columnId: string): Promise<void>;
@@ -104,6 +111,10 @@ export interface BoardAdapter {
   setAssignees(board: BoardRef, itemId: string, usernames: string[]): Promise<void>;
   /** Closes or reopens the item's issue. */
   setClosed(board: BoardRef, itemId: string, closed: boolean): Promise<void>;
+  /** Comments on the item's issue (a Studio task keeps it at the end of its description). */
+  addComment(board: BoardRef, itemId: string, body: string): Promise<void>;
+  /** The item's latest comments, oldest first (system notes left out; none for drafts and Studio tasks). */
+  listComments(board: BoardRef, itemId: string, limit: number): Promise<ItemComment[]>;
   /** Makes the board columns and fields match `desired` (ids from `current` are kept; cards were already moved). */
   applyStructure(board: BoardRef, current: BoardStructure, desired: BoardStructure): Promise<void>;
 }
