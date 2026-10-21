@@ -21,8 +21,10 @@ export interface StepLoad {
   ready: { ref: string; title: string }[];
   /** A step with a single resource (publishing to homologation, testing in homologation): it stays at one agent. */
   single: boolean;
-  /** Minutes since an agent last started at this step, or null when it never did. */
+  /** Minutes since an agent last started at this step (time with the Studio off left out), or null when it never did. */
   idleMinutes: number | null;
+  /** First step only: tasks the workflow takes once their dependencies are delivered (work on its way). */
+  upcoming?: number;
   /** First step only: runs of the last day that failed on a merge conflict. */
   recentConflicts: number;
 }
@@ -123,7 +125,12 @@ export function capacitySignals(steps: StepLoad[], plan: PlanState, machine: Mac
         down(planReason);
         continue;
       }
-      const nothingToDo = step.active === 0 && step.queued === 0 && step.ready.length === 0;
+      // Work on its way keeps a step's agents: an earlier step of the workflow working or holding tasks, or tasks
+      // that only wait for their dependencies (e.g. a chain of lots unlocked by one task).
+      const line = steps.filter((other) => other.workflowId === step.workflowId);
+      const comingFromBefore = line.some((other) => other.index < step.index && (other.active > 0 || other.queued > 0 || other.ready.length > 0));
+      const upcoming = line.some((other) => other.index === 0 && (other.upcoming ?? 0) > 0);
+      const nothingToDo = step.active === 0 && step.queued === 0 && step.ready.length === 0 && !comingFromBefore && !upcoming;
       if (nothingToDo && step.idleMinutes !== null && step.idleMinutes >= IDLE_MINUTES) {
         down(`sem trabalho há ${step.idleMinutes} min`);
         continue;

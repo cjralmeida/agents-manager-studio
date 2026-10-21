@@ -56,6 +56,15 @@ describe('capacitySignals per step', () => {
     assert.deepEqual(capacitySignals([review({ agents: 2, active: 0, idleMinutes: 20 })], plan(10)), []);
   });
 
+  it('keeps an idle step whose work is on its way: an earlier step working, or tasks waiting for dependencies', () => {
+    const builderWorking = step({ agents: 1, active: 1 });
+    assert.deepEqual(capacitySignals([builderWorking, review({ agents: 2, active: 0, idleMinutes: 90 })], plan(10)), []);
+    const lotsWaiting = step({ agents: 4, active: 0, idleMinutes: 90, upcoming: 11 });
+    assert.deepEqual(capacitySignals([lotsWaiting, review({ agents: 2, active: 0, idleMinutes: 90 })], plan(10)), []);
+    const nothingComing = step({ agents: 4, active: 0, idleMinutes: 90, upcoming: 0 });
+    assert.equal(capacitySignals([nothingComing], plan(10))[0]?.direction, 'down');
+  });
+
   it('never goes above five or below one', () => {
     assert.deepEqual(capacitySignals([step({ agents: 5, active: 5, ready: [task('a')] })], plan(10)), []);
     assert.deepEqual(capacitySignals([step({ agents: 1, recentConflicts: 2 })], plan(95)), []);

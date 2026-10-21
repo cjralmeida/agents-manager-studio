@@ -63,6 +63,9 @@ async function singleResourceSteps(workflow: Workflow, steps: WorkflowStep[]) {
   return new Set(steps.filter((step) => step.kind === 'deploy' || publishers.some((profile) => profile.id === step.profileId)).map((step) => step.id));
 }
 
+/** When this Studio process started: time with the Studio (or the computer) off is not idle time of the steps. */
+const STARTED_AT = Date.now();
+
 /** Every step of the workspace's enabled workflows that take tasks by themselves, with its load. */
 async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<StepLoad[]> {
   const workflows = (await prisma.workflow.findMany({ where: { workspaceId, isEnabled: true }, orderBy: { createdAt: 'asc' } })).filter(
@@ -73,7 +76,8 @@ async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<St
   for (const workflow of workflows) {
     const steps = parseSteps(workflow);
     const trigger = parseTrigger(workflow);
-    const ready = trigger.type === 'board_task' ? boardTaskQueue(trigger, state).ready : [];
+    const queue = trigger.type === 'board_task' ? boardTaskQueue(trigger, state) : null;
+    const ready = queue?.ready ?? [];
     const conflict = { contains: 'conflit', mode: 'insensitive' } as const;
     const [runs, recentConflicts, single, lastStarts] = await Promise.all([
       prisma.workflowRun.findMany({ where: { workflowId: workflow.id, status: 'RUNNING' }, select: { steps: { select: { stepId: true, status: true, lane: true, startedAt: true } } } }),
@@ -105,7 +109,8 @@ async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<St
         queued,
         ready: index === 0 ? ready.map((item) => ({ ref: ref(item), title: item.title })) : [],
         single: single.has(step.id),
-        idleMinutes: lastStart ? Math.round((Date.now() - lastStart.getTime()) / 60_000) : null,
+        idleMinutes: lastStart ? Math.round((Date.now() - Math.max(lastStart.getTime(), STARTED_AT)) / 60_000) : null,
+        ...(index === 0 && { upcoming: queue?.waiting.length ?? 0 }),
         recentConflicts: index === 0 ? recentConflicts : 0,
       });
     });
