@@ -16,6 +16,7 @@ const CLOSED_COLUMN = 'closed';
 const MAX_OPEN_PAGES = 5;
 /** Closed issues are shown only when updated recently, so "Concluído" does not grow forever. */
 const CLOSED_WINDOW_DAYS = 30;
+const MAX_CLOSED_PAGES = 10;
 
 type Json = any; // REST responses are narrowed where they are read.
 
@@ -103,7 +104,12 @@ export function createGitLabClient(host: string, token: string) {
       if (batch.length < 100) break;
     }
     const since = new Date(Date.now() - CLOSED_WINDOW_DAYS * 86_400_000).toISOString();
-    issues.push(...(await request<Json[]>('GET', `/groups/${groupId}/issues?state=closed&updated_after=${since}&per_page=100`)));
+    // Every page: a single page cut "Concluído" at 100 tasks.
+    for (let page = 1; page <= MAX_CLOSED_PAGES; page++) {
+      const batch = await request<Json[]>('GET', `/groups/${groupId}/issues?state=closed&updated_after=${since}&per_page=100&page=${page}`);
+      issues.push(...batch);
+      if (batch.length < 100) break;
+    }
     return issues;
   }
 
