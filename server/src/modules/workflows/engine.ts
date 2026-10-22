@@ -19,6 +19,7 @@ import { boardContext, commentItem, editItem, itemComments, moveAgentTask } from
 import { formatComment } from '../agent-tools/comment-format.js';
 import type { BoardField, BoardItem, StatusMap } from '../boards/types.js';
 import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js';
+import { projectFileText } from '../roadmaps/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { planBlockedUntil } from '../plan-limit/limit.js';
@@ -36,6 +37,7 @@ import {
   screensUsing,
   taskPrompt,
   isRework,
+  packageFiles,
 } from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
@@ -580,6 +582,21 @@ async function syncStep(stepRun: WorkflowStepRun) {
   }
 }
 
+/**
+ * The change packages the previous step wrote, for an agent that has no copy of that repository (the task agent
+ * reads only the package): read from the base branch, or from the step's branch while its MR is open.
+ */
+async function previousPackages(output: StepOutput, projectId: string | null | undefined) {
+  if (!output.projectId || output.projectId === projectId) return [];
+  const sections: string[] = [];
+  for (const file of packageFiles(`${output.summary ?? ''}\n${output.details ?? ''}`).slice(0, 3)) {
+    const text =
+      (await projectFileText(output.projectId, file)) ?? (output.branch && output.branch !== '-' ? await projectFileText(output.projectId, file, output.branch) : null);
+    if (text) sections.push('', `Pacote de mudança \`${file}\` (texto completo, lido do repositório de documentação):`, '', text.slice(0, 80_000));
+  }
+  return sections;
+}
+
 function previousOutputText(name: string, output: StepOutput) {
   const lines = [`Resultado do passo anterior (${name}):`];
   if (output.summary) lines.push(output.summary);
@@ -772,6 +789,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
         ? (trigger.message ?? run.title)
         : `Pedido original: ${trigger.message ?? run.title}`,
     ...(previous?.run ? ['', previousOutputText(previous.step.name, outputOf(previous.run))] : []),
+    ...(previous?.run && !step.continueFromPrevious ? await previousPackages(outputOf(previous.run), projectId) : []),
     ...(approvedBefore ? ['', revalidationNote(approvedBefore)] : []),
     ...(step.instructions.trim() ? ['', 'Instruções deste passo:', step.instructions.trim()] : []),
     ...(pullRequest?.merged

@@ -10,6 +10,7 @@ import {
   frontendPrompt,
   frontendTasksReady,
   matchesRule,
+  packageFiles,
   pickTasks,
   screensUsing,
   type TaskRule,
@@ -294,5 +295,14 @@ describe('awaitingDecision with the decision field', () => {
 
   it('tells the agent to clear the mark after deciding', () => {
     assert.match(decisionPrompt(item({ columnId: 'blocked' }), [decision]), /limpe o campo "Decisão"/);
+  });
+});
+
+describe('packageFiles', () => {
+  it('reads the change packages a step result names, once each', () => {
+    const result = 'Documentei a FUNC-031 e o pacote mudancas/MUD-012-FUNC-031.md (ver mudancas/MUD-012-FUNC-031.md); ADR em decisoes/ADR-011.md';
+    assert.deepEqual(packageFiles(result), ['mudancas/MUD-012-FUNC-031.md']);
+    assert.deepEqual(packageFiles('Pacotes MUD-003.md e docs/mudancas/MUD-004-FUNC-002.md'), ['MUD-003.md', 'docs/mudancas/MUD-004-FUNC-002.md']);
+    assert.deepEqual(packageFiles('Sem pacote: só o MUD-005 citado'), []);
   });
 });

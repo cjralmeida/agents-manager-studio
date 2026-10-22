@@ -343,3 +343,8 @@ export function frontendPrompt(ready: ReadyFrontendTask, items: BoardItem[], don
     ].join('\n'),
   ].join('\n\n');
 }
+
+/** Change packages ("mudancas/MUD-012-FUNC-031.md") a step's result names, once each. */
+export function packageFiles(text: string) {
+  return [...new Set([...text.matchAll(/((?:[\w.-]+\/)*MUD-\d+[\w.-]*\.md)/g)].map((match) => match[1]!))];
+}

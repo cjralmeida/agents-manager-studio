@@ -310,10 +310,23 @@ async function localFile(workspaceName: string, projectName: string, file: strin
   return readFile(path.posix.join(toContainerPath(workspaceName, projectName), file), 'utf8').catch(() => null);
 }
 
-async function remoteFile(project: Project, remote: RemoteInfo, file: string) {
+/**
+ * A file of a project's repository (the base branch, or `branch`), or null when it is not there. Workflows use it to
+ * hand a change package written by one step to the next step's agent, which may not have a copy of that repository.
+ */
+export async function projectFileText(projectId: string, file: string, branch?: string) {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, include: { workspace: { select: { name: true } } } });
+  if (!project) return null;
+  const remote = project.gitRemoteUrl ? parseRemote(project.gitRemoteUrl) : null;
+  const text = remote ? await remoteFile(project, remote, file, branch).catch(() => null) : null;
+  return text ?? (branch ? null : localFile(project.workspace.name, project.name, file));
+}
+
+async function remoteFile(project: Project, remote: RemoteInfo, file: string, branch?: string) {
   const account = await findWorkspaceGitAccount(project.workspaceId, [remoteHostname(remote), remote.host]);
   const token = secrets.decrypt(account.tokenEncrypted);
-  const ref = project.baseBranch ? `?ref=${encodeURIComponent(project.baseBranch)}` : '';
+  const base = branch ?? project.baseBranch;
+  const ref = base ? `?ref=${encodeURIComponent(base)}` : '';
   let url: string;
   let headers: Record<string, string>;
   if (account.provider === 'GITHUB') {
