@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Agent } from '../../api/agents';
-import { type Board, type BoardItem, boardProviderLabels, useMoveTask, useSetTaskField } from '../../api/boards';
+import { type Board, type BoardItem, boardProviderLabels, useMoveTask, useSetTaskField, useTaskComments } from '../../api/boards';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { AgentStatusBadge } from '../agents/AgentStatusBadge';
 import { NewAgentForm } from '../agents/NewAgentForm';
 import { Button } from '../Button';
 import { ErrorText, Field, Select } from '../form';
 import { agentPromptFor, itemRef } from './boardUtils';
+import { TaskMarkdown } from './TaskMarkdown';
 
 interface TaskDrawerProps {
   workspace: WorkspaceDetail;
@@ -162,12 +163,49 @@ export function TaskDrawer({ workspace, board, item, agent, onClose, inWorkflow 
         <section className="mt-5">
           <h3 className="text-sm font-semibold">Descrição</h3>
           {item.body.trim() ? (
-            <pre className="mt-2 font-sans text-sm leading-relaxed whitespace-pre-wrap text-gray-300">{item.body}</pre>
+            <div className="mt-2">
+              <TaskMarkdown text={item.body} />
+            </div>
           ) : (
             <p className="mt-2 text-sm text-muted">Sem descrição.</p>
           )}
         </section>
+
+        <TaskComments workspaceId={workspace.id} itemId={item.id} />
       </aside>
     </div>
+  );
+}
+
+const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+/** The task's comments (signed by the agents: approvals, rejections, HOM reports, decisions), oldest first. */
+function TaskComments({ workspaceId, itemId }: { workspaceId: string; itemId: string }) {
+  const comments = useTaskComments(workspaceId, itemId);
+  const list = comments.data ?? [];
+  return (
+    <section className="mt-6">
+      <h3 className="text-sm font-semibold">Comentários{list.length > 0 && <span className="ml-1 font-normal text-muted">({list.length})</span>}</h3>
+      {comments.isPending ? (
+        <p className="mt-2 text-sm text-muted">Carregando…</p>
+      ) : comments.error ? (
+        <ErrorText error={comments.error} />
+      ) : list.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">Sem comentários.</p>
+      ) : (
+        <ol className="mt-2 space-y-3">
+          {list.map((comment) => (
+            <li key={`${comment.at}-${comment.author}`} className="rounded-lg border border-border bg-panel/60 p-3">
+              <p className="text-xs text-muted">
+                @{comment.author} · {dateTime.format(new Date(comment.at))}
+              </p>
+              <div className="mt-1">
+                <TaskMarkdown text={comment.body} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

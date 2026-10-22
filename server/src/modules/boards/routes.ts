@@ -15,6 +15,7 @@ import {
   linkBoard,
   moveItem,
   setItemField,
+  itemComments,
   unlinkSource,
   updateBoardSettings,
 } from './service.js';
@@ -174,6 +175,12 @@ export async function boardRoutes(app: FastifyInstance) {
     const { id, itemId } = parseInput(itemParams, request.params);
     await moveItem(id, itemId, parseInput(moveBody, request.body).columnId);
     return reply.code(204).send();
+  });
+
+  /** The task's comments (the agents' signed comments), oldest first. */
+  app.get('/workspaces/:id/board/items/:itemId/comments', async (request) => {
+    const { id, itemId } = parseInput(itemParams, request.params);
+    return itemComments(id, itemId, 50);
   });
 
   app.post('/workspaces/:id/board/items/:itemId/field', async (request, reply) => {

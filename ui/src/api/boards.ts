@@ -133,9 +133,26 @@ const boardKeys = {
   sources: (workspaceId: string) => ['board', workspaceId, 'sources'] as const,
   contents: (workspaceId: string) => ['board', workspaceId, 'contents'] as const,
   detect: (workspaceId: string) => ['board', workspaceId, 'detect'] as const,
+  comments: (workspaceId: string, itemId: string) => ['board', workspaceId, 'comments', itemId] as const,
 };
 
 const base = (workspaceId: string) => `/workspaces/${workspaceId}/board`;
+
+export interface TaskComment {
+  author: string;
+  /** ISO date. */
+  at: string;
+  body: string;
+}
+
+/** A task's comments, oldest first (the signed comments agents leave: approvals, rejections, decisions...). */
+export function useTaskComments(workspaceId: string, itemId: string) {
+  return useQuery({
+    queryKey: boardKeys.comments(workspaceId, itemId),
+    queryFn: () => api.get<TaskComment[]>(`${base(workspaceId)}/items/${encodeURIComponent(itemId)}/comments`),
+    refetchInterval: 60_000,
+  });
+}
 
 /** Boards joined on the workspace board; empty when the workspace has no board yet. */
 export function useBoardSources(workspaceId: string) {
