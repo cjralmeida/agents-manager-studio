@@ -178,11 +178,34 @@ async function mergeGitLab(input: MergeInput) {
     body: JSON.stringify({ should_remove_source_branch: true }),
   });
   if (response.status === 200 && response.body.state === 'merged') {
+    await deleteMergedGitLabBranch(projectUrl, input);
     return { merged: true, commit: response.body.merge_commit_sha ?? response.body.squash_commit_sha ?? null, reason: '', retry: false };
   }
   const reason = response.body.message ? JSON.stringify(response.body.message) : `erro ${response.status}`;
   // 405/406/422: still checking mergeability, or a conflict; worth a few retries.
   return { merged: false, commit: null, reason, retry: [405, 406, 422].includes(response.status) };
+}
+
+/**
+ * "should_remove_source_branch" is only a request: GitLab sometimes keeps the branch (gf-novo-oficial kept 10 task
+ * branches). After the merge the Studio deletes it itself when it is merged, not protected and no other open MR uses it.
+ * Failures are ignored.
+ */
+async function deleteMergedGitLabBranch(projectUrl: string, input: MergeInput) {
+  const headers = { 'PRIVATE-TOKEN': input.token };
+  try {
+    const mr = await api<{ source_branch?: string; source_project_id?: number; target_project_id?: number }>(`${projectUrl}/merge_requests/${input.number}`, { headers });
+    const branch = mr.body.source_branch;
+    if (!branch || mr.body.source_project_id !== mr.body.target_project_id) return;
+    const branchUrl = `${projectUrl}/repository/branches/${encodeURIComponent(branch)}`;
+    const current = await api<{ merged?: boolean; protected?: boolean; default?: boolean }>(branchUrl, { headers });
+    if (current.status !== 200 || !current.body.merged || current.body.protected || current.body.default) return;
+    const others = await api<unknown[]>(`${projectUrl}/merge_requests?state=opened&source_branch=${encodeURIComponent(branch)}`, { headers });
+    if (others.status !== 200 || others.body.length > 0) return;
+    await api(branchUrl, { method: 'DELETE', headers });
+  } catch {
+    // The branch stays; it is only clutter.
+  }
 }
 
 const gitLabMergeRequestUrl = (input: MergeInput) =>
