@@ -20,6 +20,7 @@ import type { BoardCandidate, BoardItem, BoardRef, BoardSnapshot, NewTask, Statu
 import { type SourceMapping, joinedItemId, modelLayout, splitItemId, toJoinedItem, toSourceColumn, toSourceField, toSourceFields } from './unified.js';
 import { ensureBoardWebhook, removeBoardWebhook } from '../webhooks/hooks.js';
 import { boardChanged } from '../live/bus.js';
+import { dismissDoneTaskFlags } from '../orbi/flag-sweep.js';
 import { createHash } from 'node:crypto';
 
 /**
@@ -418,6 +419,9 @@ export async function syncWorkspaceBoard(workspaceId: string, onlyDue = false) {
   if (sources.length > 0) {
     await releaseDependents(workspaceId).catch(() => undefined);
     await keepAgentTasksInPlace(workspaceId).catch(() => undefined);
+    await boardContext(workspaceId)
+      .then((board) => dismissDoneTaskFlags(workspaceId, { items: board.snapshot.items, statusMap: board.statusMap, allOpenListed: board.snapshot.allOpenListed }))
+      .catch(() => undefined);
   }
   return { synced: sources.length, errors };
 }

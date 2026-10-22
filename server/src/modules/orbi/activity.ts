@@ -1,7 +1,9 @@
 import { prisma } from '../../db.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
+import { boardContext } from '../boards/service.js';
 import { deliverToOrbi } from './conversation.js';
+import { dismissDoneTaskFlags } from './flag-sweep.js';
 
 export type ActivityKind = 'answer' | 'message' | 'task' | 'workflow' | 'pause' | 'resume' | 'capacity' | 'conflict' | 'flag';
 
@@ -66,6 +68,15 @@ interface FlagDetails {
 export async function decideFlag(ownerId: string, id: string, input: { option?: string; note?: string }) {
   const flag = await prisma.orbiActivity.findFirst({ where: { id, ownerId, kind: 'flag', resolvedAt: null } });
   if (!flag) throw notFound('Decisão não encontrada ou já resolvida.');
+  if (flag.workspaceId) {
+    const board = await boardContext(flag.workspaceId).catch(() => null);
+    const dismissed = board
+      ? await dismissDoneTaskFlags(flag.workspaceId, { items: board.snapshot.items, statusMap: board.statusMap, allOpenListed: board.snapshot.allOpenListed })
+      : 0;
+    if (dismissed > 0 && (await prisma.orbiActivity.count({ where: { id, resolvedAt: { not: null } } })) > 0) {
+      throw new HttpError(409, 'A tarefa desta decisão já foi concluída; a decisão foi descartada.');
+    }
+  }
   const details = (flag.details ?? {}) as FlagDetails;
   const option = input.option?.trim() || null;
   if (option && !(details.options ?? []).includes(option)) throw new HttpError(400, 'Essa opção não existe nesta decisão.');
