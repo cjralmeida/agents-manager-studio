@@ -53,6 +53,10 @@ const envSchema = z.object({
   AGENT_FAILED_COPY_RETENTION_DAYS: z.coerce.number().min(0).default(7),
   // Workflows stop starting agents while the Claude 5-hour window is at or above this percentage.
   WORKFLOW_PLAN_LIMIT_PERCENT: z.coerce.number().min(1).max(100).default(80),
+  // Pace: new work waits while the 5-hour window is spent faster than the clock, so the plan lasts until the reset.
+  WORKFLOW_PLAN_PACE: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  // Share of the 5-hour window the pace keeps for the user (agents only use the rest).
+  WORKFLOW_PLAN_RESERVE_PERCENT: z.coerce.number().min(0).max(90).default(0),
   // Folder shared with the Windows helper (studio.ps1): requests in, heartbeat and results out.
   HOST_HELPER_DIR: z.string().min(1).default('/data/host-helper'),
   // Where agent containers reach the throwaway test services (compose service names).
@@ -101,6 +105,8 @@ function loadConfig() {
     copyRetentionHours: env.AGENT_COPY_RETENTION_HOURS,
     failedCopyRetentionDays: env.AGENT_FAILED_COPY_RETENTION_DAYS,
     workflowPlanLimitPercent: env.WORKFLOW_PLAN_LIMIT_PERCENT,
+    workflowPlanPace: env.WORKFLOW_PLAN_PACE,
+    workflowPlanReservePercent: env.WORKFLOW_PLAN_RESERVE_PERCENT,
     hostHelperDir: env.HOST_HELPER_DIR,
     cookieSecure: env.COOKIE_SECURE,
     testDatabaseHost: env.TEST_DATABASE_HOST,

@@ -22,7 +22,7 @@ import { MERGE_REFUSED, getDeployment, startDeploy } from '../render/service.js'
 import { projectFileText } from '../roadmaps/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
-import { planBlockedUntil } from '../plan-limit/limit.js';
+import { planBlockedUntil, planPaceHoldUntil } from '../plan-limit/limit.js';
 import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
 import {
   type ReadyFeature,
@@ -90,6 +90,11 @@ export async function workspaceBlocker(workspaceId: string, options: { resources
     return `Pausado: janela de 5 horas do Claude em ${Math.round(session.percent)}% (limite ${config.workflowPlanLimitPercent}%).`;
   }
   if (options.resources === false) return null;
+  // The pace holds new work only: steps of tasks already going finish what they started.
+  const paceUntil = config.workflowPlanPace ? planPaceHoldUntil(plan, config.workflowPlanReservePercent) : null;
+  if (paceUntil) {
+    return `Aguardando o ritmo do plano: janela de 5 horas em ${Math.round(session?.percent ?? 0)}%, adiantada em relação ao relógio; novas tarefas voltam por volta de ${paceUntil.toLocaleString('pt-BR', { timeZone: process.env.TZ || 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}.`;
+  }
   const usage = await getResourceUsage().catch(() => null);
   if (usage && usage.launchWarnings.length > 0) return `Aguardando: ${usage.launchWarnings.join(' ')}`;
   return null;

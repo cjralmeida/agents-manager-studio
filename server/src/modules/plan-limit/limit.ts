@@ -39,3 +39,27 @@ export function planBlockedUntil(plan: PlanUsage | null | undefined, now = new D
   if (plan.status !== 'rejected' && !full) return null;
   return planResetAt(plan, now);
 }
+
+const WINDOW_MS = 5 * 60 * 60_000;
+/** Points above the even pace still allowed, so the start of a window is not held back by its first runs. */
+const PACE_SLACK = 10;
+
+/**
+ * Pace of the 5-hour window: the share of the plan (minus the user's reserve) spent should follow the share of the
+ * window gone by. When it runs ahead, new work waits until the clock catches up, so the plan lasts until the reset
+ * instead of running out early and stopping everything. Returns when new work may start again, or null.
+ */
+export function planPaceHoldUntil(
+  plan: PlanUsage | null | undefined,
+  reservePercent: number,
+  now = new Date(),
+): Date | null {
+  const session = plan?.windows.find((window) => window.key === 'five_hour' && window.resetsAt && new Date(window.resetsAt) > now);
+  if (!session?.resetsAt) return null;
+  const budget = Math.max(1, 100 - reservePercent);
+  const start = new Date(session.resetsAt).getTime() - WINDOW_MS;
+  const allowed = Math.min(budget, (budget * (now.getTime() - start)) / WINDOW_MS + PACE_SLACK);
+  if (session.percent < allowed) return null;
+  const catchUp = start + (WINDOW_MS * (session.percent - PACE_SLACK)) / budget;
+  return new Date(Math.min(Math.max(catchUp, now.getTime()), new Date(session.resetsAt).getTime()));
+}
