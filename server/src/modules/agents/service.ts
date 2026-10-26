@@ -139,14 +139,18 @@ export async function getAgent(id: string) {
   return toResponse(agent);
 }
 
+const EVENTS_PAGE = 500;
+
 export async function listAgentEvents(id: string, afterId: number) {
   await findOrThrow(id);
-  return prisma.agentEvent.findMany({
-    where: { agentId: id, id: { gt: afterId } },
-    orderBy: { id: 'asc' },
-    take: 500,
-    select: { id: true, type: true, data: true, createdAt: true },
-  });
+  const select = { id: true, type: true, data: true, createdAt: true } as const;
+  if (afterId > 0) {
+    return prisma.agentEvent.findMany({ where: { agentId: id, id: { gt: afterId } }, orderBy: { id: 'asc' }, take: EVENTS_PAGE, select });
+  }
+  // The first read is the latest page, oldest first: a long conversation (Órbi) passed 500 events and the screen kept
+  // showing the first 500, without the new messages.
+  const latest = await prisma.agentEvent.findMany({ where: { agentId: id }, orderBy: { id: 'desc' }, take: EVENTS_PAGE, select });
+  return latest.reverse();
 }
 
 export async function getAgentDiff(id: string) {
