@@ -1,45 +1,22 @@
-import { type FormEvent, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import {
   type AgentProfile,
-  type AgentProfileInput,
-  type AgentOutput,
-  type ProfileTool,
-  outputLabels,
-  toolLabels,
   useAgentProfiles,
   useCreateAgentProfile,
   useDeleteAgentProfile,
   useUpdateAgentProfile,
 } from '../../api/agentProfiles';
 import type { AgentModel } from '../../api/agents';
-import { SIZE_NAMES, type SizeName } from '../../api/resourceSettings';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { plural } from '../../lib/time';
 import { NewAgentForm } from '../agents/NewAgentForm';
 import { Badge } from '../Badge';
 import { Button } from '../Button';
-import { ErrorText, Field, Select, TextInput } from '../form';
-import { MultiSelect } from '../MultiSelect';
+import { ErrorText } from '../form';
+import { ProfileDialog } from './ProfileDialog';
 
 const modelLabels: Record<AgentModel, string> = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku' };
-
-const empty: AgentProfileInput = {
-  name: '',
-  description: '',
-  instructions: '',
-  model: 'sonnet',
-  projectIds: [],
-  contextProjectIds: [],
-  anyProject: false,
-  output: 'PULL_REQUEST',
-  tools: [],
-  autoConclude: false,
-  autoMerge: false,
-  resourceSize: null,
-};
-
-const sizeLabels: Record<SizeName, string> = { P: 'P (leve)', M: 'M (front e testes)', G: 'G (backend)', GG: 'GG (o maior)' };
 
 /** Fixed agents of the workspace: each has a role and can be run by hand or used in workflows. */
 export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) {
@@ -48,6 +25,7 @@ export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) 
   const [running, setRunning] = useState<AgentProfile | null>(null);
   const create = useCreateAgentProfile(workspace.id);
   const update = useUpdateAgentProfile(workspace.id);
+  const closeEditor = useCallback(() => setEditing(null), []);
 
   if (profiles.error) return <ErrorText error={profiles.error} />;
   if (!profiles.data) return <p className="text-sm text-muted">Carregando...</p>;
@@ -59,21 +37,19 @@ export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) 
           Agentes fixos do workspace, cada um com um papel: documentar, planejar tarefas, executar, testar. Você pode
           executá-los aqui e, depois, encadeá-los num workflow.
         </p>
-        {editing === null && (
-          <Button variant="primary" onClick={() => setEditing('new')}>
-            Novo agente
-          </Button>
-        )}
+        <Button variant="primary" onClick={() => setEditing('new')}>
+          Novo agente
+        </Button>
       </div>
 
       {editing !== null && (
-        <ProfileForm
+        <ProfileDialog
           key={editing === 'new' ? 'new' : editing.id}
           workspace={workspace}
           initial={editing === 'new' ? undefined : editing}
           pending={create.isPending || update.isPending}
           error={create.error ?? update.error}
-          onCancel={() => setEditing(null)}
+          onClose={closeEditor}
           onSubmit={(input) => {
             const done = { onSuccess: () => setEditing(null) };
             if (editing === 'new') create.mutate(input, done);
@@ -167,165 +143,5 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
       </div>
       <ErrorText error={remove.error} />
     </article>
-  );
-}
-
-interface ProfileFormProps {
-  workspace: WorkspaceDetail;
-  initial?: AgentProfile;
-  pending: boolean;
-  error: Error | null;
-  onSubmit: (input: AgentProfileInput) => void;
-  onCancel: () => void;
-}
-
-/** The editable fields of a saved agent (the rest is read-only and the server refuses it). */
-function pickInput(profile: AgentProfile): AgentProfileInput {
-  return Object.fromEntries((Object.keys(empty) as (keyof AgentProfileInput)[]).map((key) => [key, profile[key]])) as AgentProfileInput;
-}
-
-function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }: ProfileFormProps) {
-  const [form, setForm] = useState<AgentProfileInput>(initial ? pickInput(initial) : empty);
-  const set = <K extends keyof AgentProfileInput>(key: K, value: AgentProfileInput[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const gitProjects = workspace.projects.filter((project) => project.isGitRepo && !project.isMissing);
-  const withoutRepository = form.projectIds.length === 0 && !form.anyProject;
-
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    onSubmit({ ...form, output: withoutRepository ? 'RESULT' : form.output });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-panel p-4">
-      <h3 className="text-sm font-medium">{initial ? `Editar "${initial.name}"` : 'Novo agente do workspace'}</h3>
-
-      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Field label="Nome">
-          <TextInput value={form.name} onChange={(event) => set('name', event.target.value)} placeholder="Ex.: Documentador" required />
-        </Field>
-        <div className="md:col-span-2">
-          <Field label="Descrição curta">
-            <TextInput value={form.description} onChange={(event) => set('description', event.target.value)} placeholder="Ex.: Escreve a documentação no repositório de docs" />
-          </Field>
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <Field label="Papel e instruções" hint="Vão para o prompt de sistema de toda execução deste agente.">
-          <textarea
-            value={form.instructions}
-            onChange={(event) => set('instructions', event.target.value)}
-            rows={6}
-            placeholder="Ex.: Você documenta funcionalidades. Escreva em Markdown na pasta docs/, uma página por funcionalidade..."
-            className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
-          />
-        </Field>
-      </div>
-
-      <div className="mt-4 max-w-2xl space-y-1">
-        <span className="text-xs font-medium text-muted">Projetos em que trabalha</span>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.anyProject} onChange={(event) => set('anyProject', event.target.checked)} />
-          No projeto do workflow (qualquer projeto do workspace, ex.: o que um passo anterior criou)
-        </label>
-        {!form.anyProject && (
-        <MultiSelect
-          options={gitProjects.map((project) => ({ value: project.id, label: project.name }))}
-          selected={form.projectIds}
-          onChange={(next) => set('projectIds', next)}
-          placeholder="Nenhum (sem repositório)"
-        />
-        )}
-        <p className="text-xs text-muted">
-          {form.anyProject
-            ? 'O workflow passa o projeto; ao executar à mão, você escolhe qualquer projeto do workspace.'
-            : withoutRepository
-              ? 'Nenhum marcado: o agente trabalha sem repositório e entrega um resultado.'
-              : 'Ao executar, você escolhe um destes projetos.'}
-        </p>
-      </div>
-
-      <div className="mt-4 max-w-2xl space-y-1">
-        <span className="text-xs font-medium text-muted">Projetos de consulta (só leitura)</span>
-        <MultiSelect
-          options={workspace.projects.filter((project) => !project.isMissing).map((project) => ({ value: project.id, label: project.name }))}
-          selected={form.contextProjectIds}
-          onChange={(next) => set('contextProjectIds', next)}
-          placeholder="Nenhum"
-        />
-        <p className="text-xs text-muted">
-          O agente lê a pasta como está no seu disco (inclusive arquivos fora do git), sem poder alterar. Útil para documentar ou planejar a partir
-          do código de outros projetos.
-        </p>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field
-          label="Recursos (CPU e memória)"
-          hint={
-            <>
-              Valores de cada tamanho em{' '}
-              <Link to="/settings?tab=resources" className="text-accent hover:underline">
-                Configurações → Recursos
-              </Link>
-              .
-            </>
-          }
-        >
-          <Select value={form.resourceSize ?? ''} onChange={(event) => set('resourceSize', (event.target.value || null) as SizeName | null)}>
-            <option value="">Automático pelo papel{initial ? ` (${initial.roleSize})` : ''}</option>
-            {SIZE_NAMES.map((name) => (
-              <option key={name} value={name}>
-                {sizeLabels[name]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Modelo">
-          <Select value={form.model} onChange={(event) => set('model', event.target.value as AgentModel)}>
-            <option value="sonnet">Sonnet (padrão)</option>
-            <option value="opus">Opus (tarefas difíceis)</option>
-            <option value="haiku">Haiku (rápido e econômico)</option>
-          </Select>
-        </Field>
-        <Field label="Entrega">
-          <Select value={withoutRepository ? 'RESULT' : form.output} onChange={(event) => set('output', event.target.value as AgentOutput)} disabled={withoutRepository}>
-            {(Object.keys(outputLabels) as AgentOutput[]).map((output) => (
-              <option key={output} value={output}>
-                {outputLabels[output]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Ferramentas">
-          <MultiSelect
-            options={(Object.keys(toolLabels) as ProfileTool[]).map((tool) => ({ value: tool, label: toolLabels[tool] }))}
-            selected={form.tools}
-            onChange={(next) => set('tools', next as ProfileTool[])}
-            placeholder="Nenhuma"
-          />
-        </Field>
-        <div className="flex flex-col justify-end gap-2 pb-1">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.autoConclude} onChange={(event) => set('autoConclude', event.target.checked)} />
-            Concluir sozinho (sem revisão)
-          </label>
-          {!withoutRepository && form.output === 'PULL_REQUEST' && (
-            <label className="flex items-center gap-2 text-sm" title="Se o merge falhar, o PR/MR fica aberto e o passo do workflow falha.">
-              <input type="checkbox" checked={form.autoMerge} onChange={(event) => set('autoMerge', event.target.checked)} />
-              Fazer o merge do PR/MR ao concluir
-            </label>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="primary" disabled={pending || !form.name.trim()}>
-          {pending ? 'Salvando...' : 'Salvar agente'}
-        </Button>
-        <Button onClick={onCancel}>Cancelar</Button>
-        <ErrorText error={error} />
-      </div>
-    </form>
   );
 }
