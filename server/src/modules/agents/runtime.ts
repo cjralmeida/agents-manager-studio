@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { config } from '../../config.js';
-import { type ContainerMount, createContainer, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
+import { type ContainerMount, createContainer, isDockerTimeout, removeContainer, startContainer, stopContainer } from '../../lib/docker.js';
 import { AGENT_VARIABLES_FILE, variablesSubpath } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
 import { buildDirBinds } from './build-dirs.js';
@@ -253,7 +253,18 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
   return { containerId, secretHash: hashSecret(secret) };
 }
 
+const STOP_ATTEMPTS = 3;
+
+/** Stops and removes an agent container; a busy machine gets more time instead of failing the agent's work. */
 export async function stopAgentContainer(containerId: string) {
-  await stopContainer(containerId, 15);
-  await removeContainer(containerId);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await stopContainer(containerId, 15);
+      await removeContainer(containerId, 60_000 * attempt);
+      return;
+    } catch (error) {
+      if (attempt >= STOP_ATTEMPTS || !isDockerTimeout(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 15_000 * attempt));
+    }
+  }
 }

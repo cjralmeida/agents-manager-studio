@@ -5,7 +5,7 @@ import { prisma } from '../../db.js';
 import { Prisma, type Workflow, type WorkflowRun, type WorkflowStepRun } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import type { AgentResult } from '../agent-tools/service.js';
-import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensureContainer, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
+import { type AgentModel, PREPARATION_INTERRUPTED, addEvent, cancelAgent, ensureContainer, finalizeAgent, launchAgent, mergeBaseIntoCopy, sendMessage } from '../agents/service.js';
 import { cleanCopiesNow } from '../agents/cleanup.js';
 import { REVALIDATE_AFTER_MERGE, revalidationNote } from '../agents/revalidation.js';
 import { parseRemote, remoteHostname } from '../agents/remote.js';
@@ -579,6 +579,16 @@ async function syncStep(stepRun: WorkflowStepRun) {
   }
   if (agent.status === 'FAILED' || agent.status === 'CANCELLED') {
     return finish('FAILED', output, agent.errorMessage ?? (agent.status === 'CANCELLED' ? 'Agente cancelado.' : 'Agente falhou.'));
+  }
+  // Work done, but Docker was too slow while the Studio closed the copy: finishing is tried again, never counted as a
+  // failure of the step (a reviewer's approval would turn into a send-back).
+  if (agent.status === 'READY_FOR_REVIEW' && isTransientFailure(agent.errorMessage) && !agent.limitResumeAt) {
+    const retries = await prisma.agentEvent.count({ where: { agentId: agent.id, type: 'status', data: { path: ['transientFinalize'], equals: true } } });
+    if (retries < TRANSIENT_RESUMES) {
+      await addEvent(agent.id, 'status', { message: 'O Docker demorou para responder ao fechar a cópia: o envio é feito de novo.', transientFinalize: true });
+      await finalizeAgent(agent.id).catch(() => undefined);
+      return;
+    }
   }
   // An automatic conclusion that failed (e.g. push refused) leaves the agent in review with an error.
   // An agent waiting for the plan limit to reset is still on its step: the Studio resumes it.

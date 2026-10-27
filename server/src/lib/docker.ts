@@ -173,9 +173,14 @@ export async function stopContainer(id: string, graceSeconds = 10) {
   );
 }
 
-export async function removeContainer(id: string) {
+export async function removeContainer(id: string, timeoutMs?: number) {
   // v=1: the container's anonymous volumes go with it (an image with VOLUME, like postgres, leaves one per run).
-  await call('DELETE', `/containers/${id}?force=1&v=1`).catch(ignoreGone);
+  await call('DELETE', `/containers/${id}?force=1&v=1`, undefined, timeoutMs).catch(ignoreGone);
+}
+
+/** Docker did not answer in time (a busy machine), as opposed to refusing the request. */
+export function isDockerTimeout(error: unknown) {
+  return error instanceof Error && error.message.startsWith('Docker request timed out');
 }
 
 export interface ContainerState {
