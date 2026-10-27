@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { prisma } from '../../db.js';
 import { containerLogs, inspectContainer, removeContainer } from '../../lib/docker.js';
+import { largerSize, limitRunningAgents, sizeOfAgent } from './resources.js';
 import { addEvent, ensureContainer, markFailed, onAgentIdle, sendMessage } from './service.js';
 
 const INTERVAL_MS = 5_000;
@@ -11,6 +12,10 @@ const CRASH_RESUME_MARK = 'O container do agente parou de forma inesperada';
 const CRASH_RESUME_MESSAGE =
   'O seu container parou de forma inesperada (ex.: o computador desligou) e foi reiniciado. Continue exatamente de onde parou: ' +
   'confira o estado da sua cópia (git status, arquivos gerados, testes) e siga a tarefa até o fim.';
+
+const OOM_RESUME_MESSAGE =
+  'O seu container ficou sem memória e foi reiniciado com mais memória. Continue de onde parou (confira git status e os ' +
+  'arquivos gerados); evite rodar muitas coisas pesadas ao mesmo tempo (ex.: build e suíte de testes em paralelo).';
 
 /** An automatic agent that finished but whose delivery failed (e.g. Docker timed out removing its container) is retried. */
 const UNDELIVERED_AFTER_MS = 5 * 60_000;
@@ -50,6 +55,19 @@ async function checkContainers(log: FastifyBaseLogger) {
       data: { containerId: null, secretHash: null },
     });
     if (cleared.count === 0) continue;
+
+    // Out of memory is the size, not the work: the session goes on in a container one size up (not counted as a crash).
+    if (state?.oomKilled && ['PREPARING', 'RUNNING'].includes(agent.status) && agent.sessionId) {
+      const size = await sizeOfAgent(agent);
+      const larger = largerSize(size.name as Parameters<typeof largerSize>[0]);
+      if (larger) {
+        log.warn({ agentId: agent.id, from: size.name, to: larger }, 'Agent container ran out of memory');
+        await prisma.agent.update({ where: { id: agent.id }, data: { resourceSize: larger } });
+        await addEvent(agent.id, 'status', { message: `O container ficou sem memória (limite de ${size.memoryMb / 1024} GB): retomando no tamanho ${larger}.` });
+        await sendMessage(agent.id, OOM_RESUME_MESSAGE).catch((error: unknown) => log.warn({ agentId: agent.id, err: error }, 'OOM resume failed'));
+        continue;
+      }
+    }
 
     if (exitCode !== 0) {
       const tail = logs ? `${logs.stderr}\n${logs.stdout}`.trim().slice(-800) : '';
@@ -112,6 +130,9 @@ async function checkContainers(log: FastifyBaseLogger) {
 }
 
 export function startAgentMonitor(log: FastifyBaseLogger) {
+  limitRunningAgents()
+    .then((result) => result.updated + result.failed > 0 && log.info(result, 'Resource limits applied to running agents'))
+    .catch((err: unknown) => log.warn({ err }, 'Could not apply resource limits to running agents'));
   let running = false;
   const timer = setInterval(() => {
     if (running) return;

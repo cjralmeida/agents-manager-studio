@@ -5,6 +5,7 @@ import { type ContainerMount, createContainer, isDockerTimeout, removeContainer,
 import { AGENT_VARIABLES_FILE, variablesSubpath } from '../agent-variables/service.js';
 import { ORBI_GUIDE } from '../assistant/guide.js';
 import { buildDirBinds } from './build-dirs.js';
+import { type AgentSize, hostLimits, runtimeEnv } from './resources.js';
 import { workdirMount } from './workdir.js';
 
 export const AGENT_LABEL = 'agents-manager-studio.agent-id';
@@ -177,6 +178,8 @@ export interface StartAgentInput {
   learnings?: string | null;
   /** Where its system's documentation is. */
   docs?: DocsHome | null;
+  /** CPU and memory of the container (by role; see resources.ts). */
+  size: AgentSize;
 }
 
 export interface ContextProject {
@@ -194,7 +197,7 @@ export interface ContextProject {
 const contextMount = (name: string) => `/context/${name.replace(/[^\w.-]/g, '_')}`;
 
 /** Starts the runner container; the returned secret hash authenticates its calls to the server. */
-export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [], learnings = null, docs = null }: StartAgentInput) {
+export async function startAgentContainer({ agent, claudeToken, skillIds, env = {}, variableNames = null, contextProjects = [], learnings = null, docs = null, size }: StartAgentInput) {
   const secret = randomBytes(24).toString('base64url');
   const shortId = agent.id.slice(-8);
   const buildBinds = await buildDirBinds(agent).catch(() => []);
@@ -205,6 +208,7 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
     cmd: ['node', '/opt/runner/src/runner.mjs'],
     network: config.agentNetwork,
     labels: { [AGENT_LABEL]: agent.id },
+    limits: hostLimits(size),
     mounts: [
       workdirMount(agent.workdir, '/workspace'),
       ...(variableNames ? [{ Type: 'volume' as const, Source: config.agentsVolume, Target: '/run/studio', ReadOnly: true, VolumeOptions: { Subpath: variablesSubpath(agent.id) } }] : []),
@@ -237,8 +241,8 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       // The user's time zone: `date`, logs and the agent's own notes show local time, like the Studio.
       TZ: process.env.TZ || 'America/Sao_Paulo',
       // Test suites open one worker per core by default; with several agents at once that starves the machine (and
-      // Docker stops answering in time). The agent can still pass its own value on a command.
-      VITEST_MAX_WORKERS: String(config.agentTestWorkers),
+      // Docker stops answering in time): workers follow the container's CPUs, the JVM its memory.
+      ...runtimeEnv(size),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
       // Reference folders belong to the host user: git would refuse them as "dubious ownership".

@@ -116,6 +116,8 @@ export interface ContainerSpec {
   /** Host access for maintenance tasks (e.g. trimming the Docker disk): privileged, in the host's PID namespace. */
   privileged?: boolean;
   pidMode?: 'host';
+  /** CPU and memory limits (HostConfig fields, e.g. NanoCpus, Memory): see agents/resources.ts. */
+  limits?: Record<string, number>;
 }
 
 /**
@@ -157,9 +159,15 @@ async function createContainerNow(spec: ContainerSpec): Promise<string> {
       ...(spec.network && { NetworkMode: spec.network }),
       ...(spec.privileged && { Privileged: true }),
       ...(spec.pidMode && { PidMode: spec.pidMode }),
+      ...spec.limits,
     },
   }, 120_000);
   return Id;
+}
+
+/** Changes the CPU and memory limits of a container while it runs. */
+export async function updateContainer(id: string, limits: Record<string, number>) {
+  await call('POST', `/containers/${id}/update`, limits);
 }
 
 export async function startContainer(id: string) {
@@ -186,13 +194,15 @@ export function isDockerTimeout(error: unknown) {
 export interface ContainerState {
   running: boolean;
   exitCode: number;
+  /** Killed for going over its memory limit. */
+  oomKilled: boolean;
 }
 
 /** Null when the container no longer exists. */
 export async function inspectContainer(id: string): Promise<ContainerState | null> {
   try {
-    const info = await call<{ State: { Running: boolean; ExitCode: number } }>('GET', `/containers/${id}/json`);
-    return { running: info.State.Running, exitCode: info.State.ExitCode };
+    const info = await call<{ State: { Running: boolean; ExitCode: number; OOMKilled?: boolean } }>('GET', `/containers/${id}/json`);
+    return { running: info.State.Running, exitCode: info.State.ExitCode, oomKilled: Boolean(info.State.OOMKilled) };
   } catch (error) {
     if (error instanceof DockerError && error.statusCode === 404) return null;
     throw error;

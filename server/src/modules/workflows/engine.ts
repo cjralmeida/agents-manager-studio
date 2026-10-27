@@ -12,6 +12,7 @@ import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { mergeIntoBase } from '../agents/pull-requests.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
+import { AGENT_SIZES, type AgentSize, admission, agentSizeName, machineBudget, runningSizes } from '../agents/resources.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
 import { dependenciesDelivered, dependencyRefs, refResolver } from '../boards/dependencies.js';
@@ -190,17 +191,28 @@ export type BoardTaskState = Awaited<ReturnType<typeof boardTaskState>>;
 /**
  * Whether the machine has room for another agent. Every agent step is checked (not only the first): a review or a
  * test also compiles and runs suites. New work stops earlier — one agent below the cap and at the launch memory
- * limit — so what already started keeps going and finishes instead of everything slowing down together.
+ * limit — so what already started keeps going and finishes instead of everything slowing down together. Each agent
+ * also has to fit what it reserves (CPU and memory of its size) next to what the running ones reserve.
  */
-async function machineBlocker(newWork: boolean): Promise<string | null> {
+async function machineBlocker(newWork: boolean, size: AgentSize = AGENT_SIZES.M): Promise<string | null> {
   const running = await prisma.agent.count({ where: { kind: 'TASK', containerId: { not: null }, status: { in: ['PREPARING', 'RUNNING'] } } });
   const cap = config.maxRunningAgents - (newWork ? 1 : 0);
   if (running >= cap) return `Aguardando: ${running} agentes rodando (limite ${cap}).`;
+  const budget = await machineBudget();
+  const reserved = budget && admission(await runningSizes(), size, budget);
+  if (reserved) return reserved;
   const usage = await getResourceUsage().catch(() => null);
   if (!usage) return null;
   const memoryLimit = newWork ? config.launchMemoryPercent : Math.min(95, config.launchMemoryPercent + 8);
   if (usage.totals.memoryPercent >= memoryLimit) return `Aguardando: memória em ${Math.round(usage.totals.memoryPercent)}% (limite ${memoryLimit}%).`;
   return null;
+}
+
+/** The size of the agent a step starts (by its profile's role). */
+async function stepSize(step: WorkflowStep): Promise<AgentSize> {
+  if (step.kind !== 'agent') return AGENT_SIZES.P;
+  const profile = await prisma.agentProfile.findUnique({ where: { id: step.profileId }, select: { name: true, instructions: true } });
+  return AGENT_SIZES[agentSizeName({ kind: 'TASK' }, profile)];
 }
 
 /** Failures of the machine, not of the work: Docker too slow to answer, a copy cut by a restart. */
@@ -356,7 +368,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     const slots = line.backedUp && !reworkOnly ? 0 : line.free;
     if (slots <= 0) {
       // A task already given to the line but not started is waiting for the machine (or the plan), not for an agent.
-      const holding = line.queued > 0 && !line.backedUp ? await machineBlocker(true) : null;
+      const holding = line.queued > 0 && !line.backedUp ? await machineBlocker(true, await stepSize(line.first)) : null;
       await report(
         workflow,
         line.backedUp
@@ -1126,7 +1138,7 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
           return;
         }
         // The machine decides too: a step waits while it is full, and new work waits earlier than work already started.
-        if (steps[index]!.kind === 'agent' && (await machineBlocker(startsNewWork))) {
+        if (steps[index]!.kind === 'agent' && (await machineBlocker(startsNewWork, await stepSize(steps[index]!)))) {
           pending = true;
           return;
         }

@@ -25,6 +25,7 @@ import { type RemoteAccess, refreshContext, refreshMirror } from './repo-cache.j
 import { learningsPrompt, phasesOfProfile } from '../quality/service.js';
 import { systemOfProject } from '../roadmaps/systems.js';
 import { testFailures } from './browser-view.js';
+import { sizeOfAgent } from './resources.js';
 import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runtime.js';
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
@@ -538,6 +539,7 @@ export async function ensureContainer(agentId: string) {
       env: { ...(await testServicesEnv(agent, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
       variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
       learnings: agent.kind === 'TASK' ? await learningsOf(agent).catch(() => null) : null,
+      size: await sizeOfAgent(agent),
     });
     await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
   } finally {

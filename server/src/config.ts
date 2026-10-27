@@ -48,6 +48,11 @@ const envSchema = z.object({
   MAX_RUNNING_AGENTS: z.coerce.number().int().min(1).max(50).default(6),
   /** Test runner workers per agent (Vitest): each container sees every core, and one per core saturates the machine. */
   AGENT_TEST_WORKERS: z.coerce.number().int().min(1).max(16).default(2),
+  /** CPUs and memory (MB) of Docker kept for the Studio and its services: agents reserve only the rest. */
+  MACHINE_RESERVED_CPUS: z.coerce.number().min(0).default(2),
+  MACHINE_RESERVED_MEMORY_MB: z.coerce.number().int().min(0).default(3072),
+  /** Agents mostly wait for the model: their CPU reservations may add up to this many times the CPUs left. */
+  AGENT_CPU_OVERCOMMIT: z.coerce.number().min(1).max(4).default(1.5),
   // No agent starts while the disk of the agent copies has less free space than this (GB); old copies are cleaned then.
   AGENT_MIN_FREE_DISK_GB: z.coerce.number().min(0).default(10),
   // The copy of a finished agent is deleted after this many hours (completed) or days (failed or cancelled).
@@ -104,6 +109,9 @@ function loadConfig() {
     launchCpuPercent: env.AGENT_LAUNCH_CPU_PERCENT,
     maxRunningAgents: env.MAX_RUNNING_AGENTS,
     agentTestWorkers: env.AGENT_TEST_WORKERS,
+    machineReservedCpus: env.MACHINE_RESERVED_CPUS,
+    machineReservedMemoryMb: env.MACHINE_RESERVED_MEMORY_MB,
+    agentCpuOvercommit: env.AGENT_CPU_OVERCOMMIT,
     minFreeDiskGb: env.AGENT_MIN_FREE_DISK_GB,
     copyRetentionHours: env.AGENT_COPY_RETENTION_HOURS,
     failedCopyRetentionDays: env.AGENT_FAILED_COPY_RETENTION_DAYS,

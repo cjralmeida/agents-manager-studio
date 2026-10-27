@@ -12,6 +12,9 @@ import {
   startContainer,
 } from '../../lib/docker.js';
 import { renderDotenv } from './variables.js';
+import { PREVIEW_CPU_SHARES, PREVIEW_SIZE, hostLimits, testWorkers } from '../agents/resources.js';
+
+const PREVIEW_LIMITS = hostLimits(PREVIEW_SIZE, PREVIEW_CPU_SHARES);
 
 /**
  * How each kind of project is checked and served. Every kind ends with a small Caddy container named
@@ -101,9 +104,10 @@ async function checkStatic(ws: Workspace): Promise<CheckResult> {
     name: `ams-check-${ws.slug}-${Date.now().toString(36)}`,
     cmd: ['sh', '-c', 'cd /app && npm ci --no-audit --no-fund && npm run build && npm test --if-present'],
     user: '0',
-    env: { ...ws.env, CI: 'true', npm_config_update_notifier: 'false' },
+    env: { ...ws.env, CI: 'true', npm_config_update_notifier: 'false', VITEST_MAX_WORKERS: String(testWorkers(PREVIEW_SIZE)) },
     labels: { [PREVIEW_LABEL]: ws.projectId },
     binds: [`${ws.srcHost}:/app`],
+    limits: PREVIEW_LIMITS,
     timeoutMs: CHECK_TIMEOUT_MS,
   });
   const log = output(result);
@@ -156,7 +160,7 @@ async function checkDockerfile(ws: Workspace): Promise<CheckResult> {
   const ports = candidatePorts(await imageExposedPorts(tag));
   const name = `ams-check-${ws.slug}`;
   await removeContainer(name).catch(() => undefined);
-  const id = await createContainer({ image: tag, name, cmd: [], env: ws.env, network: config.agentNetwork, labels: { [PREVIEW_LABEL]: ws.projectId } });
+  const id = await createContainer({ image: tag, name, cmd: [], env: ws.env, network: config.agentNetwork, labels: { [PREVIEW_LABEL]: ws.projectId }, limits: PREVIEW_LIMITS });
   try {
     await startContainer(id);
     const answer = await firstAnsweringPort(name, ports);
@@ -283,6 +287,7 @@ export async function serve(ws: Workspace, kind: PreviewKind, target: string | n
       env: ws.env,
       network: config.agentNetwork,
       labels: { [PREVIEW_LABEL]: ws.projectId },
+      limits: PREVIEW_LIMITS,
     });
     await startContainer(id);
     return startFront(ws, { upstream: `${app}:${target ?? '80'}` });
