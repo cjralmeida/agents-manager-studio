@@ -550,7 +550,13 @@ async function learningsOf(agent: Agent) {
   const profile = agent.profileId
     ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true, instructions: true, output: true } })
     : null;
-  return learningsPrompt(agent.workspaceId, phasesOfProfile(profile, Boolean(agent.projectId)));
+  const projects = agent.projectId ? await prisma.project.findMany({ where: { workspaceId: agent.workspaceId }, select: { id: true, name: true } }) : [];
+  const own = projects.find((project) => project.id === agent.projectId);
+  return learningsPrompt(
+    agent.workspaceId,
+    phasesOfProfile(profile, Boolean(agent.projectId)),
+    own && { name: own.name, others: projects.filter((project) => project !== own).map((project) => project.name) },
+  );
 }
 
 /**

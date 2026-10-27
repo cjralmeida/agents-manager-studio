@@ -35,10 +35,12 @@ const SKILL_PHASES: Record<string, LearningPhase[]> = {
   'game-advisor': ['especificacao'],
   'roadmap-planner': ['especificacao'],
   'backend-builder': ['codificacao'],
+  'frontend-builder': ['codificacao'],
   'game-builder': ['codificacao'],
   'pixel-forge': ['assets'],
   'audio-forge': ['assets'],
   'code-guardian': ['codificacao', 'testes'],
+  'frontend-guardian': ['codificacao', 'testes'],
   'hom-api-ranger': ['testes', 'codificacao'],
   'hom-ranger': ['testes', 'codificacao'],
   'hom-screen-ranger': ['testes', 'codificacao'],
@@ -215,12 +217,30 @@ export function phasesOfProfile(profile: { name: string; instructions: string; o
   return profile?.output === 'PULL_REQUEST' && hasProject ? ['codificacao'] : [];
 }
 
+/** The repository a task reference names ("group/repo#12" or "repo#12"), lower case; null for a free title. */
+export function refRepository(taskRef: string) {
+  const match = /^([\w./-]+)#\d+$/.exec(taskRef.trim());
+  return match ? match[1]!.split('/').pop()!.toLowerCase() : null;
+}
+
+/**
+ * How close a lesson is to the agent's project: 0 when it failed there, 1 when its tasks are of no known project,
+ * 2 when it only failed in the workspace's other projects (a backend lesson for a frontend agent, and the reverse).
+ */
+export function lessonOrigin(taskRefs: string[], project: { name: string; others: string[] }) {
+  const repositories = new Set(taskRefs.map(refRepository).filter((repository): repository is string => repository !== null));
+  if (repositories.has(project.name.toLowerCase())) return 0;
+  const others = new Set(project.others.map((name) => name.toLowerCase()));
+  return [...repositories].some((repository) => others.has(repository)) ? 2 : 1;
+}
+
 /**
  * The lessons of the workspace for an agent working in these stages, for its prompt (null: none). A category without
  * a written lesson is taught by its name and its last "expected × obtained". Categories judged not to be defects are
- * left out; resolved ones stay, so the fix is not undone.
+ * left out; resolved ones stay, so the fix is not undone. With the agent's project, its own lessons come first and
+ * those only seen in the workspace's other projects last, so the cap keeps what the agent can repeat.
  */
-export async function learningsPrompt(workspaceId: string, phases: LearningPhase[]) {
+export async function learningsPrompt(workspaceId: string, phases: LearningPhase[], project?: { name: string; others: string[] }) {
   if (phases.length === 0) return null;
   const categories = await prisma.qualityCategory.findMany({
     where: { workspaceId, phase: { in: phases }, status: { not: 'nao_defeito' } },
@@ -228,8 +248,12 @@ export async function learningsPrompt(workspaceId: string, phases: LearningPhase
   });
   if (categories.length === 0) return null;
   const ranked = categories
-    .map((category) => ({ category, tasks: new Set(category.occurrences.map((occurrence) => occurrence.taskRef.toLowerCase())).size }))
-    .sort((a, b) => b.tasks - a.tasks || b.category.updatedAt.getTime() - a.category.updatedAt.getTime())
+    .map((category) => ({
+      category,
+      tasks: new Set(category.occurrences.map((occurrence) => occurrence.taskRef.toLowerCase())).size,
+      origin: project ? lessonOrigin(category.occurrences.map((occurrence) => occurrence.taskRef), project) : 0,
+    }))
+    .sort((a, b) => a.origin - b.origin || b.tasks - a.tasks || b.category.updatedAt.getTime() - a.category.updatedAt.getTime())
     .slice(0, MAX_LESSONS);
 
   const several = phases.length > 1;
