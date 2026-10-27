@@ -212,7 +212,11 @@ export async function activeRunTasks(userId: string) {
     },
     include: { steps: { select: { lane: true } } },
   });
-  return runs.flatMap((run) => runTaskIds(run as never).map((taskItemId) => ({ workspaceId: run.workspaceId, taskItemId, runId: run.id })));
+  // A run still in the queue for its first step (the machine or the plan holding new work) has no agent yet: its card
+  // does not light up as if one were working.
+  return runs
+    .filter((run) => run.steps.length > 0)
+    .flatMap((run) => runTaskIds(run as never).map((taskItemId) => ({ workspaceId: run.workspaceId, taskItemId, runId: run.id })));
 }
 
 async function runResponse(run: RunWithDetails) {

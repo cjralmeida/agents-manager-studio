@@ -281,12 +281,14 @@ async function lineState(workflow: Workflow) {
   });
   let firstBusy = 0;
   let waiting = 0;
+  let queued = 0;
   for (const run of runs) {
     const running = run.steps.filter((step) => step.status === 'RUNNING');
+    if (run.steps.length === 0) queued++;
     if (run.steps.length === 0 || running.some((step) => step.stepId === first.id && step.lane === 'main')) firstBusy++;
     else if (running.length === 0) waiting++;
   }
-  return { first, firstBusy, waiting, free: workflow.isEnabled ? Math.max(0, first.agents - firstBusy) : 0, backedUp: waiting >= LINE_QUEUE_LIMIT };
+  return { first, firstBusy, waiting, queued, free: workflow.isEnabled ? Math.max(0, first.agents - firstBusy) : 0, backedUp: waiting >= LINE_QUEUE_LIMIT };
 }
 
 /** Whether a step has an agent free: its agents working it now, over all the workflow's tasks, are below its limit. */
@@ -353,11 +355,15 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     const reworkOnly = line.backedUp && line.free > 0 && trigger.type === 'board_task';
     const slots = line.backedUp && !reworkOnly ? 0 : line.free;
     if (slots <= 0) {
+      // A task already given to the line but not started is waiting for the machine (or the plan), not for an agent.
+      const holding = line.queued > 0 && !line.backedUp ? await machineBlocker(true) : null;
       await report(
         workflow,
         line.backedUp
           ? `Ocupado: ${line.waiting} tarefa(s) esperando a próxima etapa; "${line.first.name}" pega novas quando a fila andar.`
-          : `Ocupado: ${line.firstBusy}/${line.first.agents} agente(s) em "${line.first.name}".`,
+          : holding
+            ? `Na fila: ${line.queued} tarefa(s) esperando vaga para começar "${line.first.name}" — ${holding.replace(/^Aguardando: /, '')}`
+            : `Ocupado: ${line.firstBusy}/${line.first.agents} agente(s) em "${line.first.name}".`,
       );
       continue;
     }
