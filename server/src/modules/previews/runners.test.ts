@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
-import { candidatePorts, daemonPath, pickService } from './runners.js';
+import { candidatePorts, daemonPath, pickService, testCommand } from './runners.js';
 
 describe('daemonPath', () => {
   it('turns a Windows drive path into the Docker Desktop path', () => {
@@ -41,5 +44,25 @@ describe('candidatePorts', () => {
   it('falls back to 80 when the image declares nothing usable', () => {
     assert.deepEqual(candidatePorts([]), [80]);
     assert.deepEqual(candidatePorts([443]), [80]);
+  });
+});
+
+describe('testCommand', () => {
+  const withScripts = async (scripts: Record<string, string> | null, check: (dir: string) => Promise<void>) => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'preview-'));
+    try {
+      if (scripts) await writeFile(path.join(dir, 'package.json'), JSON.stringify({ scripts }));
+      await check(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('gives Vitest a longer per-test timeout', () =>
+    withScripts({ test: 'vitest run' }, async (dir) => assert.equal(await testCommand(dir), 'npm test -- --testTimeout=180000')));
+
+  it('runs other test runners as they are and skips a project without tests', async () => {
+    await withScripts({ test: 'jest' }, async (dir) => assert.equal(await testCommand(dir), 'npm test'));
+    await withScripts({ build: 'vite build' }, async (dir) => assert.equal(await testCommand(dir), 'true'));
   });
 });

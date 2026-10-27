@@ -97,12 +97,25 @@ export const UNSUPPORTED =
 
 // ---------------------------------------------------------------- checks
 
+/**
+ * The project's tests. Vitest gets a longer per-test timeout: the check runs with few CPUs next to the agents, and
+ * heavy tests (e.g. a game's 200 random seeds) passed its default 30 s only on a quiet machine.
+ */
+export async function testCommand(src: string) {
+  const pkg = await readFile(`${src}/package.json`, 'utf8').then((text) => JSON.parse(text) as { scripts?: Record<string, string> }, () => null);
+  const test = pkg?.scripts?.test;
+  if (!test) return 'true';
+  return /\bvitest\b/.test(test) ? `npm test -- --testTimeout=${CHECK_TEST_TIMEOUT_MS}` : 'npm test';
+}
+
+const CHECK_TEST_TIMEOUT_MS = 180_000;
+
 /** Node project with a static build: install, build and tests in the runner image; the site comes from dist/build/out. */
 async function checkStatic(ws: Workspace): Promise<CheckResult> {
   const result = await runOnce({
     image: config.agentRunnerImage,
     name: `ams-check-${ws.slug}-${Date.now().toString(36)}`,
-    cmd: ['sh', '-c', 'cd /app && npm ci --no-audit --no-fund && npm run build && npm test --if-present'],
+    cmd: ['sh', '-c', `cd /app && npm ci --no-audit --no-fund && npm run build && ${await testCommand(ws.src)}`],
     user: '0',
     env: { ...ws.env, CI: 'true', npm_config_update_notifier: 'false', VITEST_MAX_WORKERS: String(testWorkers(PREVIEW_SIZE)) },
     labels: { [PREVIEW_LABEL]: ws.projectId },

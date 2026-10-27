@@ -68,11 +68,12 @@ async function finish(build: PreviewBuild, status: 'PASSED' | 'FAILED', log: str
   return prisma.previewBuild.update({ where: { id: build.id }, data: { status, log: tail(log), target: target ?? null, finishedAt: new Date() } });
 }
 
-const workspaceOf = (project: Project, commit: string, env: Record<string, string> = {}): Workspace => ({
+/** `folder` defaults to the commit's: a check of the commit already served uses another one (see runCheck). */
+const workspaceOf = (project: Project, commit: string, env: Record<string, string> = {}, folder = commit): Workspace => ({
   projectId: project.id,
   slug: previewSlug(project.name),
-  src: `${buildDir(project.id, commit)}/src`,
-  srcHost: `${buildHostDir(project.id, commit)}/src`,
+  src: `${buildDir(project.id, folder)}/src`,
+  srcHost: `${buildHostDir(project.id, folder)}/src`,
   commit,
   env,
 });
@@ -86,9 +87,12 @@ async function runCheck(project: Project, remote: Awaited<ReturnType<typeof remo
   // A newer commit may have arrived between the look and the clone: the folder is named after what was cloned.
   const actual = (await git(staging, ['rev-parse', 'HEAD'])).trim();
   const message = (await git(staging, ['log', '-1', '--format=%s'])).trim();
-  const ws = workspaceOf(project, actual, await projectEnv(project.id));
-  await rm(buildDir(project.id, actual), { recursive: true, force: true });
-  await mkdir(buildDir(project.id, actual), { recursive: true });
+  // Checking again the commit that is up must not touch its folder: the running site is mounted from it, and replacing
+  // it left the preview answering 404 (The Golden Mug, 27/10). The check goes to its own folder, removed by cleanup.
+  const folder = (await servedCommit(project.id)) === actual ? `re-${actual}` : actual;
+  const ws = workspaceOf(project, actual, await projectEnv(project.id), folder);
+  await rm(buildDir(project.id, folder), { recursive: true, force: true });
+  await mkdir(buildDir(project.id, folder), { recursive: true });
   await rename(staging, ws.src);
 
   const detected = await detect(ws.src);
@@ -98,6 +102,13 @@ async function runCheck(project: Project, remote: Awaited<ReturnType<typeof remo
   if (!detected) return finish(build, 'FAILED', UNSUPPORTED);
   const result = await runKindCheck(ws, detected);
   return finish(build, result.passed ? 'PASSED' : 'FAILED', result.log, result.target);
+}
+
+/** The commit whose build is up now, if any. */
+async function servedCommit(projectId: string) {
+  const preview = await prisma.projectPreview.findUnique({ where: { projectId }, select: { buildId: true } });
+  const served = preview?.buildId ? await prisma.previewBuild.findUnique({ where: { id: preview.buildId }, select: { commit: true } }) : null;
+  return served?.commit ?? null;
 }
 
 /**
