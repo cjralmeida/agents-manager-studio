@@ -215,7 +215,7 @@ async function stepSize(step: WorkflowStep): Promise<AgentSize> {
 
 /** Failures of the machine, not of the work: Docker too slow to answer, a copy cut by a restart. */
 export function isTransientFailure(error: string | null | undefined) {
-  return Boolean(error) && (/Docker request timed out/i.test(error!) || error!.includes(PREPARATION_INTERRUPTED));
+  return Boolean(error) && (/Docker request timed out|removal of container .* already in progress/i.test(error!) || error!.includes(PREPARATION_INTERRUPTED));
 }
 
 /** How many times a step's agent is started again after a machine failure before the step fails for good. */

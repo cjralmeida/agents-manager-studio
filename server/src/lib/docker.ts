@@ -183,7 +183,15 @@ export async function stopContainer(id: string, graceSeconds = 10) {
 
 export async function removeContainer(id: string, timeoutMs?: number) {
   // v=1: the container's anonymous volumes go with it (an image with VOLUME, like postgres, leaves one per run).
-  await call('DELETE', `/containers/${id}?force=1&v=1`, undefined, timeoutMs).catch(ignoreGone);
+  await call('DELETE', `/containers/${id}?force=1&v=1`, undefined, timeoutMs).catch((error: unknown) => {
+    // An earlier request that timed out is still removing it: Docker finishes on its own (globalfarm#146 failed on this).
+    if (isRemovalInProgress(error)) return;
+    ignoreGone(error);
+  });
+}
+
+export function isRemovalInProgress(error: unknown) {
+  return error instanceof DockerError && error.statusCode === 409 && /already in progress/i.test(error.message);
 }
 
 /** Docker did not answer in time (a busy machine), as opposed to refusing the request. */
