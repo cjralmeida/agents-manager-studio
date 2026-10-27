@@ -34,6 +34,8 @@ import {
   featuresReady,
   frontendPrompt,
   frontendTasksReady,
+  homologationRetestDue,
+  lastRunHoldsTask,
   pickTasks,
   screensUsing,
   taskPrompt,
@@ -242,10 +244,9 @@ export async function boardTaskState(workspaceId: string) {
   for (const item of snapshot.items) {
     const run = lastRun.get(item.id);
     if (!run) continue;
-    const changedSince = run.finishedAt !== null && new Date(item.updatedAt).getTime() > run.finishedAt.getTime();
     // A run that failed because of the machine (Docker too slow, a restart) is not the task's fault: it is taken again.
     const machineFailure = run.status === 'FAILED' && run.steps.length > 0 && run.steps.every((step) => isTransientFailure(step.error));
-    if (run.status === 'RUNNING' || (run.status !== 'COMPLETED' && !changedSince && !machineFailure)) taken.add(item.id);
+    if (lastRunHoldsTask(run, item.updatedAt, machineFailure)) taken.add(item.id);
   }
   return { snapshot, projectOf, statusMap, delivered, taken, lastRun };
 }
@@ -406,7 +407,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
           if (!last) return true;
           if (last.status === 'RUNNING') return false;
           if ((last.trigger as { signature?: string }).signature !== feature.signature) return true;
-          return last.status === 'FAILED' && Boolean(last.finishedAt) && Date.now() - last.finishedAt!.getTime() > FEATURE_RETEST_AFTER_MS;
+          return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS);
         })
         .map(({ feature, screens }) => ({ ...feature, screens }));
       if (candidates.length === 0) {
@@ -438,7 +439,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         if (!last) return true;
         if (last.status === 'RUNNING') return false;
         if ((last.trigger as { signature?: string }).signature !== frontendSignature(entry)) return true;
-        return last.status === 'FAILED' && Boolean(last.finishedAt) && Date.now() - last.finishedAt!.getTime() > FEATURE_RETEST_AFTER_MS;
+        return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS);
       });
       if (candidates.length === 0) {
         await report(workflow, 'Vigiando: nenhuma tarefa de frontend nova pronta em homologação.');
@@ -869,7 +870,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
 }
 
 /** Tasks one tester session goes through before a fresh agent takes over (its context keeps growing). */
-/** A feature or screen test that failed leaving its tasks in homologation is tried again after this long. */
+/** A feature or screen test that ended without deciding its tasks (still in homologation) is tried again after this long. */
 const FEATURE_RETEST_AFTER_MS = 30 * 60_000;
 
 const TESTER_REUSE_LIMIT = 8;

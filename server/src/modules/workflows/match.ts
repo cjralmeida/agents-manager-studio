@@ -344,6 +344,31 @@ export function frontendPrompt(ready: ReadyFrontendTask, items: BoardItem[], don
   ].join('\n\n');
 }
 
+/**
+ * Whether a task's last run keeps a "tarefa no quadro" workflow from taking it: the run is going, or it did not finish
+ * well and nobody changed the task since. A failure of the machine does not hold it, nor a homologation test (it has a
+ * signature) that sent the task back with its report: the reproval is the decision, whoever fixes it takes it.
+ */
+export function lastRunHoldsTask(
+  run: { status: string; finishedAt: Date | null; trigger: unknown },
+  taskUpdatedAt: string,
+  machineFailure: boolean,
+) {
+  if (run.status === 'RUNNING') return true;
+  if (run.status === 'COMPLETED' || machineFailure) return false;
+  if ((run.trigger as { signature?: string } | null)?.signature) return false;
+  return !(run.finishedAt !== null && new Date(taskUpdatedAt).getTime() > run.finishedAt.getTime());
+}
+
+/**
+ * A homologation test with nothing changed since runs again a while after it ended without deciding its tasks (they
+ * are still waiting in homologation): it failed (e.g. HOM went down) or it ended without moving them (e.g. the Studio
+ * tools did not answer and the agent stopped without testing).
+ */
+export function homologationRetestDue(last: { status: string; finishedAt: Date | null }, now: number, afterMs: number) {
+  return (last.status === 'FAILED' || last.status === 'COMPLETED') && last.finishedAt !== null && now - last.finishedAt.getTime() > afterMs;
+}
+
 /** Change packages ("mudancas/MUD-012-FUNC-031.md") a step's result names, once each. */
 export function packageFiles(text: string) {
   return [...new Set([...text.matchAll(/((?:[\w.-]+\/)*MUD-\d+[\w.-]*\.md)/g)].map((match) => match[1]!))];

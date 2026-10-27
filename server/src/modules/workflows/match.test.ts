@@ -9,6 +9,8 @@ import {
   featuresReady,
   frontendPrompt,
   frontendTasksReady,
+  homologationRetestDue,
+  lastRunHoldsTask,
   matchesRule,
   packageFiles,
   pickTasks,
@@ -304,5 +306,49 @@ describe('packageFiles', () => {
     assert.deepEqual(packageFiles(result), ['mudancas/MUD-012-FUNC-031.md']);
     assert.deepEqual(packageFiles('Pacotes MUD-003.md e docs/mudancas/MUD-004-FUNC-002.md'), ['MUD-003.md', 'docs/mudancas/MUD-004-FUNC-002.md']);
     assert.deepEqual(packageFiles('Sem pacote: só o MUD-005 citado'), []);
+  });
+});
+
+describe('lastRunHoldsTask', () => {
+  const finishedAt = new Date('2026-10-27T20:24:00Z');
+  const before = '2026-10-27T20:23:49Z';
+  const after = '2026-10-27T20:30:00Z';
+
+  it('holds a task while its run is going', () => {
+    assert.equal(lastRunHoldsTask({ status: 'RUNNING', finishedAt: null, trigger: {} }, after, false), true);
+  });
+
+  it('holds a task whose own run failed until someone changes it', () => {
+    const run = { status: 'FAILED', finishedAt, trigger: { taskItemId: 'x', title: 't' } };
+    assert.equal(lastRunHoldsTask(run, before, false), true);
+    assert.equal(lastRunHoldsTask(run, after, false), false);
+  });
+
+  it('does not hold a task after a machine failure or a completed run', () => {
+    assert.equal(lastRunHoldsTask({ status: 'FAILED', finishedAt, trigger: {} }, before, true), false);
+    assert.equal(lastRunHoldsTask({ status: 'COMPLETED', finishedAt, trigger: {} }, before, false), false);
+  });
+
+  it('does not hold a task a homologation test sent back with its report', () => {
+    // globalfarm front #138: the screen test moved it to "A fazer" (20:23:49) before the run ended (20:24).
+    const run = { status: 'FAILED', finishedAt, trigger: { taskItemId: 'x', title: 't', signature: 'abc' } };
+    assert.equal(lastRunHoldsTask(run, before, false), false);
+  });
+});
+
+describe('homologationRetestDue', () => {
+  const now = Date.parse('2026-10-27T21:00:00Z');
+  const after = 30 * 60_000;
+
+  it('tests again a while after a test that failed or completed without deciding', () => {
+    for (const status of ['FAILED', 'COMPLETED']) {
+      assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:00:00Z') }, now, after), true);
+      assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:45:00Z') }, now, after), false);
+    }
+  });
+
+  it('does not test again a cancelled or unfinished run', () => {
+    assert.equal(homologationRetestDue({ status: 'CANCELLED', finishedAt: new Date('2026-10-27T20:00:00Z') }, now, after), false);
+    assert.equal(homologationRetestDue({ status: 'FAILED', finishedAt: null }, now, after), false);
   });
 });
