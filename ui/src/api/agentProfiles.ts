@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentModel } from './agents';
 import { api } from './client';
+import type { SizeName } from './resourceSettings';
 
 export type AgentOutput = 'PULL_REQUEST' | 'RESULT';
 export type ProfileTool = 'board' | 'hom' | 'hom_read' | 'clickup_read' | 'projects' | 'pixellab' | 'test_env' | 'roadmap';
@@ -26,6 +27,10 @@ export interface AgentProfile {
   autoConclude: boolean;
   /** Merges its own PR/MR as soon as it is opened. */
   autoMerge: boolean;
+  /** CPU and memory of its container (sizes in Configurações → Recursos); null: by its role. */
+  resourceSize: SizeName | null;
+  /** Size on "automatic", by the role (skill) it names. */
+  roleSize: SizeName;
   workingAgents: number;
   totalAgents: number;
   createdAt: string;
@@ -33,7 +38,7 @@ export interface AgentProfile {
 
 export type AgentProfileInput = Pick<
   AgentProfile,
-  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'contextProjectIds' | 'anyProject' | 'output' | 'tools' | 'autoConclude' | 'autoMerge'
+  'name' | 'description' | 'instructions' | 'model' | 'projectIds' | 'contextProjectIds' | 'anyProject' | 'output' | 'tools' | 'autoConclude' | 'autoMerge' | 'resourceSize'
 >;
 
 export const outputLabels: Record<AgentOutput, string> = {

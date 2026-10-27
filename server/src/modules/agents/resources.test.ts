@@ -24,6 +24,11 @@ describe('agentSizeName', () => {
     assert.equal(agentSizeName(task, null), 'M');
     assert.equal(agentSizeName({ kind: 'TASK', resourceSize: 'GG' }, profile('spec-architect')), 'GG');
   });
+
+  it('takes the size chosen for the profile over its role, and an OOM bump over both', () => {
+    assert.equal(agentSizeName(task, { ...profile('backend-builder'), resourceSize: 'M' }), 'M');
+    assert.equal(agentSizeName({ kind: 'TASK', resourceSize: 'G' }, { ...profile('spec-architect'), resourceSize: 'P' }), 'G');
+  });
 });
 
 describe('largerSize', () => {

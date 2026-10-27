@@ -392,6 +392,13 @@ model Agent {
   limitResumeAt     DateTime?   @map("limit_resume_at")
   /// Size the container was moved to after running out of memory (see agents/resources.ts); null: the size of its role.
   resourceSize      String?     @map("resource_size")
+  /// Size the container was last started with (P, M, G, GG).
+  sizeName          String?     @map("size_name")
+  /// Highest memory (MB) and CPU (100 = one core) measured, and the CPU samples summed (average = sum / samples).
+  peakMemoryMb      Int?        @map("peak_memory_mb")
+  peakCpuPercent    Float?      @map("peak_cpu_percent")
+  cpuPercentSum     Float       @default(0) @map("cpu_percent_sum")
+  usageSamples      Int         @default(0) @map("usage_samples")
   /// Set when the Studio deleted the agent's copy to free disk (see agents/cleanup.ts); it can no longer continue.
   workdirRemovedAt  DateTime?   @map("workdir_removed_at")
   /// Last time the code of this (volume) copy was mirrored to the Windows folder (see agents/mirror.ts).
@@ -576,6 +583,8 @@ model AgentProfile {
   autoConclude      Boolean     @default(false) @map("auto_conclude")
   /// Merges its own PR/MR right after opening it (e.g. documentation the next workflow step reads).
   autoMerge         Boolean     @default(false) @map("auto_merge")
+  /// Container size chosen in Configurações → Recursos (P, M, G, GG); null: by the role it names.
+  resourceSize      String?     @map("resource_size")
   createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 

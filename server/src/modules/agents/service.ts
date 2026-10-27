@@ -530,6 +530,7 @@ export async function ensureContainer(agentId: string) {
 
     const system = agent.kind === 'TASK' && agent.projectId ? await systemOfProject(agent.workspaceId, agent.projectId).catch(() => null) : null;
     const docsElsewhere = system && system.docsProject.id !== agent.projectId ? system.docsProject : null;
+    const size = await sizeOfAgent(agent);
     const { containerId, secretHash } = await startAgentContainer({
       agent,
       contextProjects: await contextProjectsOf(agent, docsElsewhere?.id),
@@ -539,9 +540,9 @@ export async function ensureContainer(agentId: string) {
       env: { ...(await testServicesEnv(agent, Boolean(agent.projectId))), ...(await pixellabEnv(agent)) },
       variableNames: agent.kind === 'TASK' ? await writeAgentVariables(agent) : null,
       learnings: agent.kind === 'TASK' ? await learningsOf(agent).catch(() => null) : null,
-      size: await sizeOfAgent(agent),
+      size,
     });
-    await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash } });
+    await prisma.agent.update({ where: { id: agentId }, data: { containerId, secretHash, sizeName: size.name } });
   } finally {
     starting.delete(agentId);
   }

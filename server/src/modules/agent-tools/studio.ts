@@ -125,6 +125,7 @@ async function context(workspaceId: string) {
       tools: profile.tools,
       autoConclude: profile.autoConclude,
       autoMerge: profile.autoMerge,
+      resourceSize: profile.resourceSize,
       executions: profile.totalAgents,
     })),
     workflows: workflows.map(({ id, name, description, isEnabled, trigger, steps, maxConcurrentRuns, processId, statusMessage, totalRuns }) => ({

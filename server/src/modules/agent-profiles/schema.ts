@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SIZE_NAMES } from '../agents/resources.js';
 import { AGENT_MODELS } from '../agents/service.js';
 
 /** Studio tool groups a workspace agent can use. */
@@ -21,5 +22,7 @@ export const profileSchema = z
     autoConclude: z.boolean().default(false),
     /** Merge the PR/MR as soon as it is opened (only for agents that deliver code). */
     autoMerge: z.boolean().default(false),
+    /** CPU and memory of its container (Configurações → Recursos); null: by the role it names. */
+    resourceSize: z.enum(SIZE_NAMES).nullable().default(null),
   })
   .strict();

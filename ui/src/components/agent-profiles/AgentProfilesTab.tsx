@@ -13,6 +13,7 @@ import {
   useUpdateAgentProfile,
 } from '../../api/agentProfiles';
 import type { AgentModel } from '../../api/agents';
+import { SIZE_NAMES, type SizeName } from '../../api/resourceSettings';
 import type { WorkspaceDetail } from '../../api/workspaces';
 import { plural } from '../../lib/time';
 import { NewAgentForm } from '../agents/NewAgentForm';
@@ -35,7 +36,10 @@ const empty: AgentProfileInput = {
   tools: [],
   autoConclude: false,
   autoMerge: false,
+  resourceSize: null,
 };
+
+const sizeLabels: Record<SizeName, string> = { P: 'P (leve)', M: 'M (front e testes)', G: 'G (backend)', GG: 'GG (o maior)' };
 
 /** Fixed agents of the workspace: each has a role and can be run by hand or used in workflows. */
 export function AgentProfilesTab({ workspace }: { workspace: WorkspaceDetail }) {
@@ -136,6 +140,7 @@ function ProfileCard({ workspace, profile, onEdit, onRun }: { workspace: Workspa
         {profile.tools.includes('roadmap') && <Badge>roadmap</Badge>}
         {profile.autoConclude && <Badge tone="success">conclui sozinho</Badge>}
         {profile.autoMerge && <Badge tone="success">merge automático</Badge>}
+        <Badge>tamanho {profile.resourceSize ?? profile.roleSize}</Badge>
         {contextNames.length > 0 && <Badge>lê: {contextNames.join(', ')}</Badge>}
       </div>
       {profile.instructions && <p className="mt-3 line-clamp-3 text-xs whitespace-pre-line text-gray-300">{profile.instructions}</p>}
@@ -174,8 +179,13 @@ interface ProfileFormProps {
   onCancel: () => void;
 }
 
+/** The editable fields of a saved agent (the rest is read-only and the server refuses it). */
+function pickInput(profile: AgentProfile): AgentProfileInput {
+  return Object.fromEntries((Object.keys(empty) as (keyof AgentProfileInput)[]).map((key) => [key, profile[key]])) as AgentProfileInput;
+}
+
 function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }: ProfileFormProps) {
-  const [form, setForm] = useState<AgentProfileInput>(initial ?? empty);
+  const [form, setForm] = useState<AgentProfileInput>(initial ? pickInput(initial) : empty);
   const set = <K extends keyof AgentProfileInput>(key: K, value: AgentProfileInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const gitProjects = workspace.projects.filter((project) => project.isGitRepo && !project.isMissing);
   const withoutRepository = form.projectIds.length === 0 && !form.anyProject;
@@ -250,6 +260,27 @@ function ProfileForm({ workspace, initial, pending, error, onSubmit, onCancel }:
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Field
+          label="Recursos (CPU e memória)"
+          hint={
+            <>
+              Valores de cada tamanho em{' '}
+              <Link to="/settings?tab=resources" className="text-accent hover:underline">
+                Configurações → Recursos
+              </Link>
+              .
+            </>
+          }
+        >
+          <Select value={form.resourceSize ?? ''} onChange={(event) => set('resourceSize', (event.target.value || null) as SizeName | null)}>
+            <option value="">Automático pelo papel{initial ? ` (${initial.roleSize})` : ''}</option>
+            {SIZE_NAMES.map((name) => (
+              <option key={name} value={name}>
+                {sizeLabels[name]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label="Modelo">
           <Select value={form.model} onChange={(event) => set('model', event.target.value as AgentModel)}>
             <option value="sonnet">Sonnet (padrão)</option>

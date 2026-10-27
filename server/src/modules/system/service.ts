@@ -6,6 +6,7 @@ import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { containerStats, diskUsage, dockerInfo, listRunningContainers } from '../../lib/docker.js';
 import { notFound } from '../../lib/errors.js';
+import { recordAgentUsage } from '../agents/resources.js';
 import { AGENT_LABEL, agentVolumeName } from '../agents/runtime.js';
 import { cpuPercent, launchWarnings, memoryUsed } from './usage.js';
 
@@ -104,6 +105,7 @@ async function sampleResources(): Promise<ResourceUsage> {
     }),
   );
 
+  void recordAgentUsage(containers).catch(() => undefined);
   const cpuSum = containers.reduce((sum, container) => sum + container.cpuPercent, 0);
   const memorySum = containers.reduce((sum, container) => sum + container.memoryUsed, 0);
   const totals = {

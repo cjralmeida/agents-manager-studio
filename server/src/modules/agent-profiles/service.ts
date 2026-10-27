@@ -1,6 +1,7 @@
 import { prisma } from '../../db.js';
 import { type AgentProfile, Prisma } from '../../generated/prisma/client.js';
 import { HttpError, notFound } from '../../lib/errors.js';
+import { type AgentSizeName, limitRunningAgents, roleSizeName } from '../agents/resources.js';
 import type { AgentModel } from '../agents/service.js';
 
 import type { PROFILE_TOOLS } from './schema.js';
@@ -17,6 +18,7 @@ export interface AgentProfileInput {
   tools: (typeof PROFILE_TOOLS)[number][];
   autoConclude: boolean;
   autoMerge: boolean;
+  resourceSize: AgentSizeName | null;
 }
 
 const WORKING_STATUSES = ['PREPARING', 'RUNNING', 'WAITING_INPUT'] as const;
@@ -43,6 +45,9 @@ async function toResponse(profile: AgentProfile & { workspace?: { name: string }
     tools: profile.tools,
     autoConclude: profile.autoConclude,
     autoMerge: profile.autoMerge && (profile.projectIds.length > 0 || profile.anyProject) && profile.output === 'PULL_REQUEST',
+    resourceSize: profile.resourceSize,
+    /** Size it gets on "automatic", by the role (skill) it names. */
+    roleSize: roleSizeName(profile),
     workingAgents: working,
     totalAgents: total,
     createdAt: profile.createdAt,
@@ -107,6 +112,8 @@ export async function updateAgentProfile(id: string, input: Partial<AgentProfile
       where: { id },
       data: { ...input, ...(projectIds && { projectIds }), ...(contextProjectIds && { contextProjectIds }) },
     });
+    // Its running agents get the new size right away.
+    if (input.resourceSize !== undefined && input.resourceSize !== current.resourceSize) await limitRunningAgents().catch(() => undefined);
     return toResponse(profile);
   } catch (error) {
     if (duplicateName(error)) throw new HttpError(409, `Já existe um agente chamado "${input.name}" neste workspace.`);

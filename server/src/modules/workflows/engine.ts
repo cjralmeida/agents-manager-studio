@@ -12,7 +12,7 @@ import { parseRemote, remoteHostname } from '../agents/remote.js';
 import { mergeIntoBase } from '../agents/pull-requests.js';
 import { type TaskPullRequest, findTaskPullRequest } from '../agents/task-pull-request.js';
 import { fastForwardFrom } from '../agents/workdir.js';
-import { AGENT_SIZES, type AgentSize, admission, agentSizeName, machineBudget, runningSizes } from '../agents/resources.js';
+import { AGENT_SIZES, type AgentSize, admission, machineBudget, runningSizes, sizeOfProfile } from '../agents/resources.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { secrets } from '../../lib/secrets.js';
 import { dependenciesDelivered, dependencyRefs, refResolver } from '../boards/dependencies.js';
@@ -210,9 +210,7 @@ async function machineBlocker(newWork: boolean, size: AgentSize = AGENT_SIZES.M)
 
 /** The size of the agent a step starts (by its profile's role). */
 async function stepSize(step: WorkflowStep): Promise<AgentSize> {
-  if (step.kind !== 'agent') return AGENT_SIZES.P;
-  const profile = await prisma.agentProfile.findUnique({ where: { id: step.profileId }, select: { name: true, instructions: true } });
-  return AGENT_SIZES[agentSizeName({ kind: 'TASK' }, profile)];
+  return step.kind === 'agent' ? sizeOfProfile(step.profileId) : AGENT_SIZES.P;
 }
 
 /** Failures of the machine, not of the work: Docker too slow to answer, a copy cut by a restart. */
