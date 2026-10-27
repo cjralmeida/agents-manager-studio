@@ -236,6 +236,9 @@ export async function startAgentContainer({ agent, claudeToken, skillIds, env = 
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
       // The user's time zone: `date`, logs and the agent's own notes show local time, like the Studio.
       TZ: process.env.TZ || 'America/Sao_Paulo',
+      // Test suites open one worker per core by default; with several agents at once that starves the machine (and
+      // Docker stops answering in time). The agent can still pass its own value on a command.
+      VITEST_MAX_WORKERS: String(config.agentTestWorkers),
       CLAUDE_CODE_OAUTH_TOKEN: claudeToken,
       ...(agent.sessionId && { RESUME_SESSION_ID: agent.sessionId }),
       // Reference folders belong to the host user: git would refuse them as "dubious ownership".
