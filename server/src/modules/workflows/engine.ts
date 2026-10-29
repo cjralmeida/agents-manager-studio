@@ -793,6 +793,16 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
     }
   }
 
+  // A task taken again while its earlier delivery is still in an open PR/MR (sent back before the merge, e.g. from
+  // validation) continues that branch: a fresh copy of the base has none of that work, and the agent has no
+  // credentials to fetch it (gf-novo-oficial#150 went round three times with "nothing to deliver").
+  let resumed: TaskPullRequest | null = null;
+  const picksTask = Boolean(taskItemId) && (index === 0 || index === fanOut);
+  if (picksTask && task && projectId && !pullRequest && !decision && !homologation && !step.continueFromPrevious) {
+    const open = await pullRequestOfTask(run.workspaceId, projectId, task).catch(() => null);
+    if (open && !open.merged) resumed = open;
+  }
+
   let sourceAgentId: string | undefined;
   if (step.continueFromPrevious) {
     const output = outputOf(previous?.run);
@@ -830,6 +840,12 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
           `Atenção: o PR/MR desta tarefa (${pullRequest.url}) já foi mesclado em \`${pullRequest.baseBranch}\`. A sua cópia é essa branch: não faça commits nela. Só publique em homologação (o deploy pega a branch como está) e confira. Se precisar mudar código ou configuração, reporte failure explicando o que falta.`,
         ]
       : []),
+    ...(resumed
+      ? [
+          '',
+          `Esta tarefa já tem uma entrega no PR/MR ${resumed.url} (branch \`${resumed.branch}\`), ainda não mesclada. A sua cópia é essa branch: continue dela, corrigindo o que o último relatório (nos comentários da tarefa) apontou, sem refazer o que já está pronto. Seus commits vão para esse mesmo PR/MR.`,
+        ]
+      : []),
   ].join('\n');
 
   // The tester of the previous frontend task goes on to this one in the same session: no new container, and it keeps
@@ -858,6 +874,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       ...(pullRequest && {
         pullRequest: { url: pullRequest.url, branch: pullRequest.merged ? pullRequest.baseBranch : pullRequest.branch, baseBranch: pullRequest.baseBranch },
       }),
+      ...(resumed && { pullRequest: { url: resumed.url, branch: resumed.branch, baseBranch: resumed.baseBranch } }),
     });
     return prisma.workflowStepRun.create({
       data: { runId: run.id, stepId: step.id, stepIndex: index, lane, attempt, agentId: agent.id },
