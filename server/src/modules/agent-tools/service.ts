@@ -65,6 +65,8 @@ export interface AgentResult {
   projectId?: string;
   /** The work was approved but its PR/MR conflicts with the base branch (set by the Studio, not the agent). */
   mergeConflict?: boolean;
+  /** The agent ended without studio_report_result: the summary is its last answer (set by the Studio). */
+  unreported?: boolean;
 }
 
 type Args = Record<string, unknown>;

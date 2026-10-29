@@ -1047,7 +1047,7 @@ async function completeWithResult(id: string) {
   if (!result || !('status' in result)) {
     const lastTurn = await prisma.agentEvent.findFirst({ where: { agentId: id, type: 'turn_end' }, orderBy: { id: 'desc' } });
     const summary = (lastTurn?.data as { text?: string } | null)?.text ?? '';
-    result = { ...(result ?? {}), status: 'success', summary };
+    result = { ...(result ?? {}), status: 'success', summary, unreported: true };
   }
   await prisma.agent.update({
     where: { id },

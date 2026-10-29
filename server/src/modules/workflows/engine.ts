@@ -555,6 +555,9 @@ async function failedBeforeCopy(stepRun: WorkflowStepRun) {
   return agent?.status === 'FAILED' && agent.baseCommit === null;
 }
 
+const UNREPORTED = 'O agente terminou sem reportar o resultado (studio_report_result).';
+const UNREPORTED_RETRIES = 2;
+
 /** Updates a running step from its agent or deployment. */
 async function syncStep(stepRun: WorkflowStepRun) {
   const finish = (status: 'SUCCEEDED' | 'FAILED', output: StepOutput, error: string | null = null) =>
@@ -590,6 +593,19 @@ async function syncStep(stepRun: WorkflowStepRun) {
     mergeConflict: result.mergeConflict,
   };
   if (agent.status === 'COMPLETED') {
+    // Ended without reporting (e.g. the Studio's tools did not answer while it restarted: the publish step of
+    // globalfarm#194 never deployed, yet counted as done and sent the task to homologation): the step runs again, a
+    // few times, and then fails instead of passing.
+    if (result.unreported) {
+      const earlier = await prisma.workflowStepRun.count({
+        where: { runId: stepRun.runId, stepId: stepRun.stepId, lane: stepRun.lane, status: 'RETRIED', error: UNREPORTED },
+      });
+      if (earlier >= UNREPORTED_RETRIES) return finish('FAILED', output, UNREPORTED);
+      return prisma.workflowStepRun.update({
+        where: { id: stepRun.id },
+        data: { status: 'RETRIED', output: output as Prisma.InputJsonValue, error: UNREPORTED, finishedAt: new Date() },
+      });
+    }
     return result.status === 'failure' ? finish('FAILED', output, result.summary ?? 'O agente reportou falha.') : finish('SUCCEEDED', output);
   }
   if (agent.status === 'FAILED' && agent.baseCommit && isTransientFailure(agent.errorMessage)) {
