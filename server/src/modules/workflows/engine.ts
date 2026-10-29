@@ -539,6 +539,8 @@ async function completeTask(run: RunWithSteps, lane: string) {
 }
 
 const MAX_PREPARE_ATTEMPTS = 3;
+/** How long a card just moved to validation waits for its PR/MR before going back with the publication notice. */
+const PULL_REQUEST_GRACE_MS = 5 * 60_000;
 
 /** Whether the step's agent failed while its copy was being prepared, before doing any work. */
 async function failedBeforeCopy(stepRun: WorkflowStepRun) {
@@ -746,6 +748,9 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
       return fail(errorText(error));
     }
     if (!pullRequest) {
+      // A card moved to validation a moment before its PR/MR was opened (gf-novo-oficial#166: MR seconds later) is
+      // looked at again on the next round (the step is not started) instead of being sent back.
+      if (Date.now() - new Date(task.updatedAt).getTime() < PULL_REQUEST_GRACE_MS) return;
       // Nothing to publish: the task goes back to whoever makes it, instead of waiting in validation forever.
       const notice = [
         '### Aviso de publicação',
