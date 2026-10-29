@@ -22,6 +22,8 @@ const CLI_IMAGE = 'docker:28-cli';
 const BUILD_TIMEOUT_MS = 30 * 60_000;
 const HEALTH_TIMEOUT_MS = 10 * 60_000;
 const POLL_MS = 10_000;
+/** How long an Amplify deploy waits for another commit's build to finish before giving up. */
+const AMPLIFY_QUEUE_MS = 30 * 60_000;
 const LOG_MAX = 60_000;
 
 /**
@@ -563,14 +565,24 @@ async function deployAmplify(deployment: Deployment, service: AwsService, commit
   const { client } = await awsClientFor(deployment.workspaceId);
   const config = service.config as unknown as AmplifyConfig;
   await update(deployment.id, { status: 'build_in_progress' });
-  let jobId: string;
-  try {
-    jobId = await client.startAmplifyJob(config.appId, config.branchName, commit ?? undefined);
-  } catch (error) {
-    // The merge may have started an automatic build already: follow the newest one.
-    const [latest] = await client.amplifyJobs(config.appId, config.branchName, 1);
-    if (!latest || !['PENDING', 'PROVISIONING', 'RUNNING'].includes(latest.status)) throw error;
-    jobId = latest.jobId;
+  let jobId: string | null = null;
+  for (let waited = 0; !jobId; waited += POLL_MS) {
+    try {
+      jobId = await client.startAmplifyJob(config.appId, config.branchName, commit ?? undefined);
+    } catch (error) {
+      // A build is already running: the merge's automatic build is followed; a build of another commit (an earlier
+      // deploy) is waited out, or this deploy would report that commit as its own (gf-novo-oficial#161 went to HOM
+      // test without its change).
+      const [latest] = await client.amplifyJobs(config.appId, config.branchName, 1);
+      if (!latest || !['PENDING', 'PROVISIONING', 'RUNNING'].includes(latest.status)) throw error;
+      if (!commit || latest.commitId === commit) {
+        jobId = latest.jobId;
+        break;
+      }
+      if (waited >= AMPLIFY_QUEUE_MS) throw error;
+      if (waited === 0) await appendLog(deployment.id, `Amplify: esperando o job ${latest.jobId} (commit ${String(latest.commitId).slice(0, 8)}) terminar para publicar ${commit.slice(0, 8)}.`);
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
   }
   await update(deployment.id, { renderDeployId: `amplify:${jobId}` });
   await appendLog(deployment.id, `Amplify: job ${jobId} no app ${config.appId}, branch ${config.branchName}.`);
