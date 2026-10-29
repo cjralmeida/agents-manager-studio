@@ -76,7 +76,7 @@ async function stepLoads(workspaceId: string, state: BoardTaskState): Promise<St
   for (const workflow of workflows) {
     const steps = parseSteps(workflow);
     const trigger = parseTrigger(workflow);
-    const queue = trigger.type === 'board_task' ? boardTaskQueue(trigger, state) : null;
+    const queue = trigger.type === 'board_task' ? boardTaskQueue(trigger, state, workflow.id) : null;
     const ready = queue?.ready ?? [];
     const conflict = { contains: 'conflit', mode: 'insensitive' } as const;
     const [runs, recentConflicts, single, lastStarts] = await Promise.all([

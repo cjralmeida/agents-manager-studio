@@ -234,12 +234,18 @@ export async function boardTaskState(workspaceId: string) {
     prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
     prisma.workflowRun.findMany({
       where: { workspaceId, taskItemId: { not: null } },
-      select: { taskItemId: true, status: true, finishedAt: true, trigger: true, steps: { where: { status: 'FAILED' }, select: { error: true } } },
+      select: { taskItemId: true, workflowId: true, status: true, finishedAt: true, trigger: true, steps: { where: { status: 'FAILED' }, select: { error: true } } },
       orderBy: { startedAt: 'desc' },
     }),
   ]);
   const lastRun = new Map<string, (typeof runs)[number]>();
   for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
+  // The workflows that already ran on each task: one keeps a task it gave an assignee to (see boardTaskQueue).
+  const ranBy = new Map<string, Set<string>>();
+  for (const run of runs) {
+    // A cancelled run gives nothing back (e.g. the agents stopped on a task that is a person's).
+    if (run.status !== 'CANCELLED') ranBy.set(run.taskItemId!, (ranBy.get(run.taskItemId!) ?? new Set()).add(run.workflowId));
+  }
   const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
   for (const item of snapshot.items) {
     const run = lastRun.get(item.id);
@@ -248,23 +254,24 @@ export async function boardTaskState(workspaceId: string) {
     const machineFailure = run.status === 'FAILED' && run.steps.length > 0 && run.steps.every((step) => isTransientFailure(step.error));
     if (lastRunHoldsTask(run, item.updatedAt, machineFailure)) taken.add(item.id);
   }
-  return { snapshot, projectOf, statusMap, delivered, taken, lastRun };
+  return { snapshot, projectOf, statusMap, delivered, taken, lastRun, ranBy };
 }
 
 /**
  * The tasks a "tarefa no quadro" workflow can start now (ready) and the ones in its column still waiting for their
  * "Depende de:" tasks (waiting). A task sent back after its run (e.g. with a homologation report) keeps the assignee
- * the run gave it.
+ * the run gave it: only a run of this same workflow lets it take an assigned task again (a homologation test of a
+ * person's task does not hand it to the agents: gf-novo-oficial #153 and #164 of eburg were taken that way).
  */
-export function boardTaskQueue(trigger: Extract<WorkflowTrigger, { type: 'board_task' }>, state: BoardTaskState) {
-  const { snapshot, projectOf, statusMap, delivered, taken, lastRun } = state;
+export function boardTaskQueue(trigger: Extract<WorkflowTrigger, { type: 'board_task' }>, state: BoardTaskState, workflowId: string) {
+  const { snapshot, projectOf, statusMap, delivered, taken, ranBy } = state;
   const columnId = trigger.columnId ?? statusMap.todo ?? null;
   const matching = pickTasks(snapshot.items, snapshot.fields, { ...trigger, columnId, onlyUnassigned: false }).filter(
     (item) =>
       !taken.has(item.id) &&
       projectOf(item) &&
       item.columnId !== statusMap.blocked &&
-      (!trigger.onlyUnassigned || item.assignees.length === 0 || lastRun.has(item.id)),
+      (!trigger.onlyUnassigned || item.assignees.length === 0 || Boolean(ranBy.get(item.id)?.has(workflowId))),
   );
   return { columnId, ready: matching.filter((item) => delivered(item)), waiting: matching.filter((item) => !delivered(item)) };
 }
@@ -488,7 +495,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     }
     if (trigger.type !== 'board_task') continue;
 
-    const queue = boardTaskQueue(trigger, state);
+    const queue = boardTaskQueue(trigger, state, workflow.id);
     const { waiting, columnId } = queue;
     const candidates = reworkOnly ? queue.ready.filter(isRework) : queue.ready;
     if (reworkOnly && candidates.length === 0) {
