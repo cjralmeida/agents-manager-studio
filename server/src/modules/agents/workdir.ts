@@ -104,6 +104,25 @@ export async function prepareWorkdir(input: {
 }
 
 /**
+ * Brings the remote's read-only reference branches (`referencia/*`, e.g. a prototype the task must match) into the copy,
+ * as `origin/referencia/x` and a local `referencia/x`: the agent has no credentials to fetch them itself.
+ * A remote without them, or a failed fetch, leaves the copy as it was.
+ */
+export async function fetchReferenceBranches(workdir: string, fetchUrl: string) {
+  const dir = workdirPath(workdir);
+  try {
+    await git(dir, ['fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--depth', CLONE_DEPTH, fetchUrl, '+refs/heads/referencia/*:refs/remotes/origin/referencia/*'], {
+      timeoutMs: 300_000,
+    });
+    const refs = (await git(dir, ['for-each-ref', '--format=%(refname:strip=4)', 'refs/remotes/origin/referencia/'])).split('\n').filter(Boolean);
+    for (const name of refs) await git(dir, ['branch', '-f', `referencia/${name}`, `origin/referencia/${name}`]);
+    if (refs.length) await new Promise<void>((resolve) => execFile('chown', ['-R', AGENT_UID, `${dir}/.git`], () => resolve()));
+  } catch {
+    // Optional: the agent works without them.
+  }
+}
+
+/**
  * Moves a fresh copy to the latest base branch on the remote, so agents build on work already merged
  * there (e.g. by earlier workflow steps). The local project is kept when it has commits the remote lacks.
  * Returns the new base commit, or null when the copy stays as it was.

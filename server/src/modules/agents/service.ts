@@ -30,7 +30,7 @@ import { agentVolumeName, startAgentContainer, stopAgentContainer } from './runt
 import { testServicesEnv } from './test-services.js';
 import { visibleWorkspaceFilter } from '../view-profiles/service.js';
 import { removeAgentVariables, writeAgentVariables } from '../agent-variables/service.js';
-import { checkoutRemoteBranch, commitAndPush, currentBranch, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, isVolumeCopy, unresolvedConflicts, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
+import { checkoutRemoteBranch, commitAndPush, currentBranch, fetchReferenceBranches, isMergedInto, mergeRemoteBase, NO_CHANGES_MESSAGE, prepareEmptyWorkdir, prepareWorkdir, removeWorkdir, returnToAgent, VOLUME_PREFIX, isVolumeCopy, unresolvedConflicts, updateToRemoteBase, workdirDiff, workdirHostPath, workdirPath } from './workdir.js';
 
 export const AGENT_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
@@ -401,6 +401,10 @@ async function prepareAndStart(
           message: `Base atualizada para a versão mais recente de ${agent.baseBranch} no remoto (${updated.slice(0, 7)}).`,
         });
       }
+    }
+    if (remoteUrl) {
+      const access = await remoteAccess(agent.workspaceId, remoteUrl);
+      if (access) await fetchReferenceBranches(agent.workdir, access.fetchUrl);
     }
     if (onRemoteBranch && remoteUrl) {
       baseCommit = await checkoutFromRemote(agent, remoteUrl);
