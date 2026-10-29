@@ -431,10 +431,15 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         doneColumnId: statusMap.done ?? null,
         repositories: trigger.repositories,
       }, snapshot.fields, snapshot.allOpenListed);
+      // A dependency whose own run is still going is not delivered yet, even if it looks done: merging its MR with
+      // "Closes #N" closes the issue for a moment before it is published (gf-novo-oficial#152 was tested while #151
+      // was still deploying, and failed for the filters #151 brings).
+      const resolve = refResolver(snapshot.items);
       // Tested again only after something changed in the task or in the backend it uses (e.g. sent back and fixed), or
       // a while after a test that failed without deciding the task (it is still here, e.g. the front of HOM was down).
       const candidates = ready.filter((entry) => {
         if (screenTesting.has(entry.task.id)) return false;
+        if (dependencyRefs(entry.task.body).some((ref) => screenTesting.has(resolve(ref)?.id ?? ''))) return false;
         const last = lastRun.get(entry.task.id);
         if (!last) return true;
         if (last.status === 'RUNNING') return false;
