@@ -24,7 +24,7 @@ async function get(url: string, headers: Record<string, string>): Promise<{ stat
 
 /**
  * The open PR/MR that cites a task issue (e.g. "Closes #12" in its description), as a person opens it.
- * GitHub: the issue's closing references (already on the board card) or its timeline; GitLab: related MRs.
+ * GitHub: the issue's closing references (already on the board card) or its timeline; GitLab: related MRs that close it.
  */
 export async function findTaskPullRequest(input: {
   provider: 'GITHUB' | 'GITLAB';
@@ -79,9 +79,22 @@ async function findOnGitLab(input: { remote: RemoteInfo; token: string; issueNum
   // GitLab also lists MRs of other projects that only mention the issue (e.g. the backend MR of the same feature):
   // only the ones of the issue's own project, from a branch of that project, count.
   const ownPath = `/${input.remote.path.toLowerCase()}/-/merge_requests/`;
-  const own = related.body
+  const candidates = related.body
     .filter((mr: Json) => mr.source_project_id === mr.target_project_id && String(mr.web_url ?? '').toLowerCase().includes(ownPath))
     .sort((a: Json, b: Json) => b.iid - a.iid);
+  // Related also means only mentioned in another task's MR (gf-novo-oficial MR 226 of #150 cited #152, and #152 and
+  // #164 then worked on and published that MR): only an MR that closes the issue ("Closes #N") or names it in its
+  // title (as people do: "... (#166)") is the task's.
+  const own: Json[] = [];
+  const inTitle = new RegExp(`(^|[^\w/])#${input.issueNumber}(?!\d)`);
+  for (const mr of candidates) {
+    if (inTitle.test(String(mr.title ?? ''))) {
+      own.push(mr);
+      continue;
+    }
+    const closes = await get(`${projectUrl}/merge_requests/${mr.iid}/closes_issues?per_page=100`, { 'PRIVATE-TOKEN': input.token });
+    if (closes.status === 200 && Array.isArray(closes.body) && closes.body.some((issue: Json) => issue.iid === input.issueNumber)) own.push(mr);
+  }
   const open = own.filter((mr: Json) => mr.state === 'opened');
   if (open.length > 0) {
     return withOthers(open.map((mr: Json) => ({ url: mr.web_url, number: mr.iid, branch: mr.source_branch, baseBranch: mr.target_branch })));
