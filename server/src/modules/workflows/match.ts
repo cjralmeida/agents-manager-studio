@@ -13,6 +13,14 @@ export interface TaskRule {
   onlyUnassigned: boolean;
 }
 
+/**
+ * Whether an active agent still holds its board task. One left "ready for review" by a run that already ended (e.g.
+ * the run failed delivering it) does not: that run's outcome decides when the task is taken again.
+ */
+export function agentHoldsTask(agent: { workflowRun: { status: string } | null }) {
+  return !agent.workflowRun || agent.workflowRun.status === 'RUNNING';
+}
+
 export function matchesRule(item: BoardItem, rule: TaskRule) {
   if (!rule.columnId || item.columnId !== rule.columnId || item.isClosed) return false;
   // Agents work on a repository, so drafts without one are left to people.

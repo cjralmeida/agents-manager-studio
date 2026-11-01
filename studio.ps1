@@ -87,13 +87,45 @@ function Set-EnvValues([hashtable]$Values) {
   [IO.File]::WriteAllText($EnvFile, ([string]::Join($newline, $lines) + $newline), $Utf8NoBom)
 }
 
+# Runs Docker Compose and preserves its output for diagnostics.
+# Docker writes ordinary download progress to stderr on Windows PowerShell 5.1.
+function Invoke-ComposeCommand([string[]]$Arguments) {
+  $oldPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $lines = @(& docker compose @Arguments 2>&1 | ForEach-Object { "$_" })
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $oldPreference
+  }
+  $output = ($lines -join "`n").Trim()
+  if ($output) { Write-Log $output }
+  return @{ ExitCode = $exitCode; Output = $output }
+}
+
 function Invoke-Compose {
-  $composeArgs = (Get-ComposeArgs) + @('up', '-d')
-  # Compose prints progress on stderr; with 'Stop' PowerShell 5.1 would treat that as a failure.
-  $ErrorActionPreference = 'Continue'
-  $output = & docker compose @composeArgs 2>&1 | ForEach-Object { "$_" } | Out-String
-  if ($output) { Write-Log $output.Trim() }
-  if ($LASTEXITCODE -ne 0) { throw "compose_failed: $($output.Trim() | Select-Object -Last 1)" }
+  $args = @((Get-ComposeArgs)) + @('up', '-d')
+  Write-Host 'Starting Studio containers (docker compose up -d)...'
+  $result = Invoke-ComposeCommand $args
+  if ($result.ExitCode -eq 0) { return }
+
+  # Retry only a failed image-layer download/registration. Never delete existing images,
+  # containers or volumes automatically: those may belong to other projects.
+  if ($result.Output -match '(?i)invalid tar header|failed to register layer|unexpected EOF|failed to copy.*(blob|layer)') {
+    Write-Warning 'Docker could not unpack a downloaded image layer. Retrying once in 5 seconds...'
+    Start-Sleep -Seconds 5
+    $result = Invoke-ComposeCommand $args
+    if ($result.ExitCode -eq 0) { return }
+  }
+
+  $tail = (($result.Output -split "`r?`n" | Select-Object -Last 18) -join "`n")
+  Write-Host 'Images referenced by the Studio compose files:'
+  $images = Invoke-ComposeCommand (@((Get-ComposeArgs)) + @('config', '--images'))
+  if ($images.Output) { Write-Host $images.Output }
+  if ($result.Output -match '(?i)invalid tar header|failed to register layer') {
+    throw "compose_failed (exit $($result.ExitCode)): Docker image layer invalid. No Docker data was deleted. Check Docker Desktop disk space and version; update Docker Desktop if the problem persists. Details:`n$tail"
+  }
+  throw "compose_failed (exit $($result.ExitCode)):`n$tail"
 }
 
 # Validates, updates .env and recreates the containers. Returns $null or an error code.

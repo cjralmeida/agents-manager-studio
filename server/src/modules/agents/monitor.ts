@@ -70,16 +70,20 @@ async function checkContainers(log: FastifyBaseLogger) {
     }
 
     if (exitCode !== 0) {
+      // Read again: the list above can be older than a pause for the plan reserve (plan-limit stops the container on
+      // purpose, after marking the agent held), and that stop must not be resumed as a crash.
+      const current = await prisma.agent.findUnique({ where: { id: agent.id }, select: { status: true, sessionId: true, limitResumeAt: true } });
+      if (!current || current.limitResumeAt) continue;
       const tail = logs ? `${logs.stderr}\n${logs.stdout}`.trim().slice(-800) : '';
       log.warn({ agentId: agent.id, exitCode }, 'Agent container stopped unexpectedly');
       // A container killed from outside (the computer shut down or slept, Docker restarted) is not a failure of the work:
       // the session is resumed, a couple of times per hour, before the agent is given up as failed.
-      if (agent.status === 'RUNNING' && agent.sessionId && (await recentCrashResumes(agent.id)) < MAX_CRASH_RESUMES) {
+      if (current.status === 'RUNNING' && current.sessionId && (await recentCrashResumes(agent.id)) < MAX_CRASH_RESUMES) {
         await addEvent(agent.id, 'status', { message: `${CRASH_RESUME_MARK} (código ${exitCode ?? '?'}); retomando a sessão.` });
         await sendMessage(agent.id, CRASH_RESUME_MESSAGE).catch((error: unknown) => log.warn({ agentId: agent.id, err: error }, 'Crash resume failed'));
         continue;
       }
-      if (['PREPARING', 'RUNNING'].includes(agent.status)) {
+      if (['PREPARING', 'RUNNING'].includes(current.status)) {
         await markFailed(agent.id, new Error(`O container do agente parou (código ${exitCode ?? '?'}). ${tail}`));
       } else {
         await addEvent(agent.id, 'error', { message: `O container do agente parou (código ${exitCode ?? '?'}).` });

@@ -16,7 +16,7 @@ import { getResourceUsage } from '../system/service.js';
 import type { UsageTotals } from '../usage/calc.js';
 import { findWorkspaceGitAccount } from '../git-accounts/workspace-account.js';
 import { assertPushBranch, assertWorkBase } from './branch-guard.js';
-import { isConflictMessage, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
+import { isConflictMessage, isNoCommitsRefusal, mergeIntoBase, openPullRequest, pullRequestState } from './pull-requests.js';
 import { authenticatedPushUrl, closingReference, defaultAuthorEmail, parseRemote, remoteHostname, type RemoteInfo } from './remote.js';
 import { removeBuildVolumes } from './build-dirs.js';
 import { closeSupersededPullRequests } from './superseded.js';
@@ -801,9 +801,10 @@ async function finalizeInBackground(id: string) {
     await reportTaskMove(agent, 'review');
   } catch (error) {
     const message = errorMessage(error);
-    // An automatic agent that changed nothing is done; there is just no PR to open.
+    // An automatic agent that changed nothing is done; there is just no PR to open. Also when its branch only got the
+    // base brought in, so the provider refuses a PR with no commits.
     const agent = await prisma.agent.findUnique({ where: { id } });
-    if (agent?.autoConclude && message === NO_CHANGES_MESSAGE) {
+    if (agent?.autoConclude && (message === NO_CHANGES_MESSAGE || isNoCommitsRefusal(message))) {
       await prisma.agent.update({
         where: { id },
         data: {
