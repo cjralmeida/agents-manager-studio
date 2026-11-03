@@ -9,6 +9,8 @@ import {
   featuresReady,
   frontendPrompt,
   frontendTasksReady,
+  MAX_UNCHANGED_TESTS,
+  completedTests,
   homologationRetestDue,
   lastRunHoldsTask,
   matchesRule,
@@ -345,6 +347,25 @@ describe('homologationRetestDue', () => {
       assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:00:00Z') }, now, after), true);
       assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:45:00Z') }, now, after), false);
     }
+  });
+
+  it('stops repeating tests that completed with nothing changed, but not failures', () => {
+    const finishedAt = new Date('2026-10-27T20:00:00Z');
+    assert.equal(homologationRetestDue({ status: 'COMPLETED', finishedAt }, now, after, MAX_UNCHANGED_TESTS - 1), true);
+    assert.equal(homologationRetestDue({ status: 'COMPLETED', finishedAt }, now, after, MAX_UNCHANGED_TESTS), false);
+    assert.equal(homologationRetestDue({ status: 'FAILED', finishedAt }, now, after, MAX_UNCHANGED_TESTS), true);
+  });
+
+  it('counts only completed tests of the same content', () => {
+    const runs = [
+      { status: 'COMPLETED', trigger: { signature: 'a' } },
+      { status: 'COMPLETED', trigger: { signature: 'a' } },
+      { status: 'FAILED', trigger: { signature: 'a' } },
+      { status: 'COMPLETED', trigger: { signature: 'b' } },
+      { status: 'COMPLETED', trigger: null },
+    ];
+    assert.equal(completedTests(runs, 'a'), 2);
+    assert.equal(completedTests(runs, 'c'), 0);
   });
 
   it('does not test again a cancelled or unfinished run', () => {
