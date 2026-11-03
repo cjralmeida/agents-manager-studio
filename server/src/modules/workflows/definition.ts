@@ -204,3 +204,13 @@ export function laneFor(steps: WorkflowStep[], stepIndex: number, lane: string) 
   const fanOut = fanOutIndex(steps);
   return fanOut === -1 || stepIndex < fanOut ? 'main' : lane;
 }
+
+/** Whether a workflow's trigger is a test of what is published in homologation. */
+export function testsHomologation(triggerType: string) {
+  return triggerType === 'feature_in_homologation' || triggerType === 'frontend_in_homologation';
+}
+
+/** Runs of tests in homologation before the others, each group in its current order. */
+export function homologationTestsFirst<T>(runs: T[], triggerTypeOf: (run: T) => string) {
+  return [...runs.filter((run) => testsHomologation(triggerTypeOf(run))), ...runs.filter((run) => !testsHomologation(triggerTypeOf(run)))];
+}

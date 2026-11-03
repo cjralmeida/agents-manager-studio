@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type ProfileFacts, type WorkflowStep, laneFor, stepSchema, validateSteps } from './definition.js';
+import { type ProfileFacts, type WorkflowStep, homologationTestsFirst, laneFor, stepSchema, testsHomologation, validateSteps } from './definition.js';
 
 const profiles: ProfileFacts[] = [
   { id: '01a11d00-0000-7000-8000-000000000001', name: 'Documentador', hasRepository: true, deliversCode: true, usesBoard: false },
@@ -59,5 +59,23 @@ describe('laneFor', () => {
     assert.equal(laneFor(fullFlow, 2, 'task-1'), 'task-1');
     assert.equal(laneFor(fullFlow, 4, 'task-1'), 'task-1');
     assert.equal(laneFor([agent('a', 0)], 0, 'x'), 'main');
+  });
+});
+
+describe('homologation test priority', () => {
+  it('recognizes only the homologation test triggers', () => {
+    assert.equal(testsHomologation('feature_in_homologation'), true);
+    assert.equal(testsHomologation('frontend_in_homologation'), true);
+    assert.equal(testsHomologation('board_task'), false);
+  });
+
+  it('puts tests first and keeps the order inside each group', () => {
+    const runs = [
+      { id: 'old-build', type: 'board_task' },
+      { id: 'old-test', type: 'frontend_in_homologation' },
+      { id: 'new-build', type: 'board_task' },
+      { id: 'new-test', type: 'feature_in_homologation' },
+    ];
+    assert.deepEqual(homologationTestsFirst(runs, (run) => run.type).map((run) => run.id), ['old-test', 'new-test', 'old-build', 'new-build']);
   });
 });

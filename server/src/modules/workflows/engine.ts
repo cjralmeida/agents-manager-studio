@@ -24,7 +24,7 @@ import { projectFileText } from '../roadmaps/service.js';
 import { getResourceUsage } from '../system/service.js';
 import type { PlanUsage } from '../usage/calc.js';
 import { planBlockedUntil, planPaceHoldUntil } from '../plan-limit/limit.js';
-import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, laneFor, stepSchema, triggerSchema } from './definition.js';
+import { type AgentStep, type WorkflowStep, type WorkflowTrigger, fanOutIndex, homologationTestsFirst, laneFor, stepSchema, testsHomologation, triggerSchema } from './definition.js';
 import {
   type ReadyFeature,
   type ReadyFrontendTask,
@@ -374,7 +374,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
     const slots = line.backedUp && !reworkOnly ? 0 : line.free;
     if (slots <= 0) {
       // A task already given to the line but not started is waiting for the machine (or the plan), not for an agent.
-      const holding = line.queued > 0 && !line.backedUp ? await machineBlocker(true, await stepSize(line.first)) : null;
+      const holding = line.queued > 0 && !line.backedUp ? await machineBlocker(!testsHomologation(trigger.type), await stepSize(line.first)) : null;
       await report(
         workflow,
         line.backedUp
@@ -1162,6 +1162,7 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
     const fullBlocker = planBlocker ?? (await workspaceBlocker(run.workspaceId));
     const fanOut = fanOutIndex(steps);
     const lastIndex = steps.length - 1;
+    const homologationTest = testsHomologation(parseTrigger(run.workflow).type);
     // Set inside walk(); typed as boolean so TypeScript does not narrow them to their initial value.
     let pending: boolean = false;
     let failed: boolean = false;
@@ -1181,7 +1182,8 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
           return;
         }
         // Not started yet (or sent back): start it, unless the workspace is at its limits.
-        const startsNewWork = index === 0 || index === fanOut;
+        // A test in homologation is not new work: it finishes a delivered task or sends it back to its programmer.
+        const startsNewWork = !homologationTest && (index === 0 || index === fanOut);
         if (startsNewWork ? fullBlocker : planBlocker) {
           pending = true;
           return;
@@ -1253,9 +1255,14 @@ export async function advanceRun(runId: string, log?: FastifyBaseLogger) {
 /** Advances every running run; called by the scheduler, so runs resume after a restart. */
 export async function advanceAllRuns(log: FastifyBaseLogger) {
   await reopenRecoveredRuns(log);
-  // Oldest first: a task waiting at a step gets its free agent before a newer one.
-  const runs = await prisma.workflowRun.findMany({ where: { status: 'RUNNING' }, select: { id: true }, orderBy: { startedAt: 'asc' } });
-  for (const run of runs) await advanceRun(run.id, log);
+  // Tests in homologation first, then the oldest: a task waiting at a step gets its free agent before a newer one.
+  const runs = await prisma.workflowRun.findMany({
+    where: { status: 'RUNNING' },
+    select: { id: true, workflow: { select: { trigger: true } } },
+    orderBy: { startedAt: 'asc' },
+  });
+  const ordered = homologationTestsFirst(runs, (run) => parseTrigger(run.workflow).type);
+  for (const run of ordered) await advanceRun(run.id, log);
 }
 
 /** Only runs that ended this recently are reopened. */
