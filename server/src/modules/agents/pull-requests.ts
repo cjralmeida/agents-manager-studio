@@ -84,6 +84,14 @@ async function openGitLabMergeRequest(input: PullRequestInput) {
   throw new HttpError(502, `GitLab recusou o merge request: ${reason}`);
 }
 
+/**
+ * Whether a PR/MR was refused because the branch has nothing the base lacks (e.g. the agent changed no code and only
+ * brought the base in before review): the work is done, there is just nothing to merge.
+ */
+export function isNoCommitsRefusal(message: string) {
+  return /recusou o (pull|merge) request: .*no commits between/i.test(message);
+}
+
 const CONFLICT_MARK = 'tem conflitos com a branch de destino';
 
 /** Whether a merge failure was a conflict with the base branch (as opposed to a token, permission or API problem). */

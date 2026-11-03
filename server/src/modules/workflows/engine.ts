@@ -43,6 +43,7 @@ import {
   taskPrompt,
   isRework,
   packageFiles,
+  agentHoldsTask,
 } from './match.js';
 
 /** Handoff stored on each finished step and read by the next ones. */
@@ -233,7 +234,10 @@ export async function boardTaskState(workspaceId: string) {
   const { snapshot, projectOf, statusMap } = await boardContext(workspaceId);
   const delivered = dependenciesDelivered(snapshot.items, statusMap, snapshot.allOpenListed);
   const [activeAgents, runs] = await Promise.all([
-    prisma.agent.findMany({ where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } }, select: { taskItemId: true } }),
+    prisma.agent.findMany({
+      where: { workspaceId, taskItemId: { not: null }, status: { in: [...ACTIVE_AGENT] } },
+      select: { taskItemId: true, workflowRun: { select: { status: true } } },
+    }),
     prisma.workflowRun.findMany({
       where: { workspaceId, taskItemId: { not: null } },
       select: { taskItemId: true, workflowId: true, status: true, finishedAt: true, trigger: true, steps: { where: { status: 'FAILED' }, select: { error: true } } },
@@ -242,6 +246,7 @@ export async function boardTaskState(workspaceId: string) {
   ]);
   const lastRun = new Map<string, (typeof runs)[number]>();
   for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
+<<<<<<< HEAD
   // The workflows that already ran on each task: one keeps a task it gave an assignee to (see boardTaskQueue).
   const ranBy = new Map<string, Set<string>>();
   for (const run of runs) {
@@ -249,6 +254,9 @@ export async function boardTaskState(workspaceId: string) {
     if (run.status !== 'CANCELLED') ranBy.set(run.taskItemId!, (ranBy.get(run.taskItemId!) ?? new Set()).add(run.workflowId));
   }
   const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
+=======
+  const taken = new Set(activeAgents.filter(agentHoldsTask).map((agent) => agent.taskItemId!));
+>>>>>>> origin/dev
   for (const item of snapshot.items) {
     const run = lastRun.get(item.id);
     if (!run) continue;

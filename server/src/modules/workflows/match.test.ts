@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BoardField, BoardItem } from '../boards/types.js';
 import {
+  agentHoldsTask,
   awaitingDecision,
   decisionPrompt,
   featureIdOf,
@@ -371,5 +372,16 @@ describe('homologationRetestDue', () => {
   it('does not test again a cancelled or unfinished run', () => {
     assert.equal(homologationRetestDue({ status: 'CANCELLED', finishedAt: new Date('2026-10-27T20:00:00Z') }, now, after), false);
     assert.equal(homologationRetestDue({ status: 'FAILED', finishedAt: null }, now, after), false);
+  });
+});
+
+describe('agentHoldsTask', () => {
+  it('keeps the task with an agent of a run still going or with no run', () => {
+    assert.equal(agentHoldsTask({ workflowRun: { status: 'RUNNING' } }), true);
+    assert.equal(agentHoldsTask({ workflowRun: null }), true);
+  });
+
+  it('releases the task when the agent was left behind by a run that ended', () => {
+    for (const status of ['FAILED', 'CANCELLED', 'COMPLETED']) assert.equal(agentHoldsTask({ workflowRun: { status } }), false);
   });
 });
