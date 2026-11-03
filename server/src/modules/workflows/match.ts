@@ -373,15 +373,25 @@ export function lastRunHoldsTask(
  * are still waiting in homologation): it failed (e.g. HOM went down) or it ended without moving them (e.g. the Studio
  * tools did not answer and the agent stopped without testing). Tests that completed stop repeating after
  * MAX_UNCHANGED_TESTS: the task stays there on purpose (globalfarm#207 waits for a test user), and only a change in it
- * tests it again. Failures keep repeating, since HOM may come back.
+ * tests it again. Failures repeat longer, since HOM may come back, but stop at MAX_UNCHANGED_FAILURES (globalfarm#227
+ * failed 4 times in a row because no test user had the profile it needs).
  */
-export function homologationRetestDue(last: { status: string; finishedAt: Date | null }, now: number, afterMs: number, completedUnchanged = 0) {
+export function homologationRetestDue(last: { status: string; finishedAt: Date | null }, now: number, afterMs: number, completedUnchanged = 0, failedUnchanged = 0) {
   if (last.status === 'COMPLETED' && completedUnchanged >= MAX_UNCHANGED_TESTS) return false;
+  if (last.status === 'FAILED' && failedUnchanged >= MAX_UNCHANGED_FAILURES) return false;
   return (last.status === 'FAILED' || last.status === 'COMPLETED') && last.finishedAt !== null && now - last.finishedAt.getTime() > afterMs;
 }
 
 /** Tests of a task that may complete with nothing changed in it before they stop repeating. */
 export const MAX_UNCHANGED_TESTS = 2;
+
+/** Tests of a task that may fail with nothing changed in it before they stop repeating. */
+export const MAX_UNCHANGED_FAILURES = 4;
+
+/** How many of these runs failed testing exactly this content. */
+export function failedTests(runs: { status: string; trigger: unknown }[], signature: string) {
+  return runs.filter((run) => run.status === 'FAILED' && (run.trigger as { signature?: string } | null)?.signature === signature).length;
+}
 
 /** How many of these runs completed testing exactly this content (the signature changes when a task changes). */
 export function completedTests(runs: { status: string; trigger: unknown }[], signature: string) {

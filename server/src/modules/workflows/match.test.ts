@@ -12,6 +12,7 @@ import {
   frontendTasksReady,
   MAX_UNCHANGED_TESTS,
   completedTests,
+  failedTests,
   homologationRetestDue,
   lastRunHoldsTask,
   matchesRule,
@@ -348,6 +349,13 @@ describe('homologationRetestDue', () => {
       assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:00:00Z') }, now, after), true);
       assert.equal(homologationRetestDue({ status, finishedAt: new Date('2026-10-27T20:45:00Z') }, now, after), false);
     }
+  });
+
+  it('stops repeating failures only after MAX_UNCHANGED_FAILURES', () => {
+    const finishedAt = new Date('2026-10-27T20:00:00Z');
+    assert.equal(homologationRetestDue({ status: 'FAILED', finishedAt }, now, after, 0, 3), true);
+    assert.equal(homologationRetestDue({ status: 'FAILED', finishedAt }, now, after, 0, 4), false);
+    assert.equal(failedTests([{ status: 'FAILED', trigger: { signature: 'a' } }, { status: 'COMPLETED', trigger: { signature: 'a' } }, { status: 'FAILED', trigger: { signature: 'b' } }], 'a'), 1);
   });
 
   it('stops repeating tests that completed with nothing changed, but not failures', () => {

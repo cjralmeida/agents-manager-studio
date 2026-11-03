@@ -34,6 +34,8 @@ import {
   featuresReady,
   frontendPrompt,
   frontendTasksReady,
+  failedTests,
+  MAX_UNCHANGED_FAILURES,
   MAX_UNCHANGED_TESTS,
   completedTests,
   homologationRetestDue,
@@ -420,11 +422,11 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
           if (!last) return true;
           if (last.status === 'RUNNING') return false;
           if ((last.trigger as { signature?: string }).signature !== feature.signature) return true;
-          return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS, completedTests(previous, feature.signature));
+          return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS, completedTests(previous, feature.signature), failedTests(previous, feature.signature));
         })
         .map(({ feature, screens }) => ({ ...feature, screens }));
       if (candidates.length === 0) {
-        const held = ready.filter((feature) => completedTests(previous, feature.signature) >= MAX_UNCHANGED_TESTS).length;
+        const held = ready.filter((feature) => completedTests(previous, feature.signature) >= MAX_UNCHANGED_TESTS || failedTests(previous, feature.signature) >= MAX_UNCHANGED_FAILURES).length;
         await report(workflow, `Vigiando: nenhuma tarefa nova em homologação para testar.${heldNote(held)}`);
         continue;
       }
@@ -450,7 +452,7 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
       // was still deploying, and failed for the filters #151 brings).
       const resolve = refResolver(snapshot.items);
       const previous = await prisma.workflowRun.findMany({
-        where: { workflowId: workflow.id, status: 'COMPLETED' },
+        where: { workflowId: workflow.id, status: { in: ['COMPLETED', 'FAILED'] } },
         select: { status: true, trigger: true, taskItemId: true },
         orderBy: { startedAt: 'desc' },
         take: 300,
@@ -466,10 +468,10 @@ export async function runBoardTriggers(workspaceId: string, log?: FastifyBaseLog
         if (!last) return true;
         if (last.status === 'RUNNING') return false;
         if ((last.trigger as { signature?: string }).signature !== frontendSignature(entry)) return true;
-        return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS, completedOf(entry));
+        return homologationRetestDue(last, Date.now(), FEATURE_RETEST_AFTER_MS, completedOf(entry), failedTests(previous.filter((run) => run.taskItemId === entry.task.id), frontendSignature(entry)));
       });
       if (candidates.length === 0) {
-        const held = ready.filter((entry) => completedOf(entry) >= MAX_UNCHANGED_TESTS).length;
+        const held = ready.filter((entry) => completedOf(entry) >= MAX_UNCHANGED_TESTS || failedTests(previous.filter((run) => run.taskItemId === entry.task.id), frontendSignature(entry)) >= MAX_UNCHANGED_FAILURES).length;
         await report(workflow, `Vigiando: nenhuma tarefa de frontend nova pronta em homologação.${heldNote(held)}`);
         continue;
       }
@@ -940,7 +942,7 @@ async function startStep(run: RunWithSteps, steps: WorkflowStep[], index: number
 const FEATURE_RETEST_AFTER_MS = 30 * 60_000;
 
 /** Tasks in homologation that stopped being tested until they change. */
-const heldNote = (held: number) => (held > 0 ? ` ${held} aguardando mudança na tarefa (já testada ${MAX_UNCHANGED_TESTS} vezes sem mudança).` : '');
+const heldNote = (held: number) => (held > 0 ? ` ${held} aguardando mudança na tarefa (testes repetidos sem mudança).` : '');
 
 const TESTER_REUSE_LIMIT = 8;
 /** A tester idle for longer than this is not resumed: its session and test setup are likely stale. */
