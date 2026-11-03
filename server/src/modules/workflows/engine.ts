@@ -246,17 +246,13 @@ export async function boardTaskState(workspaceId: string) {
   ]);
   const lastRun = new Map<string, (typeof runs)[number]>();
   for (const run of runs) if (!lastRun.has(run.taskItemId!)) lastRun.set(run.taskItemId!, run);
-<<<<<<< HEAD
   // The workflows that already ran on each task: one keeps a task it gave an assignee to (see boardTaskQueue).
   const ranBy = new Map<string, Set<string>>();
   for (const run of runs) {
     // A cancelled run gives nothing back (e.g. the agents stopped on a task that is a person's).
     if (run.status !== 'CANCELLED') ranBy.set(run.taskItemId!, (ranBy.get(run.taskItemId!) ?? new Set()).add(run.workflowId));
   }
-  const taken = new Set(activeAgents.map((agent) => agent.taskItemId!));
-=======
   const taken = new Set(activeAgents.filter(agentHoldsTask).map((agent) => agent.taskItemId!));
->>>>>>> origin/dev
   for (const item of snapshot.items) {
     const run = lastRun.get(item.id);
     if (!run) continue;
