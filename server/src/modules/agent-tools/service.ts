@@ -3,6 +3,7 @@ import { parseRemote } from '../agents/remote.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { HttpError } from '../../lib/errors.js';
 import { boardContext, commentItem, createTask, editItem, itemComments, moveItem, setItemAssignees, setItemClosed, setItemField } from '../boards/service.js';
+import { setChecklistCheck } from '../boards/checklist.js';
 import { COMMENT_KINDS, type CommentKind, formatComment, stepOfTitle } from './comment-format.js';
 import { REWORK_MARK } from '../workflows/match.js';
 import type { BoardItem, BoardSnapshot } from '../boards/types.js';
@@ -26,6 +27,7 @@ export const AGENT_TOOL_NAMES = [
   'board_create_task',
   'board_update_task',
   'board_comment_task',
+  'board_check_criterion',
   'roadmap_get',
   'roadmap_write',
   'quality_list',
@@ -318,6 +320,22 @@ export async function runAgentTool(agentId: string, name: AgentToolName, args: A
       }
       if (agent.kind === 'ASSISTANT') await logOrbiTask(agent, `Comentou na tarefa "${item.title}"`, item.url);
       return { ok: true, task: ref ?? item.id, url: item.url };
+    }
+
+    case 'board_check_criterion': {
+      if (!agent.tools.includes('board')) throw new HttpError(403, 'Este agente só pode consultar o quadro.');
+      const item = findItem(args.id);
+      const code = text(args.code, 64)?.trim().toUpperCase();
+      if (!code || !/^CA-\d+(?:\.\d+)?$/.test(code)) throw new HttpError(400, 'Informe o código do critério de aceite, ex.: "CA-14".');
+      // The code must be a real acceptance criterion in this task's body (not an invented one).
+      if (!new RegExp(`\\b${code.replace(/\./g, '\\.')}\\b`).test(item.body)) {
+        throw new HttpError(422, `A tarefa não tem o critério ${code}. Veja os CA no corpo com board_get_task.`);
+      }
+      const checked = args.checked === undefined ? true : Boolean(args.checked);
+      const profile = agent.profileId ? await prisma.agentProfile.findUnique({ where: { id: agent.profileId }, select: { name: true } }) : null;
+      const by = (profile?.name ?? agent.title).slice(0, 60);
+      await setChecklistCheck(agent.workspaceId, item.id, code, { checked, by, kind: 'agent' });
+      return { ok: true, code, checked, by };
     }
 
     case 'board_create_task': {

@@ -118,6 +118,16 @@ export function createStudioTools(call, groups) {
         run('board_comment_task'),
       ),
       tool(
+        'board_check_criterion',
+        'Marca (ou desmarca) um critério de aceite no checklist do card, conforme ele fica pronto. Quem implementa marca o CA quando o cobre e testa; quem revisa/homologa confirma o CA aprovado, ou desmarca (checked:false) o que reprovar. O Studio registra que foi você (agente) quem marcou e quando. Só marque CA que você verificou; o código tem de existir no corpo da tarefa (veja em board_get_task).',
+        {
+          id: z.string().describe('Id da tarefa (de board_list_tasks / board_get_task).'),
+          code: z.string().describe('Código do critério de aceite, ex.: "CA-14" ou "CA-14.1".'),
+          checked: z.boolean().optional().describe('true (padrão) marca como atendido; false desmarca.'),
+        },
+        run('board_check_criterion'),
+      ),
+      tool(
         'quality_list',
         'Lista o Aprendizado do workspace (os defeitos que já reprovaram entregas): categorias com etapa, lição, situação (aberta, transversal, resolvida, nao_defeito), tarefa transversal e ocorrências.',
         {},
