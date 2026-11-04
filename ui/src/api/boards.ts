@@ -134,6 +134,7 @@ const boardKeys = {
   contents: (workspaceId: string) => ['board', workspaceId, 'contents'] as const,
   detect: (workspaceId: string) => ['board', workspaceId, 'detect'] as const,
   comments: (workspaceId: string, itemId: string) => ['board', workspaceId, 'comments', itemId] as const,
+  checklist: (workspaceId: string, itemId: string) => ['board', workspaceId, 'checklist', itemId] as const,
 };
 
 const base = (workspaceId: string) => `/workspaces/${workspaceId}/board`;
@@ -151,6 +152,35 @@ export function useTaskComments(workspaceId: string, itemId: string) {
     queryKey: boardKeys.comments(workspaceId, itemId),
     queryFn: () => api.get<TaskComment[]>(`${base(workspaceId)}/items/${encodeURIComponent(itemId)}/comments`),
     refetchInterval: 60_000,
+  });
+}
+
+export interface ChecklistCheck {
+  /** CA code or DoD key the row belongs to. */
+  code: string;
+  /** Who ticked it: a user's name or an agent login. */
+  checkedBy: string;
+  checkedByKind: 'user' | 'agent';
+  /** ISO date. */
+  checkedAt: string;
+}
+
+/** The ticked checklist lines (CA / DoD) of a task; refetched so agents' ticks show up. */
+export function useTaskChecklist(workspaceId: string, itemId: string) {
+  return useQuery({
+    queryKey: boardKeys.checklist(workspaceId, itemId),
+    queryFn: () => api.get<ChecklistCheck[]>(`${base(workspaceId)}/items/${encodeURIComponent(itemId)}/checklist`),
+    refetchInterval: 60_000,
+  });
+}
+
+/** Tick or untick one checklist line (the current user is recorded as who did it). */
+export function useToggleChecklist(workspaceId: string, itemId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { code: string; checked: boolean }) =>
+      api.post<ChecklistCheck | null>(`${base(workspaceId)}/items/${encodeURIComponent(itemId)}/checklist`, vars),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: boardKeys.checklist(workspaceId, itemId) }),
   });
 }
 

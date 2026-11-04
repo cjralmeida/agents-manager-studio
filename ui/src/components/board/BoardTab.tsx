@@ -205,6 +205,7 @@ function BoardView({ workspace, board }: { workspace: WorkspaceDetail; board: Bo
           item={openItem}
           agent={agentMap.get(openItem.id)}
           onClose={() => setOpenItemId(null)}
+          onOpenItem={(next) => setOpenItemId(next.id)}
           inWorkflow={inWorkflow(openItem)}
         />
       )}

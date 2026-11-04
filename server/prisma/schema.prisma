@@ -116,6 +116,7 @@ model Workspace {
   capacityReviews CapacityReview[]
   processes       WorkflowProcess[]
   qualityCategories QualityCategory[]
+  checklistChecks TaskChecklistCheck[]
   owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([ownerId])
@@ -1099,4 +1100,27 @@ model AwsService {
   @@unique([projectId, environment])
   @@index([workspaceId])
   @@map("aws_services")
+}
+
+/// A ticked checklist line (an acceptance criterion CA-NN, or a Definition of Done item) on a board task.
+/// A row exists only while the line is checked; it records who ticked it (a user's name or an agent login) and when,
+/// so the card can show a little badge in front of each done line. The task text itself is parsed from the issue body.
+model TaskChecklistCheck {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  /// The joined board item id (source + number), as the board uses everywhere.
+  itemId        String   @map("item_id")
+  /// Stable key of the line: the CA code (e.g. "CA-14", "CA-14.1") or a hash key for a DoD line ("DOD:...").
+  code          String
+  /// Display name of who ticked it: a user's name, or an agent login.
+  checkedBy     String   @map("checked_by")
+  /// "user" or "agent".
+  checkedByKind String   @map("checked_by_kind")
+  checkedAt     DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, itemId, code])
+  @@index([workspaceId, itemId])
+  @@map("task_checklist_checks")
 }

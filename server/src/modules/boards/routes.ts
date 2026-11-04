@@ -20,6 +20,7 @@ import {
   updateBoardSettings,
 } from './service.js';
 import { STATUS_ROLES } from './types.js';
+import { listChecklist, setChecklistCheck } from './checklist.js';
 
 const workspaceParams = z.object({ id: z.uuid() });
 const itemParams = workspaceParams.extend({ itemId: z.string().min(1).max(300) });
@@ -90,6 +91,8 @@ const taskBody = z
 const moveBody = z.object({ columnId: z.string().min(1) }).strict();
 
 const fieldBody = z.object({ fieldId: z.string().min(1), optionId: z.string().min(1).nullable() }).strict();
+
+const checklistBody = z.object({ code: z.string().min(1).max(64), checked: z.boolean() }).strict();
 
 export async function boardRoutes(app: FastifyInstance) {
   /** Tasks of every workspace on the model's columns. */
@@ -188,5 +191,18 @@ export async function boardRoutes(app: FastifyInstance) {
     const { fieldId, optionId } = parseInput(fieldBody, request.body);
     await setItemField(id, itemId, fieldId, optionId);
     return reply.code(204).send();
+  });
+
+  /** The ticked checklist lines (CA / DoD) of a task; the lines themselves are parsed from the body on the client. */
+  app.get('/workspaces/:id/board/items/:itemId/checklist', async (request) => {
+    const { id, itemId } = parseInput(itemParams, request.params);
+    return listChecklist(id, itemId);
+  });
+
+  /** Tick or untick one checklist line, recording the current user as who did it. */
+  app.post('/workspaces/:id/board/items/:itemId/checklist', async (request) => {
+    const { id, itemId } = parseInput(itemParams, request.params);
+    const { code, checked } = parseInput(checklistBody, request.body);
+    return setChecklistCheck(id, itemId, code, { checked, by: request.user.name, kind: 'user' });
   });
 }
